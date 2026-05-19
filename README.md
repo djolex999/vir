@@ -15,6 +15,16 @@ The loop: sessions → vir → vault → CLAUDE.md → better sessions.
 
 Inspired by Andrej Karpathy's LLM Wiki pattern and Uros Pesic's KB Brain concept.
 
+## Why Vir?
+
+Vir (вир) is the Serbian word for whirlpool — the place where a river
+pulls everything in and concentrates it. That is what this tool does.
+Sessions flow in, Vir pulls out what matters, and deposits it somewhere
+permanent.
+
+The name felt right for a tool whose job is to take the chaos of a
+Claude Code session and find the still point at the center.
+
 ## Prerequisites
 
 - macOS (launchd daemon)
