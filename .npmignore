@@ -1,0 +1,6 @@
+.vir/
+*.db
+.claude/
+tasks/
+handoff.md
+*.jsonl

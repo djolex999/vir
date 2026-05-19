@@ -1,0 +1,47 @@
+{
+  "name": "vir-cli",
+  "version": "0.1.0",
+  "description": "Distills Claude Code sessions into a compounding knowledge vault",
+  "author": "Djordje Marković <djordje@growthq.rs>",
+  "license": "MIT",
+  "homepage": "https://github.com/djolex999/vir",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/djolex999/vir"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "ai-memory",
+    "obsidian",
+    "knowledge-base",
+    "llm",
+    "developer-tools"
+  ],
+  "type": "module",
+  "bin": {
+    "vir": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/cli.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "better-sqlite3": "^11.5.0",
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "ora": "^9.4.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.9.0",
+    "typescript": "^5.6.3"
+  }
+}

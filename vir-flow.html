@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vir — Flow & Usage</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #16161f;
+    --border: #1e1e2e;
+    --accent: #7c6af7;
+    --accent2: #4fd1a0;
+    --accent3: #f7a26a;
+    --danger: #f76a7c;
+    --text: #e8e8f0;
+    --muted: #6b6b8a;
+    --dim: #3a3a5c;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Background grain */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 60px 40px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: flex-end;
+    gap: 24px;
+    margin-bottom: 72px;
+  }
+
+  .logo {
+    font-size: 96px;
+    font-weight: 800;
+    line-height: 1;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -4px;
+  }
+
+  .header-sub {
+    padding-bottom: 12px;
+  }
+
+  .tagline {
+    font-size: 13px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-bottom: 6px;
+  }
+
+  .desc {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    max-width: 380px;
+    line-height: 1.4;
+  }
+
+  /* Section titles */
+  .section-title {
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    color: var(--accent);
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* Pipeline flow */
+  .pipeline {
+    margin-bottom: 72px;
+  }
+
+  .pipeline-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .step {
+    display: grid;
+    grid-template-columns: 48px 1fr;
+    gap: 0 24px;
+    position: relative;
+  }
+
+  .step-line {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .step-dot {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+    border: 2px solid;
+  }
+
+  .step-dot.free { background: #0d1f18; border-color: var(--accent2); color: var(--accent2); }
+  .step-dot.haiku { background: #13101f; border-color: var(--accent); color: var(--accent); }
+  .step-dot.sonnet { background: #1a1008; border-color: var(--accent3); color: var(--accent3); }
+  .step-dot.write { background: #0d1f18; border-color: var(--accent2); color: var(--accent2); }
+
+  .step-connector {
+    width: 2px;
+    flex: 1;
+    min-height: 24px;
+    background: linear-gradient(to bottom, var(--dim), transparent);
+    margin: 4px 0;
+  }
+
+  .step-body {
+    padding: 12px 0 32px;
+  }
+
+  .step-name {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .badge {
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .badge-free { background: #0d2a1c; color: var(--accent2); border: 1px solid #1a4a30; }
+  .badge-haiku { background: #1a1030; color: var(--accent); border: 1px solid #2a1a50; }
+  .badge-sonnet { background: #2a1a08; color: var(--accent3); border: 1px solid #4a2a0a; }
+
+  .step-detail {
+    font-size: 14px;
+    color: var(--muted);
+    line-height: 1.7;
+    max-width: 600px;
+  }
+
+  .step-detail code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    background: var(--surface2);
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: var(--accent2);
+  }
+
+  /* Commands grid */
+  .commands {
+    margin-bottom: 72px;
+  }
+
+  .commands-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+
+  .cmd-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    transition: border-color 0.2s, transform 0.2s;
+    cursor: default;
+  }
+
+  .cmd-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+  }
+
+  .cmd-card.wide {
+    grid-column: span 2;
+  }
+
+  .cmd-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--accent2);
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+
+  .cmd-name span {
+    color: var(--muted);
+  }
+
+  .cmd-desc {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .cmd-cost {
+    display: inline-block;
+    margin-top: 10px;
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .cost-free { background: #0d2a1c; color: var(--accent2); }
+  .cost-cheap { background: #13101f; color: var(--accent); }
+  .cost-medium { background: #2a1a08; color: var(--accent3); }
+
+  /* Loop diagram */
+  .loop {
+    margin-bottom: 72px;
+  }
+
+  .loop-diagram {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .loop-diagram::before {
+    content: '';
+    position: absolute;
+    top: -60px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(124,106,247,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .loop-node {
+    flex: 1;
+    text-align: center;
+    position: relative;
+    z-index: 1;
+  }
+
+  .loop-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    margin: 0 auto 12px;
+  }
+
+  .loop-icon.purple { background: #13101f; border: 1px solid #2a1a50; }
+  .loop-icon.green { background: #0d1f18; border: 1px solid #1a4a30; }
+  .loop-icon.orange { background: #2a1a08; border: 1px solid #4a2a0a; }
+  .loop-icon.blue { background: #0a1525; border: 1px solid #1a3050; }
+
+  .loop-label {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .loop-sub {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .loop-arrow {
+    color: var(--dim);
+    font-size: 20px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .loop-arrow span {
+    font-size: 9px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  /* Cost table */
+  .costs {
+    margin-bottom: 72px;
+  }
+
+  .cost-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .cost-table th {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--muted);
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .cost-table td {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+
+  .cost-table tr:last-child td { border-bottom: none; }
+  .cost-table tr:hover td { background: var(--surface2); }
+
+  .cost-table td:first-child {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--accent2);
+    font-size: 12px;
+  }
+
+  .cost-table td:last-child {
+    color: var(--accent3);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* Footer */
+  .footer {
+    padding-top: 40px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .footer-left {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .footer-right {
+    font-size: 20px;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Animations */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .pipeline, .commands, .loop, .costs {
+    animation: fadeUp 0.6s ease both;
+  }
+
+  .commands { animation-delay: 0.1s; }
+  .loop { animation-delay: 0.2s; }
+  .costs { animation-delay: 0.3s; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">vir</div>
+    <div class="header-sub">
+      <div class="tagline">Claude Code Memory System</div>
+      <div class="desc">Distills sessions into compounding knowledge. Every run makes future sessions sharper.</div>
+    </div>
+  </div>
+
+  <!-- Pipeline -->
+  <div class="pipeline">
+    <div class="section-title">Pipeline — every vir run</div>
+    <div class="pipeline-steps">
+
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot free">01</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-name">Scanner <span class="badge badge-free">free</span></div>
+          <div class="step-detail">Walks <code>~/.claude/projects/**/*.jsonl</code>. Computes SHA-256 of each file. Skips anything already in SQLite with the same hash — fully idempotent.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot free">02</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-name">Filter <span class="badge badge-free">free</span></div>
+          <div class="step-detail">Heuristic scorer — no LLM tokens spent. Score based on session length, tool call count, unique files touched, signal words (error, fixed, learned). Sessions below threshold 0.4 are skipped.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot free">03</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-name">Scrubber <span class="badge badge-free">free</span></div>
+          <div class="step-detail">Strips API keys, Bearer tokens, AWS credentials, emails, absolute paths with usernames before anything touches the LLM.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot haiku">04</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-name">Classify <span class="badge badge-haiku">Haiku</span></div>
+          <div class="step-detail">Haiku classifies the session: <code>category</code> (pattern / gotcha / decision / tool), <code>topic</code> (2–4 words), <code>project</code>, <code>confidence</code> (0–1). Sessions with confidence &lt; 0.6 are skipped — no Sonnet call.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot sonnet">05</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-name">Distill <span class="badge badge-sonnet">Sonnet</span></div>
+          <div class="step-detail">Sonnet extracts durable knowledge: Summary, What Was Learned, Context, Related. Stored in SQLite content column. Rate-limited with 60/120/240s backoff on 429.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot write">06</div>
+        </div>
+        <div class="step-body">
+          <div class="step-name">Write <span class="badge badge-free">free</span></div>
+          <div class="step-detail">Writes typed markdown note to Obsidian vault: <code>patterns/</code>, <code>gotchas/</code>, <code>decisions/</code>, <code>tools/</code>. Updates <code>index.md</code> catalog and <code>log.md</code>. Wikilinks injected for Obsidian graph view clustering.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Commands -->
+  <div class="commands">
+    <div class="section-title">Commands</div>
+    <div class="commands-grid">
+
+      <div class="cmd-card">
+        <div class="cmd-name">vir run</div>
+        <div class="cmd-desc">Run pipeline once. Processes only new/changed sessions. Used by the launchd daemon every 4 hours.</div>
+        <div class="cmd-cost cost-cheap">Haiku + Sonnet</div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-name">vir run <span>--full</span></div>
+        <div class="cmd-desc">Force reprocess all sessions. Required after schema migrations or first setup. Expensive one-time cost.</div>
+        <div class="cmd-cost cost-medium">$$</div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-name">vir run <span>--rewrite-only</span></div>
+        <div class="cmd-desc">Rewrite all vault notes from SQLite — no LLM calls. Use after changing writer format (e.g. adding wikilinks).</div>
+        <div class="cmd-cost cost-free">free</div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-name">vir query <span>"question"</span></div>
+        <div class="cmd-desc">TF-IDF retrieves top 8 notes, Sonnet synthesizes a direct answer. Citations included.</div>
+        <div class="cmd-cost cost-cheap">~$0.01</div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-name">vir summarize <span>&lt;project&gt;</span></div>
+        <div class="cmd-desc">Generate cross-session synthesis for a project: key patterns, gotchas, decisions, knowledge gaps.</div>
+        <div class="cmd-cost cost-cheap">~$0.02</div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-name">vir lint</div>
+        <div class="cmd-desc">Three checks: orphan notes, stale notes (&gt;90d with newer activity), contradiction detection between similar notes.</div>
+        <div class="cmd-cost cost-free">free + Haiku</div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-name">vir dedupe</div>
+        <div class="cmd-desc">Interactive duplicate detection. Haiku finds candidates, you confirm each merge. Duplicates archived, not deleted.</div>
+        <div class="cmd-cost cost-cheap">Haiku</div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-name">vir sync-claude <span>--dry-run</span></div>
+        <div class="cmd-desc">Preview what would be injected into ~/.claude/CLAUDE.md and per-project CLAUDE.md files. Shows diff: added, upgraded, removed.</div>
+        <div class="cmd-cost cost-free">free</div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-name">vir status</div>
+        <div class="cmd-desc">Knowledge heatmap: notes by project and category, confidence distribution, gaps, daemon status.</div>
+        <div class="cmd-cost cost-free">free</div>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-name">vir schedule <span>install</span></div>
+        <div class="cmd-desc">Register launchd plist at ~/Library/LaunchAgents/. Runs vir run every 4 hours automatically.</div>
+        <div class="cmd-cost cost-free">free</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- The Loop -->
+  <div class="loop">
+    <div class="section-title">The compounding loop</div>
+    <div class="loop-diagram">
+
+      <div class="loop-node">
+        <div class="loop-icon purple">⚡</div>
+        <div class="loop-label">Claude Code</div>
+        <div class="loop-sub">session runs</div>
+      </div>
+
+      <div class="loop-arrow">
+        →<br><span>JSONL transcripts</span>
+      </div>
+
+      <div class="loop-node">
+        <div class="loop-icon green">🌀</div>
+        <div class="loop-label">Vir</div>
+        <div class="loop-sub">distills knowledge</div>
+      </div>
+
+      <div class="loop-arrow">
+        →<br><span>markdown notes</span>
+      </div>
+
+      <div class="loop-node">
+        <div class="loop-icon orange">📓</div>
+        <div class="loop-label">Obsidian vault</div>
+        <div class="loop-sub">knowledge base</div>
+      </div>
+
+      <div class="loop-arrow">
+        →<br><span>vir sync-claude</span>
+      </div>
+
+      <div class="loop-node">
+        <div class="loop-icon blue">🧠</div>
+        <div class="loop-label">CLAUDE.md</div>
+        <div class="loop-sub">feeds future sessions</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Cost reference -->
+  <div class="costs">
+    <div class="section-title">Cost reference (Kie.ai)</div>
+    <table class="cost-table">
+      <thead>
+        <tr>
+          <th>Operation</th>
+          <th>Model</th>
+          <th>When</th>
+          <th>Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Scanner / Filter / Scrubber</td>
+          <td>—</td>
+          <td>every session</td>
+          <td>free</td>
+        </tr>
+        <tr>
+          <td>Classify</td>
+          <td>Haiku 4.5</td>
+          <td>sessions passing filter</td>
+          <td>~$0.001/session</td>
+        </tr>
+        <tr>
+          <td>Distill</td>
+          <td>Sonnet 4.6</td>
+          <td>confidence ≥ 0.6</td>
+          <td>~$0.02/session</td>
+        </tr>
+        <tr>
+          <td>First full run (226 sessions)</td>
+          <td>Haiku + Sonnet</td>
+          <td>one-time</td>
+          <td>~$1.50</td>
+        </tr>
+        <tr>
+          <td>Ongoing (4h daemon, ~8 sessions)</td>
+          <td>Haiku + Sonnet</td>
+          <td>per run</td>
+          <td>~$0.05/run</td>
+        </tr>
+        <tr>
+          <td>vir query</td>
+          <td>Sonnet 4.6</td>
+          <td>per query</td>
+          <td>~$0.01</td>
+        </tr>
+        <tr>
+          <td>vir summarize</td>
+          <td>Sonnet 4.6</td>
+          <td>per project</td>
+          <td>~$0.02</td>
+        </tr>
+        <tr>
+          <td>vir dedupe / lint --contradictions</td>
+          <td>Haiku 4.5</td>
+          <td>per pair checked</td>
+          <td>~$0.001/pair</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="footer-left">
+      config: ~/.vir/config.json &nbsp;·&nbsp;
+      state: ~/.vir/vir.db &nbsp;·&nbsp;
+      logs: ~/.vir/daemon.log &nbsp;·&nbsp;
+      vault: ~/Documents/Vir/vir/
+    </div>
+    <div class="footer-right">vir</div>
+  </div>
+
+</div>
+</body>
+</html>

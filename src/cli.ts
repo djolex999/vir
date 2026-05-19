@@ -1,0 +1,869 @@
+#!/usr/bin/env node
+import chalk from "chalk";
+import { Command } from "commander";
+import { createInterface } from "node:readline/promises";
+import { stdin, stdout, argv, exit } from "node:process";
+import { existsSync, mkdirSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import {
+  CONFIG_PATH,
+  ConfigSchema,
+  configExists,
+  ensureVirDir,
+  expandHome,
+  loadConfig,
+  saveConfig,
+  type Config,
+} from "./config.js";
+import { applyPlan, planUpdates, type PlanItem } from "./claude/updater.js";
+import { detectDuplicates } from "./dedupe/detector.js";
+import { mergeNotes } from "./dedupe/merger.js";
+import {
+  contradictionCheck,
+  orphanCheck,
+  stalenessCheck,
+} from "./lint/linter.js";
+import { runPipeline } from "./pipeline/run.js";
+import { summarizeAll, summarizeProject } from "./pipeline/summarizer.js";
+import {
+  embeddingForNote,
+  isOllamaAvailable,
+} from "./search/embedder.js";
+import { search } from "./search/retriever.js";
+import { synthesize } from "./search/synthesizer.js";
+import {
+  daemonStatus,
+  installPlist,
+  plistPath,
+  uninstallPlist,
+} from "./daemon/launchd.js";
+import { StateDb, type KnowledgeStats } from "./state/db.js";
+import * as ui from "./ui/display.js";
+import { VaultWriter } from "./pipeline/writer.js";
+
+const program = new Command();
+program
+  .name("vir")
+  .description("Distill Claude Code sessions into an Obsidian vault")
+  .version("0.1.0");
+
+program
+  .command("init")
+  .description("Interactive setup")
+  .action(async () => {
+    await cmdInit();
+  });
+
+program
+  .command("run")
+  .description("Run pipeline once")
+  .option("--full", "Re-process all sessions, ignoring state cache")
+  .option("--daemon", "Quiet output, write to daemon log file")
+  .option(
+    "--rewrite-only",
+    "Skip scan/filter/LLM; re-render stored notes from SQLite",
+  )
+  .option("--yes", "Skip the cost confirmation prompt")
+  .action(
+    async (opts: {
+      full?: boolean;
+      daemon?: boolean;
+      rewriteOnly?: boolean;
+      yes?: boolean;
+    }) => {
+      const cfg = loadConfig();
+      const daemon = opts.daemon === true;
+      const rewriteOnly = opts.rewriteOnly === true;
+      const skipPrompt = opts.yes === true || daemon || rewriteOnly;
+      await runPipeline(cfg, {
+        full: opts.full,
+        quiet: daemon,
+        logToFile: daemon,
+        rewriteOnly,
+        onConfirm: skipPrompt
+          ? undefined
+          : async (newCount) => confirmCostIfNeeded(cfg, newCount),
+      });
+    },
+  );
+
+async function confirmCostIfNeeded(
+  cfg: Config,
+  newCount: number,
+): Promise<boolean> {
+  if (newCount <= 20) return true;
+  ui.box(
+    [
+      `${ui.text(String(newCount))} ${ui.dim("new sessions to process")}`,
+      `${ui.dim("estimated:")} ${ui.warn("$1–5")} ${ui.dim("depending on session")}`,
+      `${ui.dim("depth (deep code reviews cost more)")}`,
+      `${ui.dim("provider:")} ${ui.accent(cfg.provider)}`,
+    ],
+    { title: "cost estimate" },
+  );
+  const rl = createInterface({ input: stdin, output: stdout });
+  const ans = (await rl.question(ui.muted("continue? (y/n) ")))
+    .trim()
+    .toLowerCase();
+  rl.close();
+  return ans === "y" || ans === "yes";
+}
+
+const schedule = program.command("schedule").description("Manage launchd daemon");
+schedule
+  .command("install")
+  .description("Install + load launchd plist")
+  .action(() => {
+    const cfg = loadConfig();
+    const nodePath = process.execPath;
+    const cliPath = realpathSync(argv[1] ?? "");
+    const res = installPlist({
+      nodePath,
+      cliPath,
+      cadenceHours: cfg.cadenceHours,
+    });
+    console.log(
+      chalk.green(`installed: ${res.plistPath} (loaded=${res.loaded})`),
+    );
+  });
+schedule
+  .command("uninstall")
+  .description("Unload + remove launchd plist")
+  .action(() => {
+    const res = uninstallPlist();
+    if (res.removed) console.log(chalk.green(`removed ${plistPath()}`));
+    else console.log(chalk.yellow(`no plist found at ${plistPath()}`));
+  });
+
+program
+  .command("sync-claude [project]")
+  .description("Update Vir blocks in CLAUDE.md files (global + per-project)")
+  .option("--dry-run", "Show diff only, never write")
+  .option("--force", "Apply without confirmation")
+  .option("--global", "Only update ~/.claude/CLAUDE.md")
+  .action(
+    async (
+      projectArg: string | undefined,
+      opts: { dryRun?: boolean; force?: boolean; global?: boolean },
+    ) => {
+      const cfg = loadConfig();
+      const db = new StateDb();
+      try {
+        const plans = planUpdates(cfg, db, {
+          project: projectArg,
+          globalOnly: opts.global === true,
+        });
+        ui.header(
+          `sync-claude${opts.dryRun ? "  --dry-run" : opts.force ? "  --force" : ""}`,
+        );
+        ui.blank();
+        if (plans.length === 0) {
+          ui.row(ui.warn(ui.WARN_GLYPH), ui.text("nothing to plan"));
+          return;
+        }
+
+        for (const p of plans) {
+          renderPlan(p);
+          ui.blank();
+        }
+
+        if (opts.dryRun) {
+          ui.line(ui.dim("run without --dry-run to apply"));
+          return;
+        }
+
+        let proceed = opts.force === true;
+        if (!proceed) {
+          const rl = createInterface({ input: stdin, output: stdout });
+          const ans = (await rl.question(ui.dim("apply these changes? (y/n) ")))
+            .trim()
+            .toLowerCase();
+          rl.close();
+          proceed = ans === "y" || ans === "yes";
+        }
+        if (!proceed) {
+          ui.line(ui.dim("aborted"));
+          return;
+        }
+
+        for (const p of plans) {
+          if (!p.exists) {
+            ui.row(ui.warn(ui.WARN_GLYPH), ui.text(`skipped ${collapseHome(p.target)}`));
+            continue;
+          }
+          const ok = applyPlan(p);
+          ui.row(
+            ok ? ui.success(ui.CHECK) : ui.errorColor(ui.CROSS),
+            ui.text(collapseHome(p.target)),
+          );
+        }
+      } finally {
+        db.close();
+      }
+    },
+  );
+
+program
+  .command("dedupe")
+  .description("Interactive duplicate detection + merge")
+  .action(async () => {
+    const cfg = loadConfig();
+    const db = new StateDb();
+    try {
+      console.log("scanning for duplicate candidates...");
+      const result = await detectDuplicates(cfg, db);
+      console.log(
+        `${result.checked} candidate pairs checked, ${result.duplicates.length} flagged as duplicates`,
+      );
+      if (result.duplicates.length === 0) {
+        return;
+      }
+
+      const rl = createInterface({ input: stdin, output: stdout });
+      let merged = 0;
+      let skipped = 0;
+      for (const dup of result.duplicates) {
+        console.log("\nDuplicate found:");
+        console.log(
+          `A: ${noteRefOf(dup.a)} (conf: ${dup.a.confidence.toFixed(2)}, ${dup.a.startedAt?.slice(0, 10) ?? "?"})`,
+        );
+        console.log(`   "${preview(dup.a.content)}"`);
+        console.log(
+          `B: ${noteRefOf(dup.b)} (conf: ${dup.b.confidence.toFixed(2)}, ${dup.b.startedAt?.slice(0, 10) ?? "?"})`,
+        );
+        console.log(`   "${preview(dup.b.content)}"`);
+        console.log(`Reason: ${dup.reason}`);
+        const suggestion =
+          dup.keepWhich === "merge"
+            ? "merge both"
+            : `keep ${dup.keepWhich}`;
+        console.log(`Suggested: ${suggestion}`);
+
+        const ans = (
+          await rl.question(
+            "[k]eep suggestion / [s]wap / [m]erge / [x] skip: ",
+          )
+        )
+          .trim()
+          .toLowerCase();
+
+        let action: "A" | "B" | "merge" | null = null;
+        if (ans === "k" || ans === "") {
+          action = dup.keepWhich;
+        } else if (ans === "s") {
+          action =
+            dup.keepWhich === "A"
+              ? "B"
+              : dup.keepWhich === "B"
+                ? "A"
+                : "merge";
+        } else if (ans === "m") {
+          action = "merge";
+        } else if (ans === "x") {
+          skipped += 1;
+          continue;
+        } else {
+          console.log(chalk.yellow("unknown input — skipping"));
+          skipped += 1;
+          continue;
+        }
+
+        try {
+          const outcome = await mergeNotes(cfg, db, dup.a, dup.b, action);
+          merged += 1;
+          console.log(
+            chalk.green(
+              `merged (${outcome.action}): winner=${outcome.winnerPath} archived=${outcome.archivedPath}`,
+            ),
+          );
+        } catch (err) {
+          console.error(
+            chalk.red(`merge failed: ${(err as Error).message}`),
+          );
+        }
+      }
+      rl.close();
+      console.log(
+        `\n${result.duplicates.length} pairs reviewed, ${merged} merged, ${skipped} skipped.`,
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+program
+  .command("lint")
+  .description("Run orphan, staleness, and contradiction checks on the vault")
+  .option("--orphans", "Run only the orphan check (free)")
+  .option("--stale", "Run only the staleness check (free)")
+  .option("--contradictions", "Run only the contradiction check (Haiku tokens)")
+  .action(
+    async (opts: {
+      orphans?: boolean;
+      stale?: boolean;
+      contradictions?: boolean;
+    }) => {
+      const cfg = loadConfig();
+      const db = new StateDb();
+      try {
+        const runAll = !opts.orphans && !opts.stale && !opts.contradictions;
+        const checks: string[] = [];
+        if (runAll || opts.orphans) checks.push("orphans");
+        if (runAll || opts.stale) checks.push("stale");
+        if (runAll || opts.contradictions) checks.push("contradictions");
+
+        ui.header("lint");
+        ui.blank();
+
+        let orphanCount = 0;
+        let staleCount = 0;
+        let contradictionCount = 0;
+        let issues = 0;
+
+        if (runAll || opts.orphans) {
+          const sp = ui.spinner("checking orphans").start();
+          const r = orphanCheck(cfg);
+          sp.stop();
+          orphanCount = r.orphans.length;
+          issues += orphanCount;
+          if (orphanCount === 0) {
+            ui.row(ui.success(ui.CHECK), `${ui.text("orphans")}  ${ui.dim("none")}`);
+          } else {
+            ui.row(ui.errorColor(ui.CROSS), `${ui.text("orphans")} ${ui.dim("(" + orphanCount + ")")}`);
+            for (const o of r.orphans) {
+              console.log(`   ${ui.dim(ui.BULLET)} ${ui.text(ui.shortNotePath(o))}`);
+            }
+          }
+        }
+
+        if (runAll || opts.stale) {
+          const sp = ui.spinner("checking staleness").start();
+          const stale = stalenessCheck(cfg, db);
+          sp.stop();
+          staleCount = stale.length;
+          issues += staleCount;
+          if (staleCount === 0) {
+            ui.row(ui.success(ui.CHECK), `${ui.text("stale")}    ${ui.dim("none")}`);
+          } else {
+            ui.row(ui.errorColor(ui.CROSS), `${ui.text("stale")} ${ui.dim("(" + staleCount + ")")}`);
+            for (const s of stale) {
+              console.log(
+                `   ${ui.dim(ui.BULLET)} ${ui.text(ui.shortNotePath(s.relPath))}  ${ui.muted(`${s.ageDays}d`)}  ${ui.dim(`${s.newerSameProjectCount} newer ${s.project} sessions`)}`,
+              );
+            }
+          }
+        }
+
+        if (runAll || opts.contradictions) {
+          const sp = ui.spinner("checking contradictions (haiku)").start();
+          const c = await contradictionCheck(cfg, db);
+          sp.stop();
+          contradictionCount = c.contradictions.length;
+          issues += contradictionCount;
+          if (contradictionCount === 0) {
+            ui.row(
+              ui.success(ui.CHECK),
+              `${ui.text("contradictions")}  ${ui.dim(`none found in ${c.checked} pairs`)}`,
+            );
+          } else {
+            ui.row(
+              ui.errorColor(ui.CROSS),
+              `${ui.text("contradictions")} ${ui.dim("(" + contradictionCount + ")")}`,
+            );
+            for (const x of c.contradictions) {
+              console.log(
+                `   ${ui.dim(ui.BULLET)} ${ui.text(ui.shortNotePath(x.a))} ${ui.dim("vs")} ${ui.text(ui.shortNotePath(x.b))}`,
+              );
+              console.log(`     ${ui.muted(x.reason)}`);
+            }
+          }
+        }
+
+        ui.blank();
+        ui.divider();
+        ui.summary({
+          issues: {
+            value: issues,
+            color: issues > 0 ? ui.errorColor : ui.success,
+          },
+          orphans: { value: orphanCount, color: ui.muted },
+          stale: { value: staleCount, color: ui.muted },
+          contradictions: { value: contradictionCount, color: ui.muted },
+        });
+        ui.divider();
+      } finally {
+        db.close();
+      }
+    },
+  );
+
+program
+  .command("summarize [project]")
+  .description("Generate or regenerate a project knowledge summary")
+  .option("--all", "Regenerate summaries for every project with notes")
+  .action(async (project: string | undefined, opts: { all?: boolean }) => {
+    const cfg = loadConfig();
+    const db = new StateDb();
+    try {
+      if (opts.all) {
+        const results = await summarizeAll(cfg, db);
+        if (results.length === 0) {
+          console.log(chalk.yellow("no projects with notes"));
+          return;
+        }
+        for (const r of results) {
+          console.log(
+            chalk.green(`summarized project/${r.slug}`) +
+              ` (${r.counts.total} sessions)`,
+          );
+        }
+        return;
+      }
+      if (!project) {
+        console.error(chalk.red("usage: vir summarize <project> | --all"));
+        exit(1);
+      }
+      const res = await summarizeProject(cfg, project, db);
+      if (!res) {
+        console.log(chalk.yellow(`no distilled notes for project '${project}'`));
+        return;
+      }
+      console.log(
+        chalk.green(`summarized project/${res.slug}`) +
+          ` (${res.counts.total} sessions) → ${res.path}`,
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+program
+  .command("embed")
+  .description("Generate Ollama embeddings for distilled notes")
+  .option("--force", "Regenerate even if embedding already exists")
+  .action(async (opts: { force?: boolean }) => {
+    const cfg = loadConfig();
+    ui.header("embed");
+    ui.blank();
+    if (!(await isOllamaAvailable())) {
+      ui.row(ui.errorColor(ui.CROSS), ui.text("Ollama not running"));
+      ui.line(ui.dim("  brew install ollama"));
+      ui.line(ui.dim("  ollama pull nomic-embed-text"));
+      ui.line(ui.dim("  ollama serve"));
+      exit(1);
+    }
+    const db = new StateDb();
+    try {
+      const rows = db.listDistilled();
+      const root = join(cfg.vaultPath, cfg.outputDir);
+      const existing = new Set(
+        db.getEmbeddings(root).map((r) => r.sessionId),
+      );
+      const target = opts.force
+        ? rows
+        : rows.filter((r) => !existing.has(r.sessionId));
+
+      if (target.length === 0) {
+        ui.row(ui.success(ui.CHECK), ui.text("all notes already embedded"));
+        return;
+      }
+
+      const sp = ui.spinner(`embedding notes (0/${target.length})`).start();
+      let embedded = 0;
+      let skipped = 0;
+      let errors = 0;
+      for (let i = 0; i < target.length; i += 1) {
+        const r = target[i];
+        if (!r) continue;
+        if (r.content.trim().length === 0) {
+          skipped += 1;
+          continue;
+        }
+        const vec = await embeddingForNote(r.content);
+        if (!vec) {
+          errors += 1;
+          continue;
+        }
+        db.storeEmbedding(r.sessionId, vec);
+        embedded += 1;
+        sp.text = ui.dim(`embedding notes (${embedded}/${target.length})`);
+      }
+      sp.succeed(ui.text(`embedded ${embedded} notes`));
+      ui.blank();
+      ui.divider();
+      ui.summary({
+        embedded: { value: embedded, color: ui.success },
+        skipped: { value: skipped, color: ui.muted },
+        errors: {
+          value: errors,
+          color: errors > 0 ? ui.errorColor : ui.dim,
+        },
+      });
+      ui.divider();
+    } finally {
+      db.close();
+    }
+  });
+
+program
+  .command("query <question>")
+  .description("Search the vault: embedding/TF-IDF retrieval + Claude synthesis")
+  .action(async (question: string) => {
+    const cfg = loadConfig();
+    const db = new StateDb();
+    try {
+      ui.header("query");
+      ui.divider();
+      console.log(ui.text(question));
+      ui.divider();
+      ui.blank();
+
+      const ollamaUp = await isOllamaAvailable();
+      const sp = ui
+        .spinner(`searching vault (${ollamaUp ? "embeddings" : "tfidf"})`)
+        .start();
+      let hits;
+      try {
+        hits = await search(cfg, db, question, 8);
+        sp.stop();
+      } catch (err) {
+        sp.fail(ui.errorColor((err as Error).message));
+        return;
+      }
+
+      if (hits.length === 0) {
+        ui.row(ui.warn(ui.WARN_GLYPH), ui.text("no documents matched"));
+        return;
+      }
+
+      const answer = await synthesize(cfg, question, hits);
+      ui.blank();
+      console.log(ui.text(ui.wrap(answer.trim(), 60)));
+      ui.blank();
+
+      const method = hits[0]?.method ?? "tfidf";
+      const relevant = hits.filter((h) => h.score > 0).slice(0, 3);
+      ui.divider();
+      for (const h of relevant) ui.sourceRow(h.title, h.score);
+      ui.divider();
+      const totalNotes =
+        method === "embedding"
+          ? db.getEmbeddings(join(cfg.vaultPath, cfg.outputDir)).length
+          : new VaultWriter(cfg).noteCount();
+      ui.summary({
+        sources: { value: relevant.length, color: ui.info },
+        via: { value: method, color: ui.accent },
+        searched: { value: totalNotes, color: ui.muted },
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+program
+  .command("status")
+  .description("Show processing status + knowledge base breakdown")
+  .action(() => {
+    const cfg = configExists() ? loadConfig() : null;
+    if (!cfg) {
+      ui.header("status");
+      ui.row(ui.warn(ui.WARN_GLYPH), ui.text("not configured — run `vir init`"));
+      return;
+    }
+    const db = new StateDb();
+    const knowledge = db.getStats();
+    db.close();
+    const ds = daemonStatus();
+
+    ui.header("status");
+    ui.blank();
+    renderKnowledge(knowledge);
+    ui.blank();
+    renderDaemon(ds, cfg.cadenceHours);
+  });
+
+function renderKnowledge(k: KnowledgeStats): void {
+  if (k.total === 0) {
+    ui.box(
+      [
+        ui.text("no distilled notes yet"),
+        ui.dim("run `vir run --full` to populate"),
+      ],
+      { title: "knowledge" },
+    );
+    return;
+  }
+
+  const lines: string[] = [];
+  lines.push(
+    `${ui.dim("notes")}      ${ui.text(String(k.total).padStart(3))}   ${ui.dim("avg conf")}  ${ui.info(k.avgConfidence.toFixed(2))}`,
+  );
+  lines.push(
+    `${ui.dim("high signal")} ${ui.success(String(k.highConf).padStart(2))}   ${ui.dim("low signal")} ${ui.errorColor(String(k.lowConf).padStart(2))}`,
+  );
+  const oldest = (k.oldestNote || "?").slice(0, 10);
+  const newest = (k.newestNote || "?").slice(0, 10);
+  lines.push(
+    `${ui.muted(oldest)}  ${ui.dim(ui.ARROW)}  ${ui.muted(newest)}`,
+  );
+  ui.box(lines, { title: "knowledge" });
+
+  ui.blank();
+  const entries: Array<[string, number]> = [
+    ["pattern", k.byCategory.pattern ?? 0],
+    ["decision", k.byCategory.decision ?? 0],
+    ["gotcha", k.byCategory.gotcha ?? 0],
+    ["tool", k.byCategory.tool ?? 0],
+  ];
+  const maxCount = Math.max(1, ...entries.map(([, c]) => c));
+  for (const [label, count] of entries) {
+    const w = 16;
+    const filled = Math.round((count / maxCount) * w);
+    const bar = "█".repeat(filled) + "░".repeat(w - filled);
+    const pct = k.total > 0 ? Math.round((count / k.total) * 100) : 0;
+    const color = ui.colorForCategory[label] ?? ui.text;
+    console.log(
+      `${color(label.padEnd(9))} ${color(bar)} ${ui.text(String(count).padStart(3))}  ${ui.dim(String(pct).padStart(3) + "%")}`,
+    );
+  }
+
+  ui.blank();
+  const projectLines: string[] = [];
+  const projects = Object.entries(k.byProject).sort(
+    (a, b) => b[1].total - a[1].total,
+  );
+  for (const [name, p] of projects) {
+    const last = p.lastSeen ? p.lastSeen.slice(0, 10) : "—";
+    const conf = p.avgConfidence.toFixed(2);
+    projectLines.push(
+      `${ui.text(name.padEnd(10).slice(0, 10))} ${ui.info(String(p.total).padStart(3))}   ` +
+        `${ui.dim("P")}${ui.text(String(p.patterns).padStart(2))} ` +
+        `${ui.dim("G")}${ui.text(String(p.gotchas).padStart(2))} ` +
+        `${ui.dim("D")}${ui.text(String(p.decisions).padStart(2))} ` +
+        `${ui.dim("T")}${ui.text(String(p.tools).padStart(2))}   ` +
+        `${ui.info(conf)}  ${ui.muted(last)}`,
+    );
+  }
+  ui.box(projectLines, { title: "projects", width: 52 });
+
+  ui.blank();
+  for (const [name, p] of projects) {
+    if (p.total === 0) continue;
+    if (p.gotchas === 0) {
+      ui.row(
+        ui.warn(ui.WARN_GLYPH),
+        ui.text(`${name} — no gotchas recorded`),
+      );
+    }
+    if (p.decisions === 0) {
+      ui.row(
+        ui.warn(ui.WARN_GLYPH),
+        ui.text(`${name} — no architecture decisions`),
+      );
+    }
+    if (p.avgConfidence < 0.65) {
+      ui.row(
+        ui.warn(ui.WARN_GLYPH),
+        ui.text(
+          `${name} — low avg confidence (${p.avgConfidence.toFixed(2)})`,
+        ),
+      );
+    }
+  }
+}
+
+function renderDaemon(
+  ds: ReturnType<typeof daemonStatus>,
+  cadenceHours: number,
+): void {
+  const status = ds.loaded ? "running" : ds.installed ? "loaded" : "off";
+  const statusColor = ds.loaded
+    ? ui.success
+    : ds.installed
+      ? ui.warn
+      : ui.dim;
+  ui.box(
+    [
+      `${ui.dim("status")}   ${statusColor(status)}`,
+      `${ui.dim("cadence")}  ${ui.text(`every ${cadenceHours}h`)}`,
+      `${ui.dim("plist")}    ${ui.muted(collapseHome(ds.plistPath))}`,
+    ],
+    { title: "daemon", width: 52 },
+  );
+}
+
+async function cmdInit(): Promise<void> {
+  ensureVirDir();
+  const existing = configExists() ? safeLoad() : null;
+  const rl = createInterface({ input: stdin, output: stdout });
+  const ask = async (q: string, def?: string): Promise<string> => {
+    const prompt = def ? `${q} [${def}]: ` : `${q}: `;
+    const ans = (await rl.question(prompt)).trim();
+    return ans.length > 0 ? ans : (def ?? "");
+  };
+
+  console.log(chalk.cyan("vir init — interactive setup"));
+
+  const yes = async (q: string): Promise<boolean> => {
+    const a = (await rl.question(q)).trim().toLowerCase();
+    return a === "y" || a === "yes";
+  };
+
+  let vaultPath = "";
+  for (;;) {
+    vaultPath = await ask(
+      "Obsidian vault path",
+      existing?.vaultPath ?? join(homedir(), "Documents", "Obsidian", "MyVault"),
+    );
+    const expanded = expandHome(vaultPath);
+    if (existsSync(expanded)) break;
+    console.error(chalk.red(`vault path does not exist: ${expanded}`));
+    if (await yes("create it? (y/n) ")) {
+      try {
+        mkdirSync(expanded, { recursive: true });
+        break;
+      } catch (err) {
+        console.error(
+          chalk.red(`failed to create: ${(err as Error).message}`),
+        );
+      }
+    }
+    // else loop and re-prompt
+  }
+
+  const outputDir = await ask(
+    "Output subdir inside vault",
+    existing?.outputDir ?? "vir",
+  );
+
+  let claudeProjectsDir = "";
+  for (;;) {
+    claudeProjectsDir = await ask(
+      "Claude Code projects dir",
+      existing?.claudeProjectsDir ?? join(homedir(), ".claude", "projects"),
+    );
+    const expanded = expandHome(claudeProjectsDir);
+    if (existsSync(expanded)) break;
+    console.warn(
+      chalk.yellow(
+        `directory not found — Claude Code sessions may not exist yet`,
+      ),
+    );
+    if (await yes("continue anyway? (y/n) ")) break;
+    // else re-prompt
+  }
+  const cadenceStr = await ask(
+    "Cadence (hours)",
+    String(existing?.cadenceHours ?? 4),
+  );
+  const providerRaw = (
+    await ask("Provider (anthropic/kie)", existing?.provider ?? "anthropic")
+  ).toLowerCase();
+  const provider = providerRaw === "kie" ? "kie" : "anthropic";
+
+  let anthropicApiKey: string | undefined;
+  let kieApiKey: string | undefined;
+  if (provider === "kie") {
+    kieApiKey = await ask(
+      "Kie.ai API key",
+      existing?.kieApiKey ?? process.env.KIE_API_KEY ?? "",
+    );
+  } else {
+    anthropicApiKey = await ask(
+      "Anthropic API key",
+      existing?.anthropicApiKey ?? process.env.ANTHROPIC_API_KEY ?? "",
+    );
+  }
+  const thresholdStr = await ask(
+    "Filter threshold (0..1)",
+    String(existing?.filterThreshold ?? 0.4),
+  );
+  rl.close();
+
+  const parsed = ConfigSchema.safeParse({
+    vaultPath,
+    outputDir,
+    claudeProjectsDir,
+    cadenceHours: Number(cadenceStr),
+    provider,
+    anthropicApiKey,
+    kieApiKey,
+    filterThreshold: Number(thresholdStr),
+    models: existing?.models,
+  });
+
+  if (!parsed.success) {
+    console.error(chalk.red("invalid config:"));
+    for (const issue of parsed.error.issues) {
+      console.error(`  - ${issue.path.join(".")}: ${issue.message}`);
+    }
+    exit(1);
+  }
+
+  saveConfig(parsed.data);
+  console.log(chalk.green(`saved ${CONFIG_PATH}`));
+  console.log("next: `vir run` to test once, then `vir schedule install`");
+}
+
+function renderPlan(p: PlanItem): void {
+  const title = collapseHome(p.target);
+  if (!p.exists) {
+    ui.box([ui.dim("no CLAUDE.md found — would be skipped")], { title });
+    return;
+  }
+  const lines: string[] = [];
+  for (const e of p.diff.added) {
+    lines.push(`${ui.success("+")} ${ui.text(e.slug)}`);
+  }
+  for (const u of p.diff.upgraded) {
+    lines.push(
+      `${ui.info(ui.UP_ARROW)} ${ui.text(u.slug)}  ${ui.dim(`${u.oldConf.toFixed(2)}${ui.ARROW}${u.newConf.toFixed(2)}`)}`,
+    );
+  }
+  for (const r of p.diff.removed) {
+    lines.push(`${ui.warn("-")} ${ui.text(r.slug)}`);
+  }
+  if (p.diff.unchanged.length > 0) {
+    lines.push(
+      `${ui.dim("~")} ${ui.dim(`${p.diff.unchanged.length} entries unchanged`)}`,
+    );
+  }
+  if (lines.length === 0) lines.push(ui.dim("no changes"));
+  ui.box(lines, { title });
+}
+
+function collapseHome(p: string): string {
+  const h = homedir();
+  return p.startsWith(h) ? "~" + p.slice(h.length) : p;
+}
+
+function noteRefOf(r: {
+  category: string;
+  topic: string;
+  sessionId: string;
+}): string {
+  const dir = `${r.category}s`;
+  const slug = r.topic
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${dir}/${slug}-${r.sessionId.slice(0, 8)}`;
+}
+
+function preview(s: string): string {
+  return s.replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+function safeLoad(): Config | null {
+  try {
+    return loadConfig();
+  } catch {
+    return null;
+  }
+}
+
+program.parseAsync(argv).catch((err: unknown) => {
+  console.error(chalk.red((err as Error).message ?? String(err)));
+  exit(1);
+});

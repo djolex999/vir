@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.vir/
+*.db
+.claude/
+CLAUDE.md
+handoff.md
+tasks/

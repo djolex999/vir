@@ -1,0 +1,255 @@
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
+import type { Config } from "../config.js";
+import type { StateDb } from "../state/db.js";
+import {
+  cosineSimilarity,
+  embed,
+  isOllamaAvailable,
+} from "./embedder.js";
+
+const SKIP_FILES = new Set(["index.md", "log.md"]);
+
+export interface IndexedDoc {
+  relPath: string;
+  title: string;
+  raw: string;
+  text: string;
+  tokens: string[];
+  tf: Map<string, number>;
+}
+
+export interface ScoredDoc {
+  relPath: string;
+  title: string;
+  raw: string;
+  score: number;
+}
+
+export interface SearchHit {
+  filePath: string;
+  title: string;
+  content: string;
+  score: number;
+  method: "embedding" | "tfidf";
+}
+
+const MIN_EMBEDDING_SCORE = 0.3;
+
+export async function search(
+  cfg: Config,
+  db: StateDb,
+  query: string,
+  topK = 8,
+): Promise<SearchHit[]> {
+  if (await isOllamaAvailable()) {
+    const hits = await searchByEmbedding(cfg, db, query, topK);
+    // If embeddings produced at least one match above the floor, take it.
+    // Otherwise fall through to TF-IDF: low cosine on every doc means the
+    // query is semantically off; lexical overlap might still find a match.
+    if (hits.length > 0) return hits;
+  }
+  return searchByTfIdf(cfg, query, topK);
+}
+
+async function searchByEmbedding(
+  cfg: Config,
+  db: StateDb,
+  query: string,
+  topK: number,
+): Promise<SearchHit[]> {
+  let queryVec: number[];
+  try {
+    queryVec = await embed(query);
+  } catch {
+    return [];
+  }
+
+  const root = vaultRoot(cfg);
+  const rows = db.getEmbeddings(root);
+  if (rows.length === 0) return [];
+
+  const scored: Array<{ row: (typeof rows)[number]; score: number }> = [];
+  for (const r of rows) {
+    const s = cosineSimilarity(queryVec, r.embedding);
+    if (s >= MIN_EMBEDDING_SCORE) scored.push({ row: r, score: s });
+  }
+  scored.sort((a, b) => b.score - a.score);
+
+  const hits: SearchHit[] = [];
+  for (const { row, score } of scored.slice(0, topK)) {
+    let content = "";
+    try {
+      content = existsSync(row.filePath) ? readFileSync(row.filePath, "utf8") : "";
+    } catch {
+      content = "";
+    }
+    if (content.length === 0) continue;
+    const rel = relative(root, row.filePath);
+    hits.push({
+      filePath: row.filePath,
+      title: rel.replace(/\.md$/, ""),
+      content,
+      score: Math.round(score * 10000) / 10000,
+      method: "embedding",
+    });
+  }
+  return hits;
+}
+
+function searchByTfIdf(cfg: Config, query: string, topK: number): SearchHit[] {
+  const docs = loadIndex(cfg);
+  const scored = searchTfIdf(docs, query, topK);
+  const root = vaultRoot(cfg);
+  return scored.map((d) => ({
+    filePath: join(root, d.relPath),
+    title: d.title,
+    content: d.raw,
+    score: d.score,
+    method: "tfidf" as const,
+  }));
+}
+
+export function vaultRoot(cfg: Config): string {
+  return join(cfg.vaultPath, cfg.outputDir);
+}
+
+export function loadIndex(cfg: Config): IndexedDoc[] {
+  const root = vaultRoot(cfg);
+  const files: string[] = [];
+  walk(root, files);
+  const docs: IndexedDoc[] = [];
+  for (const full of files) {
+    const rel = relative(root, full);
+    const base = rel.split("/").pop() ?? rel;
+    if (SKIP_FILES.has(base)) continue;
+    let raw: string;
+    try {
+      raw = readFileSync(full, "utf8");
+    } catch {
+      continue;
+    }
+    const text = stripMarkdown(raw);
+    const tokens = tokenize(text);
+    const tf = termFrequency(tokens);
+    docs.push({
+      relPath: rel,
+      title: rel.replace(/\.md$/, ""),
+      raw,
+      text,
+      tokens,
+      tf,
+    });
+  }
+  return docs;
+}
+
+export function searchTfIdf(
+  docs: IndexedDoc[],
+  query: string,
+  topK = 8,
+): ScoredDoc[] {
+  if (docs.length === 0) return [];
+  const queryTokens = uniq(tokenize(query));
+  if (queryTokens.length === 0) return [];
+
+  const totalDocs = docs.length;
+  const dfMap = new Map<string, number>();
+  for (const term of queryTokens) {
+    let df = 0;
+    for (const d of docs) if (d.tf.has(term)) df += 1;
+    dfMap.set(term, df);
+  }
+
+  const scored: ScoredDoc[] = [];
+  for (const d of docs) {
+    let score = 0;
+    for (const term of queryTokens) {
+      const tf = d.tf.get(term) ?? 0;
+      if (tf === 0) continue;
+      const df = dfMap.get(term) ?? 0;
+      if (df === 0) continue;
+      const idf = Math.log(totalDocs / df);
+      // Normalize TF by doc length so long docs don't dominate.
+      const tfNorm = tf / Math.max(1, d.tokens.length);
+      score += tfNorm * idf;
+    }
+    if (score > 0) {
+      scored.push({
+        relPath: d.relPath,
+        title: d.title,
+        raw: d.raw,
+        score: Math.round(score * 10000) / 10000,
+      });
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, topK);
+}
+
+function walk(dir: string, acc: string[]): void {
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const name of entries) {
+    const full = join(dir, name);
+    let st;
+    try {
+      st = statSync(full);
+    } catch {
+      continue;
+    }
+    if (st.isDirectory()) walk(full, acc);
+    else if (st.isFile() && name.endsWith(".md")) acc.push(full);
+  }
+}
+
+export function stripMarkdown(md: string): string {
+  let out = md;
+  // YAML frontmatter
+  out = out.replace(/^---\n[\s\S]*?\n---\n?/, "");
+  // Fenced code blocks
+  out = out.replace(/```[\s\S]*?```/g, " ");
+  // Inline code
+  out = out.replace(/`[^`]*`/g, " ");
+  // Images
+  out = out.replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1");
+  // Markdown links -> link text
+  out = out.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+  // Wikilinks -> inner
+  out = out.replace(/\[\[([^\]]+)\]\]/g, "$1");
+  // Headings, blockquotes, list markers
+  out = out.replace(/^\s{0,3}#{1,6}\s+/gm, "");
+  out = out.replace(/^\s*>\s?/gm, "");
+  out = out.replace(/^\s*[-*+]\s+/gm, "");
+  out = out.replace(/^\s*\d+\.\s+/gm, "");
+  // Emphasis markers
+  out = out.replace(/\*\*([^*]+)\*\*/g, "$1");
+  out = out.replace(/__([^_]+)__/g, "$1");
+  out = out.replace(/\*([^*]+)\*/g, "$1");
+  out = out.replace(/_([^_]+)_/g, "$1");
+  // Horizontal rules
+  out = out.replace(/^\s*[-*_]{3,}\s*$/gm, "");
+  return out;
+}
+
+export function tokenize(s: string): string[] {
+  return s
+    .toLowerCase()
+    .split(/\W+/)
+    .filter((t) => t.length >= 3);
+}
+
+function termFrequency(tokens: string[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const t of tokens) m.set(t, (m.get(t) ?? 0) + 1);
+  return m;
+}
+
+function uniq<T>(arr: T[]): T[] {
+  return [...new Set(arr)];
+}
