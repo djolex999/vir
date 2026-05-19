@@ -43,7 +43,7 @@ npm install -g vir-cli
 ## Quick start
 
 ```bash
-vir init              # interactive setup (~2 min)
+vir init              # guided setup wizard with provider picker
 vir run               # process historical sessions
 vir schedule install  # daemonize at configured cadence
 ```

@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import confirm from "@inquirer/confirm";
+import input from "@inquirer/input";
+import select from "@inquirer/select";
 import chalk from "chalk";
 import { Command } from "commander";
 import { createInterface } from "node:readline/promises";
@@ -696,30 +699,26 @@ function renderDaemon(
 async function cmdInit(): Promise<void> {
   ensureVirDir();
   const existing = configExists() ? safeLoad() : null;
-  const rl = createInterface({ input: stdin, output: stdout });
-  const ask = async (q: string, def?: string): Promise<string> => {
-    const prompt = def ? `${q} [${def}]: ` : `${q}: `;
-    const ans = (await rl.question(prompt)).trim();
-    return ans.length > 0 ? ans : (def ?? "");
-  };
 
-  console.log(chalk.cyan("vir init — interactive setup"));
+  ui.header("init");
+  ui.blank();
 
-  const yes = async (q: string): Promise<boolean> => {
-    const a = (await rl.question(q)).trim().toLowerCase();
-    return a === "y" || a === "yes";
-  };
-
+  // ── vault path ──────────────────────────────────────────────────────────
   let vaultPath = "";
   for (;;) {
-    vaultPath = await ask(
-      "Obsidian vault path",
-      existing?.vaultPath ?? join(homedir(), "Documents", "Obsidian", "MyVault"),
-    );
+    vaultPath = await input({
+      message: "Obsidian vault path",
+      default:
+        existing?.vaultPath ??
+        join(homedir(), "Documents", "Obsidian", "MyVault"),
+    });
     const expanded = expandHome(vaultPath);
     if (existsSync(expanded)) break;
-    console.error(chalk.red(`vault path does not exist: ${expanded}`));
-    if (await yes("create it? (y/n) ")) {
+    const create = await confirm({
+      message: `Vault path does not exist (${expanded}). Create it?`,
+      default: true,
+    });
+    if (create) {
       try {
         mkdirSync(expanded, { recursive: true });
         break;
@@ -729,68 +728,152 @@ async function cmdInit(): Promise<void> {
         );
       }
     }
-    // else loop and re-prompt
   }
 
-  const outputDir = await ask(
-    "Output subdir inside vault",
-    existing?.outputDir ?? "vir",
-  );
+  const outputDir = await input({
+    message: "Output subdir inside vault",
+    default: existing?.outputDir ?? "vir",
+  });
 
+  // ── claude projects dir ─────────────────────────────────────────────────
   let claudeProjectsDir = "";
   for (;;) {
-    claudeProjectsDir = await ask(
-      "Claude Code projects dir",
-      existing?.claudeProjectsDir ?? join(homedir(), ".claude", "projects"),
-    );
+    claudeProjectsDir = await input({
+      message: "Claude Code projects dir",
+      default:
+        existing?.claudeProjectsDir ?? join(homedir(), ".claude", "projects"),
+    });
     const expanded = expandHome(claudeProjectsDir);
     if (existsSync(expanded)) break;
     console.warn(
       chalk.yellow(
-        `directory not found — Claude Code sessions may not exist yet`,
+        "directory not found — Claude Code sessions may not exist yet",
       ),
     );
-    if (await yes("continue anyway? (y/n) ")) break;
-    // else re-prompt
+    const cont = await confirm({
+      message: "continue anyway?",
+      default: false,
+    });
+    if (cont) break;
   }
-  const cadenceStr = await ask(
-    "Cadence (hours)",
-    String(existing?.cadenceHours ?? 4),
+
+  const cadenceHours = Number(
+    await input({
+      message: "Cadence (hours)",
+      default: String(existing?.cadenceHours ?? 4),
+      validate: (v: string) => {
+        const n = Number(v);
+        return Number.isFinite(n) && n > 0 ? true : "must be a positive number";
+      },
+    }),
   );
-  const providerRaw = (
-    await ask("Provider (anthropic/kie)", existing?.provider ?? "anthropic")
-  ).toLowerCase();
-  const provider = providerRaw === "kie" ? "kie" : "anthropic";
+
+  // ── provider picker ─────────────────────────────────────────────────────
+  const provider = (await select({
+    message: "Provider",
+    default: existing?.provider ?? "anthropic",
+    choices: [
+      {
+        name: "Anthropic  (direct, official pricing)",
+        value: "anthropic" as const,
+      },
+      {
+        name: "Kie.ai     (same Claude models, ~72% cheaper)",
+        value: "kie" as const,
+      },
+    ],
+  })) as "anthropic" | "kie";
 
   let anthropicApiKey: string | undefined;
   let kieApiKey: string | undefined;
-  if (provider === "kie") {
-    kieApiKey = await ask(
-      "Kie.ai API key",
-      existing?.kieApiKey ?? process.env.KIE_API_KEY ?? "",
-    );
+  if (provider === "anthropic") {
+    anthropicApiKey = await input({
+      message: "Anthropic API key",
+      default: existing?.anthropicApiKey ?? process.env.ANTHROPIC_API_KEY ?? "",
+      validate: (v: string) =>
+        v.startsWith("sk-ant-") ? true : "key should start with sk-ant-",
+    });
   } else {
-    anthropicApiKey = await ask(
-      "Anthropic API key",
-      existing?.anthropicApiKey ?? process.env.ANTHROPIC_API_KEY ?? "",
-    );
+    kieApiKey = await input({
+      message: "Kie.ai API key",
+      default: existing?.kieApiKey ?? process.env.KIE_API_KEY ?? "",
+      validate: (v: string) =>
+        v.length > 10 ? true : "enter a valid Kie.ai API key",
+    });
   }
-  const thresholdStr = await ask(
-    "Filter threshold (0..1)",
-    String(existing?.filterThreshold ?? 0.4),
+
+  // ── model pickers (provider-aware) ──────────────────────────────────────
+  const classifyChoices =
+    provider === "anthropic"
+      ? [
+          {
+            name: "claude-haiku-4-5-20251001  (recommended)",
+            value: "claude-haiku-4-5-20251001",
+          },
+          { name: "claude-sonnet-4-6", value: "claude-sonnet-4-6" },
+        ]
+      : [
+          {
+            name: "claude-haiku-4-5  (recommended)",
+            value: "claude-haiku-4-5",
+          },
+          { name: "claude-sonnet-4-6", value: "claude-sonnet-4-6" },
+        ];
+  const classifyModel = await select({
+    message: "Classify model (fast pass)",
+    choices: classifyChoices,
+  });
+
+  const distillChoices =
+    provider === "anthropic"
+      ? [
+          {
+            name: "claude-sonnet-4-6  (recommended)",
+            value: "claude-sonnet-4-6",
+          },
+          {
+            name: "claude-haiku-4-5-20251001  (faster, cheaper)",
+            value: "claude-haiku-4-5-20251001",
+          },
+        ]
+      : [
+          {
+            name: "claude-sonnet-4-6  (recommended)",
+            value: "claude-sonnet-4-6",
+          },
+          {
+            name: "claude-haiku-4-5  (faster, cheaper)",
+            value: "claude-haiku-4-5",
+          },
+        ];
+  const distillModel = await select({
+    message: "Distill model (deep extraction)",
+    choices: distillChoices,
+  });
+
+  const filterThreshold = Number(
+    await input({
+      message: "Filter threshold (0..1)",
+      default: String(existing?.filterThreshold ?? 0.4),
+      validate: (v: string) => {
+        const n = Number(v);
+        return Number.isFinite(n) && n >= 0 && n <= 1
+          ? true
+          : "must be between 0 and 1";
+      },
+    }),
   );
-  rl.close();
 
   const parsed = ConfigSchema.safeParse({
     vaultPath,
     outputDir,
     claudeProjectsDir,
-    cadenceHours: Number(cadenceStr),
+    cadenceHours,
     provider,
     anthropicApiKey,
     kieApiKey,
-    filterThreshold: Number(thresholdStr),
-    models: existing?.models,
+    filterThreshold,
+    models: { classify: classifyModel, distill: distillModel },
   });
 
   if (!parsed.success) {
@@ -802,8 +885,9 @@ async function cmdInit(): Promise<void> {
   }
 
   saveConfig(parsed.data);
-  console.log(chalk.green(`saved ${CONFIG_PATH}`));
-  console.log("next: `vir run` to test once, then `vir schedule install`");
+  ui.blank();
+  ui.row(ui.success(ui.CHECK), ui.text(`saved ${CONFIG_PATH}`));
+  ui.line(ui.dim("next: `vir run` to test once, then `vir schedule install`"));
 }
 
 function renderPlan(p: PlanItem): void {

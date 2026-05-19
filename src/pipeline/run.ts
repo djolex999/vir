@@ -159,11 +159,25 @@ export async function runPipeline(
   if (interactive) ui.blank();
 
   // Precompute how many sessions actually need LLM work so the CLI can show
-  // an accurate cost confirmation before we hit the API.
+  // an accurate cost confirmation before we hit the API. Also surfaces the
+  // found/cached/new breakdown so a fresh DB never silently looks like a
+  // stale-cache no-op (the symptom of the state.db → vir.db rename bug).
   let preflightNew = 0;
   for (const found of discovered) {
     if (opts.full || !db.isProcessed(found.path, found.hash)) preflightNew += 1;
   }
+  const cached = discovered.length - preflightNew;
+  if (interactive) {
+    ui.line(
+      ui.dim(
+        `  ${discovered.length} files found  ·  ${cached} cached  ·  ${preflightNew} new`,
+      ),
+    );
+    ui.blank();
+  }
+  fileLog(
+    `preflight: found=${discovered.length} cached=${cached} new=${preflightNew}`,
+  );
   if (opts.onConfirm) {
     const proceed = await opts.onConfirm(preflightNew);
     if (!proceed) {

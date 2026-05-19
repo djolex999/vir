@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { dirname } from "node:path";
-import { existsSync, mkdirSync } from "node:fs";
-import { STATE_PATH } from "../config.js";
+import { existsSync, mkdirSync, renameSync } from "node:fs";
+import { LEGACY_STATE_PATH, STATE_PATH } from "../config.js";
 import type { Category } from "../pipeline/types.js";
 
 export interface SessionRow {
@@ -90,6 +90,21 @@ export class StateDb {
   constructor(path: string = STATE_PATH) {
     const dir = dirname(path);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    // One-shot rename: docs always referred to vir.db, but earlier builds
+    // wrote to state.db. Migrate transparently so deleting `vir.db` does
+    // what the user expects.
+    if (
+      path === STATE_PATH &&
+      !existsSync(STATE_PATH) &&
+      existsSync(LEGACY_STATE_PATH)
+    ) {
+      try {
+        renameSync(LEGACY_STATE_PATH, STATE_PATH);
+      } catch {
+        // If rename fails (cross-device, perms), fall through — better-sqlite3
+        // will simply open a fresh DB at STATE_PATH.
+      }
+    }
     this.db = new Database(path);
     this.db.pragma("journal_mode = WAL");
     this.db.exec(`

@@ -44,7 +44,11 @@ export type Config = z.infer<typeof ConfigSchema>;
 
 export const VIR_DIR = join(homedir(), ".vir");
 export const CONFIG_PATH = join(VIR_DIR, "config.json");
-export const STATE_PATH = join(VIR_DIR, "state.db");
+export const STATE_PATH = join(VIR_DIR, "vir.db");
+// One-shot migration: older builds used `state.db`. If only the old file
+// exists, rename it on startup so the docs match reality. Never overwrites
+// an existing `vir.db`.
+export const LEGACY_STATE_PATH = join(VIR_DIR, "state.db");
 export const DAEMON_LOG_PATH = join(VIR_DIR, "daemon.log");
 
 export function expandHome(p: string): string {
