@@ -219,5 +219,6 @@ MIT
 Built by Djordje Marković / GrowthQ Lab DOO
 
 [GitHub](https://github.com/djolex999) ·
-[LinkedIn](https://linkedin.com/in/djordjemarkovic) ·
-[npm](https://www.npmjs.com/~djolex999)
+[LinkedIn](https://www.linkedin.com/in/djmarkovic/) ·
+[npm](https://www.npmjs.com/~djolex999) ·
+[GrowthQ Lab](https://growthqlab.com)
