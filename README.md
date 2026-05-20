@@ -56,6 +56,44 @@ better sessions
      ...
 ```
 
+## After one night
+
+Real output from the author's first run across 226 Claude Code sessions.
+
+| Metric | Value |
+|---|---|
+| Sessions scanned | 226 |
+| Notes distilled | 126 |
+| Avg confidence | 0.91 |
+| High signal (≥0.8) | 121 of 126 |
+| Projects covered | 8 projects |
+| Knowledge breakdown | 54 patterns · 47 decisions · 23 gotchas · 2 tools |
+
+Example query against the distilled vault:
+
+```bash
+$ vir query "what gotchas should I know about my auth implementation"
+```
+Based on the notes, here are the key auth gotchas:
+
+JWT dual-token setup needs silent refresh on mount — access tokens
+expire in 15 min. Without a mount-time refresh check, users hit
+401s on first load after a break.
+Middleware runs before the session is hydrated — do not read
+session data in middleware to gate routes. Check the JWT directly
+from the cookie instead.
+Password reset tokens must be single-use and hashed at rest —
+storing raw tokens in the DB leaks them if the DB is compromised.
+Hash with bcrypt before storing, compare on redemption.
+OAuth callback URLs must be registered exactly — trailing slashes,
+http vs https, and localhost port mismatches all cause silent
+redirect failures with no useful error message.
+Logout must clear both the access token cookie and the refresh
+token — clearing only one leaves the session partially alive and
+causes confusing re-auth loops.
+
+sources 4  ·  via embedding  ·  searched 126
+
 ## Prerequisites
 
 - macOS (launchd daemon)
