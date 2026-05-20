@@ -760,7 +760,7 @@ async function cmdInit(): Promise<void> {
   const cadenceHours = Number(
     await input({
       message: "Cadence (hours)",
-      default: String(existing?.cadenceHours ?? 4),
+      default: String(existing?.cadenceHours ?? 3),
       validate: (v: string) => {
         const n = Number(v);
         return Number.isFinite(n) && n > 0 ? true : "must be a positive number";

@@ -8,7 +8,7 @@ export const ConfigSchema = z
     vaultPath: z.string().min(1),
     outputDir: z.string().min(1).default("vir"),
     claudeProjectsDir: z.string().min(1),
-    cadenceHours: z.number().positive().default(4),
+    cadenceHours: z.number().positive().default(3),
     provider: z.enum(["anthropic", "kie"]).default("anthropic"),
     anthropicApiKey: z.string().optional(),
     kieApiKey: z.string().optional(),

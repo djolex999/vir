@@ -1,29 +1,60 @@
-# vir
+<p align="center">
+  <img src="assets/vir-logo.svg" width="200" height="200" alt="vir logo">
+</p>
 
-Distills Claude Code sessions into a compounding knowledge vault.
+<h1 align="center">vir</h1>
+
+<p align="center">
+  Distills Claude Code sessions into a compounding knowledge vault.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@djolex999/vir-cli" alt="npm version">
+  <img src="https://img.shields.io/badge/license-MIT-blue" alt="license">
+  <img src="https://img.shields.io/badge/platform-macOS-lightgrey" alt="platform">
+  <img src="https://img.shields.io/badge/node-%3E%3D18-green" alt="node">
+</p>
+
+## Demo
+
+<!-- add terminal screenshot here -->
 
 ## What it does
 
 Every Claude Code session produces patterns, gotchas, and architecture
-decisions. 95% sits in JSONL transcripts you never open again.
+decisions — and 95% of it sits in JSONL transcripts you never open again.
 
-Vir is a local macOS daemon that runs every 4 hours, distills sessions
-into structured markdown in your Obsidian vault, and feeds knowledge back
-into CLAUDE.md so every future session starts sharper.
-
-The loop: sessions → vir → vault → CLAUDE.md → better sessions.
+Vir is a local macOS daemon that runs on a schedule, distills your sessions
+into structured markdown in your Obsidian vault, and feeds that knowledge back
+into your `CLAUDE.md` files. Every future session starts sharper than the last.
 
 Inspired by Andrej Karpathy's LLM Wiki pattern and Uros Pesic's KB Brain concept.
 
 ## Why Vir?
 
-Vir (вир) is the Serbian word for whirlpool — the place where a river
-pulls everything in and concentrates it. That is what this tool does.
+Vir (вир) is the Serbian word for whirlpool — the place where a river pulls
+everything in and concentrates it. That is exactly what this tool does.
 Sessions flow in, Vir pulls out what matters, and deposits it somewhere
 permanent.
 
-The name felt right for a tool whose job is to take the chaos of a
-Claude Code session and find the still point at the center.
+The name felt right for a tool whose job is to take the chaos of a Claude Code
+session and find the still point at the center.
+
+## The loop
+
+```
+Claude Code sessions
+      ↓
+     vir
+      ↓
+Obsidian vault
+      ↓
+  CLAUDE.md
+      ↓
+better sessions
+      ↓
+     ...
+```
 
 ## Prerequisites
 
@@ -31,27 +62,34 @@ Claude Code session and find the still point at the center.
 - Node.js 18+
 - Claude Code (sessions at `~/.claude/projects/`)
 - Obsidian vault
-- Anthropic API key OR Kie.ai API key (~72% cheaper, same models)
+- Anthropic API key **or** Kie.ai API key (~72% cheaper, same models)
 - Optional: Ollama + `nomic-embed-text` for semantic search
 
 ## Install
 
 ```bash
-npm install -g vir-cli
+npm install -g @djolex999/vir-cli
 ```
 
 ## Quick start
 
 ```bash
-vir init              # guided setup wizard with provider picker
-vir run               # process historical sessions
-vir schedule install  # daemonize at configured cadence
+vir init
+# ✓ guided setup wizard — pick provider, models, vault path, cadence
+# ✓ writes ~/.vir/config.json
+
+vir run
+# scanning ~/.claude/projects … 214 files found · 0 cached · 214 new
+# ✓ distilled 38 sessions → 51 notes written to your vault
+
+vir schedule install
+# ✓ launchd agent registered — vir now runs every 3h
 ```
 
 ## First run cost
 
-Vir processes all historical Claude Code sessions on first run. Cost
-varies by session depth:
+Vir processes all historical Claude Code sessions on first run. Cost varies by
+session depth:
 
 - Simple sessions: ~$0.02 each
 - Deep code reviews: up to ~$0.10 each
@@ -59,34 +97,36 @@ varies by session depth:
 
 All subsequent runs process only new sessions: ~$0.05 per run.
 
-Use Kie.ai as provider for 72% discount on same Claude models. Pass
-`--yes` to skip the cost confirmation prompt.
+> **Tip:** Use Kie.ai as provider during `vir init`
+> for 72% cheaper API calls on the same Claude models.
+
+Pass `--yes` to skip the cost confirmation prompt.
 
 ## Commands
 
-| Command | Description |
-|---|---|
-| `vir init` | Interactive setup |
-| `vir run` | Process new sessions |
-| `vir run --full` | Reprocess all sessions |
-| `vir run --rewrite-only` | Reformat notes, no API calls |
-| `vir run --yes` | Skip cost confirmation |
-| `vir query "<question>"` | Semantic search your vault |
-| `vir summarize <project>` | Cross-session project synthesis |
-| `vir summarize --all` | Summarize all projects |
-| `vir lint` | Find orphans, stale notes, contradictions |
-| `vir lint --orphans` | Orphan check only (free) |
-| `vir lint --stale` | Staleness check only (free) |
-| `vir lint --contradictions` | Contradiction check (Haiku) |
-| `vir dedupe` | Interactive duplicate detection |
-| `vir sync-claude` | Inject top knowledge into CLAUDE.md |
-| `vir sync-claude --dry-run` | Preview changes, no writes |
-| `vir sync-claude --force` | Apply without confirmation |
-| `vir embed` | Generate embeddings for semantic search |
-| `vir embed --force` | Regenerate all embeddings |
-| `vir schedule install` | Register launchd daemon |
-| `vir schedule uninstall` | Remove launchd daemon |
-| `vir status` | Knowledge heatmap + daemon status |
+| Command | Cost | Description |
+|---|---|---|
+| `vir init` | free | Interactive setup |
+| `vir run` | cheap | Process new sessions |
+| `vir run --full` | $$ | Reprocess all sessions |
+| `vir run --rewrite-only` | free | Reformat notes, no API calls |
+| `vir run --yes` | cheap | Skip cost confirmation |
+| `vir query "<question>"` | cheap | Semantic search your vault |
+| `vir summarize <project>` | cheap | Cross-session project synthesis |
+| `vir summarize --all` | $$ | Summarize all projects |
+| `vir lint` | cheap | Find orphans, stale notes, contradictions |
+| `vir lint --orphans` | free | Orphan check only |
+| `vir lint --stale` | free | Staleness check only |
+| `vir lint --contradictions` | cheap | Contradiction check (Haiku) |
+| `vir dedupe` | cheap | Interactive duplicate detection |
+| `vir sync-claude` | free | Inject top knowledge into CLAUDE.md |
+| `vir sync-claude --dry-run` | free | Preview changes, no writes |
+| `vir sync-claude --force` | free | Apply without confirmation |
+| `vir embed` | free | Generate embeddings for semantic search |
+| `vir embed --force` | free | Regenerate all embeddings |
+| `vir schedule install` | free | Register launchd daemon |
+| `vir schedule uninstall` | free | Remove launchd daemon |
+| `vir status` | free | Knowledge heatmap + daemon status |
 
 ## Semantic search (optional)
 
@@ -116,7 +156,7 @@ Located at `~/.vir/config.json`.
 | `vaultPath` | — | Absolute path to Obsidian vault |
 | `outputDir` | `vir` | Subdir inside vault |
 | `claudeProjectsDir` | `~/.claude/projects` | Claude Code sessions |
-| `cadenceHours` | `4` | Daemon run frequency (hours) |
+| `cadenceHours` | `3` | Daemon run frequency (hours) |
 | `provider` | `anthropic` | `anthropic` or `kie` |
 | `anthropicApiKey` | — | Required if `provider=anthropic` |
 | `kieApiKey` | — | Required if `provider=kie` |
@@ -128,14 +168,14 @@ Located at `~/.vir/config.json`.
 
 ```
 vault/vir/
-  index.md       # full catalog of all notes
-  log.md         # chronological append log
-  patterns/      # reusable approaches
-  gotchas/       # bugs, footguns, edge cases
-  decisions/     # architecture decisions with rationale
-  tools/         # per-tool knowledge
+  index.md       # full catalog of every note Vir has written
+  log.md         # chronological append log of each run
+  patterns/      # reusable approaches worth repeating
+  gotchas/       # bugs, footguns, and edge cases
+  decisions/     # architecture decisions with their rationale
+  tools/         # per-tool knowledge and usage notes
   projects/      # cross-session project summaries
-  archived/      # deduplicated notes (not deleted)
+  archived/      # deduplicated notes (kept, never deleted)
 ```
 
 ## State & logs
@@ -146,6 +186,30 @@ vault/vir/
 ~/.vir/daemon.log    — daemon run log
 ```
 
+## How it compares
+
+| | Vir | mem0 | Manual notes |
+|---|---|---|---|
+| Source | Claude Code sessions | Any conversation | You |
+| Output | Typed markdown vault | Key-value store | Anything |
+| CLAUDE.md injection | ✓ | ✗ | Manual |
+| Local / private | ✓ | ✗ | ✓ |
+| Semantic search | ✓ (Ollama) | ✓ | ✗ |
+| Cost | ~$0.05/run | Subscription | Free |
+
+## Roadmap
+
+- [ ] Windows/Linux support (cron fallback)
+- [ ] GUI installer for non-developers
+- [ ] Obsidian plugin for in-vault queries
+- [ ] Export to anchor-plugin skill format
+- [ ] Support for Cursor and other AI editors
+
+## Contributing
+
+PRs welcome. Open an issue first for large changes. Built with TypeScript
+strict — run `npm run build` to check before submitting.
+
 ## License
 
 MIT
@@ -153,3 +217,7 @@ MIT
 ## Author
 
 Built by Djordje Marković / GrowthQ Lab DOO
+
+[GitHub](https://github.com/djolex999) ·
+[LinkedIn](https://linkedin.com/in/djordjemarkovic) ·
+[npm](https://www.npmjs.com/~djolex999)

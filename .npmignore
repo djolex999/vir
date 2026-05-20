@@ -4,3 +4,7 @@
 tasks/
 handoff.md
 *.jsonl
+vir-flow.html
+src/
+tsconfig.json
+*.tsbuildinfo
