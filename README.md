@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/vir-logo.svg" width="200" height="200" alt="vir logo">
+  <img src="assets/vir_whirlpool_logo.svg" width="200" height="200" alt="vir logo">
 </p>
 
 <h1 align="center">vir</h1>
