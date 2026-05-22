@@ -1,6 +1,6 @@
 {
   "name": "@djolex999/vir-cli",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "description": "Distills Claude Code sessions into a compounding knowledge vault",
   "author": "Djordje Marković <djordje@growthq.rs>",
   "license": "MIT",
@@ -16,7 +16,9 @@
     "obsidian",
     "knowledge-base",
     "llm",
-    "developer-tools"
+    "developer-tools",
+    "linux",
+    "cross-platform"
   ],
   "type": "module",
   "bin": {

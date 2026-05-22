@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/npm/v/@djolex999/vir-cli" alt="npm version">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="license">
-  <img src="https://img.shields.io/badge/platform-macOS-lightgrey" alt="platform">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey" alt="platform">
   <img src="https://img.shields.io/badge/node-%3E%3D18-green" alt="node">
 </p>
 
@@ -96,12 +96,27 @@ sources 4  ·  via embedding  ·  searched 126
 
 ## Prerequisites
 
-- macOS (launchd daemon)
+- macOS or Linux (systemd or cron)
 - Node.js 18+
 - Claude Code (sessions at `~/.claude/projects/`)
 - Obsidian vault
 - Anthropic API key **or** Kie.ai API key (~72% cheaper, same models)
 - Optional: Ollama + `nomic-embed-text` for semantic search
+
+## Platform support
+
+| Platform | Daemon | Notifications | Status |
+|---|---|---|---|
+| macOS | launchd | osascript | Stable |
+| Linux (systemd) | systemd user timer | notify-send | Experimental |
+| Linux (cron) | crontab | notify-send | Experimental |
+| Windows | Not supported | — | Planned |
+
+Linux support is **experimental and untested** — `vir schedule install` prefers
+a systemd user timer and falls back to a crontab entry when systemd is absent.
+Please report issues at
+[github.com/djolex999/vir/issues](https://github.com/djolex999/vir/issues)
+with your distro, init system, and Node version.
 
 ## Install
 
@@ -123,6 +138,9 @@ vir run
 vir schedule install
 # ✓ launchd agent registered — vir now runs every 3h
 ```
+
+`vir schedule install` works on Linux too: systemd is preferred, with cron used
+as a fallback when `systemctl` isn't available.
 
 ## First run cost
 
@@ -162,8 +180,8 @@ Pass `--yes` to skip the cost confirmation prompt.
 | `vir sync-claude --force` | free | Apply without confirmation |
 | `vir embed` | free | Generate embeddings for semantic search |
 | `vir embed --force` | free | Regenerate all embeddings |
-| `vir schedule install` | free | Register launchd daemon |
-| `vir schedule uninstall` | free | Remove launchd daemon |
+| `vir schedule install` | free | Register the background daemon |
+| `vir schedule uninstall` | free | Remove the background daemon |
 | `vir status` | free | Knowledge heatmap + daemon status |
 
 ## Semantic search (optional)
@@ -257,7 +275,8 @@ vault/vir/
 
 ## Roadmap
 
-- [ ] Windows/Linux support (cron fallback)
+- [x] Linux support (systemd timer + cron fallback) — experimental
+- [ ] Windows support
 - [ ] GUI installer for non-developers
 - [ ] Obsidian plugin for in-vault queries
 - [ ] Export to anchor-plugin skill format

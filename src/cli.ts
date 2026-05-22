@@ -6,7 +6,7 @@ import chalk from "chalk";
 import { Command } from "commander";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout, argv, exit } from "node:process";
-import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -44,11 +44,11 @@ import {
   uninstallFromClaudeCode,
 } from "./mcp/install.js";
 import {
-  daemonStatus,
-  installPlist,
-  plistPath,
-  uninstallPlist,
-} from "./daemon/launchd.js";
+  install as installDaemon,
+  status as daemonStatus,
+  uninstall as uninstallDaemon,
+  type DaemonStatus,
+} from "./daemon/index.js";
 import { StateDb, type KnowledgeStats } from "./state/db.js";
 import * as ui from "./ui/display.js";
 import { VaultWriter } from "./pipeline/writer.js";
@@ -131,30 +131,35 @@ async function confirmCostIfNeeded(
   return ans === "y" || ans === "yes";
 }
 
-const schedule = program.command("schedule").description("Manage launchd daemon");
+const schedule = program
+  .command("schedule")
+  .description("Manage the background daemon (launchd / systemd / cron)");
 schedule
   .command("install")
-  .description("Install + load launchd plist")
-  .action(() => {
+  .description("Install + start the scheduled daemon")
+  .action(async () => {
     const cfg = loadConfig();
-    const nodePath = process.execPath;
-    const cliPath = realpathSync(argv[1] ?? "");
-    const res = installPlist({
-      nodePath,
-      cliPath,
-      cadenceHours: cfg.cadenceHours,
-    });
+    await installDaemon(cfg);
+    const ds = await daemonStatus();
     console.log(
-      chalk.green(`installed: ${res.plistPath} (loaded=${res.loaded})`),
+      chalk.green(
+        `installed via ${ds.method}: ${ds.configPath ?? "(no path)"} (active=${ds.active})`,
+      ),
     );
   });
 schedule
   .command("uninstall")
-  .description("Unload + remove launchd plist")
-  .action(() => {
-    const res = uninstallPlist();
-    if (res.removed) console.log(chalk.green(`removed ${plistPath()}`));
-    else console.log(chalk.yellow(`no plist found at ${plistPath()}`));
+  .description("Stop + remove the scheduled daemon")
+  .action(async () => {
+    const before = await daemonStatus();
+    await uninstallDaemon();
+    if (before.installed) {
+      console.log(
+        chalk.green(`removed ${before.configPath ?? before.method} daemon`),
+      );
+    } else {
+      console.log(chalk.yellow("no vir daemon found"));
+    }
   });
 
 program
@@ -585,7 +590,7 @@ program
 program
   .command("status")
   .description("Show processing status + knowledge base breakdown")
-  .action(() => {
+  .action(async () => {
     const cfg = configExists() ? loadConfig() : null;
     if (!cfg) {
       ui.header("status");
@@ -595,7 +600,7 @@ program
     const db = new StateDb();
     const knowledge = db.getStats();
     db.close();
-    const ds = daemonStatus();
+    const ds = await daemonStatus();
 
     ui.header("status");
     ui.blank();
@@ -763,21 +768,22 @@ function renderKnowledge(k: KnowledgeStats): void {
   }
 }
 
-function renderDaemon(
-  ds: ReturnType<typeof daemonStatus>,
-  cadenceHours: number,
-): void {
-  const status = ds.loaded ? "running" : ds.installed ? "loaded" : "off";
-  const statusColor = ds.loaded
+function renderDaemon(ds: DaemonStatus, cadenceHours: number): void {
+  const status = ds.active ? "running" : ds.installed ? "loaded" : "off";
+  const statusColor = ds.active
     ? ui.success
     : ds.installed
       ? ui.warn
       : ui.dim;
+  // Prefer the cadence parsed from the installed unit (systemd/cron); fall
+  // back to config when the platform doesn't expose it (launchd).
+  const cadence = ds.cadenceHours ?? cadenceHours;
   ui.box(
     [
       `${ui.dim("status")}   ${statusColor(status)}`,
-      `${ui.dim("cadence")}  ${ui.text(`every ${cadenceHours}h`)}`,
-      `${ui.dim("plist")}    ${ui.muted(collapseHome(ds.plistPath))}`,
+      `${ui.dim("method")}   ${ui.text(ds.method)}`,
+      `${ui.dim("cadence")}  ${ui.text(`every ${cadence}h`)}`,
+      `${ui.dim("config")}   ${ui.muted(ds.configPath ? collapseHome(ds.configPath) : "—")}`,
     ],
     { title: "daemon", width: 52 },
   );
