@@ -12,6 +12,30 @@ export class SystemdNotAvailableError extends Error {
   }
 }
 
+// Thrown when systemctl is on PATH but the user bus/manager is unreachable —
+// the classic WSL/container case. Distinct from SystemdNotAvailableError so the
+// router can fall back to cron for both. install() probes for this BEFORE
+// writing any unit files.
+export class SystemdUserBusUnavailableError extends Error {
+  constructor() {
+    super("systemd user bus not reachable");
+    this.name = "SystemdUserBusUnavailableError";
+  }
+}
+
+// Decides, from a `systemctl --user …` result, whether the failure is the user
+// bus being unreachable. The definitive marker is systemctl's "Failed to
+// connect to … bus" message (WSL, containers, no $XDG_RUNTIME_DIR). A non-zero
+// exit *without* that marker (e.g. stdout "degraded") means the bus IS
+// reachable, so we don't treat it as unavailable.
+export function isUserBusUnavailable(probe: {
+  code: number;
+  stdout: string;
+  stderr: string;
+}): boolean {
+  return /Failed to connect to .*bus/i.test(`${probe.stdout}\n${probe.stderr}`);
+}
+
 // User mode only — never touch /etc/systemd/system.
 const SYSTEMD_USER_DIR = join(homedir(), ".config", "systemd", "user");
 const SERVICE_PATH = join(SYSTEMD_USER_DIR, "vir.service");
@@ -83,32 +107,57 @@ export function parseTimerCadence(timer: string): number | null {
   return m && m[1] ? Number(m[1]) : null;
 }
 
+// Turn a failed systemctl result into a typed error: a bus-connection failure
+// becomes SystemdUserBusUnavailableError (so the router falls back to cron),
+// anything else stays a generic Error (a real misconfig the user should see).
+function classifySystemctlError(
+  op: string,
+  res: { code: number; stdout: string; stderr: string },
+): Error {
+  if (isUserBusUnavailable(res)) return new SystemdUserBusUnavailableError();
+  return new Error(`systemctl ${op} failed: ${res.stderr.trim()}`);
+}
+
+function removeUnitFiles(): void {
+  if (existsSync(SERVICE_PATH)) rmSync(SERVICE_PATH);
+  if (existsSync(TIMER_PATH)) rmSync(TIMER_PATH);
+}
+
 export function install(opts: InstallOpts): void {
   if (!isSystemdAvailable()) throw new SystemdNotAvailableError();
+
+  // systemctl can be on PATH while the user bus is unreachable (WSL,
+  // containers). Probe before writing anything so we never leave stale unit
+  // files behind in that case.
+  const probe = systemctl(["--user", "is-system-running"]);
+  if (isUserBusUnavailable(probe)) throw new SystemdUserBusUnavailableError();
+
   if (!existsSync(SYSTEMD_USER_DIR)) {
     mkdirSync(SYSTEMD_USER_DIR, { recursive: true });
   }
-  writeFileSync(
-    SERVICE_PATH,
-    renderService({ nodePath: opts.nodePath, cliPath: opts.cliPath }),
-  );
-  writeFileSync(TIMER_PATH, renderTimer(opts.cadenceHours));
+  try {
+    writeFileSync(
+      SERVICE_PATH,
+      renderService({ nodePath: opts.nodePath, cliPath: opts.cliPath }),
+    );
+    writeFileSync(TIMER_PATH, renderTimer(opts.cadenceHours));
 
-  const reload = systemctl(["--user", "daemon-reload"]);
-  if (reload.code !== 0) {
-    throw new Error(`systemctl daemon-reload failed: ${reload.stderr.trim()}`);
-  }
-  const enable = systemctl(["--user", "enable", "--now", TIMER_UNIT]);
-  if (enable.code !== 0) {
-    throw new Error(`systemctl enable failed: ${enable.stderr.trim()}`);
+    const reload = systemctl(["--user", "daemon-reload"]);
+    if (reload.code !== 0) throw classifySystemctlError("daemon-reload", reload);
+    const enable = systemctl(["--user", "enable", "--now", TIMER_UNIT]);
+    if (enable.code !== 0) throw classifySystemctlError("enable", enable);
+  } catch (err) {
+    // Partial install — remove the unit files we wrote so a retry (or the cron
+    // fallback) starts clean — then re-throw for the router to classify.
+    removeUnitFiles();
+    throw err;
   }
 }
 
 export function uninstall(): void {
   if (!isSystemdAvailable()) return;
   systemctl(["--user", "disable", "--now", TIMER_UNIT]);
-  if (existsSync(SERVICE_PATH)) rmSync(SERVICE_PATH);
-  if (existsSync(TIMER_PATH)) rmSync(TIMER_PATH);
+  removeUnitFiles();
   systemctl(["--user", "daemon-reload"]);
 }
 

@@ -3,7 +3,10 @@ import type { Config } from "../config.js";
 import * as cron from "./cron.js";
 import * as launchd from "./launchd.js";
 import * as systemd from "./systemd.js";
-import { SystemdNotAvailableError } from "./systemd.js";
+import {
+  SystemdNotAvailableError,
+  SystemdUserBusUnavailableError,
+} from "./systemd.js";
 
 export type DaemonMethod = "launchd" | "systemd" | "cron" | "none";
 
@@ -56,22 +59,32 @@ export async function install(cfg: Config): Promise<void> {
   }
   if (platform === "linux") {
     const opts = { ...resolvePaths(), cadenceHours: cfg.cadenceHours };
-    // systemd preferred; it throws SystemdNotAvailableError when systemctl is
-    // missing so we can fall back to cron without pre-probing.
+    // systemd preferred. Fall back to cron when systemctl is missing
+    // (SystemdNotAvailableError) OR present-but-no-user-bus
+    // (SystemdUserBusUnavailableError — common on WSL/containers). Any other
+    // error is a real misconfig and propagates.
     try {
       systemd.install(opts);
       return;
     } catch (err) {
-      if (!(err instanceof SystemdNotAvailableError)) throw err;
+      if (
+        !(err instanceof SystemdNotAvailableError) &&
+        !(err instanceof SystemdUserBusUnavailableError)
+      ) {
+        throw err;
+      }
     }
     if (cron.isCronAvailable()) {
       cron.install(opts);
       return;
     }
     throw new Error(
-      "Neither systemd nor cron found. Install one to use vir schedule.\n" +
-        "  Ubuntu/Debian: sudo apt install cron\n" +
-        "  Arch: sudo pacman -S cronie",
+      "No daemon backend available.\n" +
+        "  - systemd user bus not reachable (common on WSL, containers)\n" +
+        "  - cron command not found\n" +
+        "  Install one to use vir schedule:\n" +
+        "    Ubuntu/Debian/WSL: sudo apt install cron\n" +
+        "    Arch: sudo pacman -S cronie",
     );
   }
   throwUnsupported(platform);
