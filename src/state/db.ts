@@ -87,7 +87,14 @@ const ADDED_COLUMNS: Array<{ name: string; ddl: string }> = [
 export class StateDb {
   private db: Database.Database;
 
-  constructor(path: string = STATE_PATH) {
+  constructor(path: string = STATE_PATH, opts: { readonly?: boolean } = {}) {
+    if (opts.readonly) {
+      // Read-only consumers (the `vir mcp` server) must never mutate state.
+      // Open read-only and skip the WAL pragma + migrations — both are writes.
+      // The DB must already exist; a fresh install has nothing to serve yet.
+      this.db = new Database(path, { readonly: true, fileMustExist: true });
+      return;
+    }
     const dir = dirname(path);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     // One-shot rename: docs always referred to vir.db, but earlier builds

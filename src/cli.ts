@@ -35,6 +35,7 @@ import {
 } from "./search/embedder.js";
 import { search } from "./search/retriever.js";
 import { synthesize } from "./search/synthesizer.js";
+import { runMcpServer } from "./mcp/server.js";
 import {
   daemonStatus,
   installPlist,
@@ -584,6 +585,37 @@ program
     renderKnowledge(knowledge);
     ui.blank();
     renderDaemon(ds, cfg.cadenceHours);
+  });
+
+program
+  .command("mcp")
+  .description("Run as an MCP server over stdio (for Claude Code integration)")
+  .addHelpText(
+    "after",
+    `
+Register with Claude Code by adding to ~/.claude/claude_desktop_config.json:
+
+  {
+    "mcpServers": {
+      "vir": {
+        "command": "vir",
+        "args": ["mcp"]
+      }
+    }
+  }
+
+After restarting Claude Code, these tools become available:
+  vir_query            search the vault (synthesized answer + sources)
+  vir_status           knowledge base overview + gaps
+  vir_recent_notes     most recently distilled notes
+  vir_project_summary  synthesized per-project summary
+
+The server reads ~/.vir/config.json and opens the knowledge DB read-only.
+All logs go to stderr; stdout is reserved for the MCP protocol.`,
+  )
+  .action(async () => {
+    const cfg = loadConfig();
+    await runMcpServer(cfg);
   });
 
 function renderKnowledge(k: KnowledgeStats): void {

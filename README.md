@@ -185,6 +185,27 @@ vir query "how do I handle rate limiting in Next.js"
 
 Falls back to TF-IDF automatically if Ollama is not running.
 
+## MCP server (Claude Code integration)
+
+Vir runs as an MCP server, letting Claude Code consult your vault mid-session
+instead of relying on static CLAUDE.md content.
+
+Register with Claude Code:
+
+```json
+{
+  "mcpServers": {
+    "vir": {
+      "command": "vir",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Available tools: `vir_query`, `vir_status`, `vir_recent_notes`,
+`vir_project_summary`.
+
 ## Config reference
 
 Located at `~/.vir/config.json`.
