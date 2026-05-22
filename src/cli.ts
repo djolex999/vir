@@ -52,6 +52,7 @@ import {
 import { StateDb, type KnowledgeStats } from "./state/db.js";
 import * as ui from "./ui/display.js";
 import { VaultWriter } from "./pipeline/writer.js";
+import { runDoctor } from "./diagnostics/doctor.js";
 
 // Read version at runtime from package.json (one dir up from dist/cli.js) so
 // `vir --version` never drifts from the published version. rootDir is ./src,
@@ -608,6 +609,11 @@ program
     ui.blank();
     renderDaemon(ds, cfg.cadenceHours);
   });
+
+program
+  .command("doctor")
+  .description("Run diagnostic checks on Vir installation")
+  .action(runDoctor);
 
 const mcpCmd = program
   .command("mcp")

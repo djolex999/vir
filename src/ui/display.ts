@@ -181,4 +181,32 @@ export function categoryRow(category: string, topic: string): void {
   console.log(`${left}${text(topic)}`);
 }
 
+export type CheckStatus = "ok" | "warn" | "fail";
+
+// Diagnostic row for `vir doctor`: status glyph + fixed-width label + detail.
+// `detail` may contain newlines; continuation lines align under the detail
+// column. ok → green ✓, warn → amber ✗, fail → red ✗.
+export function statusRow(
+  status: CheckStatus,
+  label: string,
+  detail = "",
+  labelWidth = 21,
+): void {
+  const glyph =
+    status === "ok"
+      ? success(CHECK)
+      : status === "warn"
+        ? warn(CROSS)
+        : errorColor(CROSS);
+  const labelColor = status === "ok" ? text : status === "warn" ? warn : errorColor;
+  const head = `${glyph} ${padRightVisible(labelColor(label), labelWidth)}`;
+  const lines = detail.length > 0 ? detail.split("\n") : [""];
+  console.log(`${head}${dim(lines[0] ?? "")}`);
+  // glyph(1) + space(1) + label column = labelWidth + 2
+  const indent = " ".repeat(labelWidth + 2);
+  for (let i = 1; i < lines.length; i += 1) {
+    console.log(`${indent}${dim(lines[i] ?? "")}`);
+  }
+}
+
 export { ora };

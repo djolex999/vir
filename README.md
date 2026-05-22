@@ -183,6 +183,7 @@ Pass `--yes` to skip the cost confirmation prompt.
 | `vir schedule install` | free | Register the background daemon |
 | `vir schedule uninstall` | free | Remove the background daemon |
 | `vir status` | free | Knowledge heatmap + daemon status |
+| `vir doctor` | cheap | Diagnose installation issues |
 
 ## Semantic search (optional)
 
