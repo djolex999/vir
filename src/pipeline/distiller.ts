@@ -9,7 +9,7 @@ import type {
 
 const CATEGORIES: Category[] = ["pattern", "gotcha", "decision", "tool"];
 
-class HttpError extends Error {
+export class HttpError extends Error {
   status: number;
   constructor(status: number, message: string) {
     super(message);
@@ -220,7 +220,7 @@ const RETRY_DELAYS_MS = [60_000, 120_000, 240_000];
 // add 429 on top — never double-retry its 5xx.
 const KIE_RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
-function isRetryable(err: unknown): boolean {
+export function isRetryable(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   if (err instanceof HttpError) return KIE_RETRYABLE_STATUS.has(err.status);
   if (err instanceof Anthropic.APIError) return err.status === 429;

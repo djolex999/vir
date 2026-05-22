@@ -268,6 +268,18 @@ vault/vir/
 PRs welcome. Open an issue first for large changes. Built with TypeScript
 strict — run `npm run build` to check before submitting.
 
+## Development
+
+```bash
+git clone https://github.com/djolex999/vir
+cd vir
+npm install
+npm run build
+npm test
+```
+
+Tests use Vitest. Run with `npm test` or `npm test -- --watch` for watch mode.
+
 ## License
 
 MIT
