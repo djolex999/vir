@@ -1,6 +1,7 @@
 .vir/
 *.db
 .claude/
+CLAUDE.md
 tasks/
 handoff.md
 *.jsonl
