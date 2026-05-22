@@ -6,9 +6,10 @@ import chalk from "chalk";
 import { Command } from "commander";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout, argv, exit } from "node:process";
-import { existsSync, mkdirSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   CONFIG_PATH,
   ConfigSchema,
@@ -46,11 +47,21 @@ import { StateDb, type KnowledgeStats } from "./state/db.js";
 import * as ui from "./ui/display.js";
 import { VaultWriter } from "./pipeline/writer.js";
 
+// Read version at runtime from package.json (one dir up from dist/cli.js) so
+// `vir --version` never drifts from the published version. rootDir is ./src,
+// so package.json can't be imported — read it instead.
+const pkg = JSON.parse(
+  readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"),
+    "utf8",
+  ),
+) as { version: string };
+
 const program = new Command();
 program
   .name("vir")
   .description("Distill Claude Code sessions into an Obsidian vault")
-  .version("0.1.0");
+  .version(pkg.version);
 
 program
   .command("init")
