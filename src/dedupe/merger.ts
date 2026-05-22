@@ -10,7 +10,7 @@ import { basename, join } from "node:path";
 import type { Config } from "../config.js";
 import type { DistilledRow, StateDb } from "../state/db.js";
 import {
-  buildAnthropicClient,
+  maybeAnthropicClient,
   callLLM,
   normalizeModelName,
   withRateLimitRetry,
@@ -90,7 +90,7 @@ ${a.content}
 Note B:
 ${b.content}`;
 
-  const client = buildAnthropicClient(cfg);
+  const client = maybeAnthropicClient(cfg);
   const model = normalizeModelName(cfg.models.distill, cfg.provider);
   const merged = (
     await withRateLimitRetry(() =>

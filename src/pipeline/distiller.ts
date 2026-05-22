@@ -22,6 +22,12 @@ export function buildAnthropicClient(config: Config): Anthropic {
   return new Anthropic({ apiKey: config.anthropicApiKey ?? "" });
 }
 
+// Returns null on the Kie path — that path uses native fetch (callKie) and
+// never touches the Anthropic SDK, so don't allocate a client there.
+export function maybeAnthropicClient(config: Config): Anthropic | null {
+  return config.provider === "kie" ? null : buildAnthropicClient(config);
+}
+
 // Canonical model IDs accepted by Kie's /claude/v1/messages endpoint.
 // Anything that *starts with* one of these keys collapses to the bare ID,
 // so a stray suffix in config (date stamp, accidental path fragment like
@@ -104,7 +110,7 @@ export interface LlmCallOpts {
 
 export async function callLLM(
   config: Config,
-  client: Anthropic,
+  client: Anthropic | null,
   opts: LlmCallOpts,
 ): Promise<string> {
   if (config.provider === "kie") {
@@ -115,6 +121,11 @@ export async function callLLM(
       prompt: opts.prompt,
     });
   }
+  if (!client) {
+    throw new Error(
+      "Anthropic client is required for provider 'anthropic' but was null",
+    );
+  }
   return callAnthropic({
     client,
     model: opts.model,
@@ -124,14 +135,14 @@ export async function callLLM(
 }
 
 export class Distiller {
-  private client: Anthropic;
+  private client: Anthropic | null;
   private cfg: Config;
   private classifyModel: string;
   private distillModel: string;
 
   constructor(cfg: Config) {
     this.cfg = cfg;
-    this.client = buildAnthropicClient(cfg);
+    this.client = maybeAnthropicClient(cfg);
     this.classifyModel = normalizeModelName(cfg.models.classify, cfg.provider);
     this.distillModel = normalizeModelName(cfg.models.distill, cfg.provider);
   }
@@ -204,13 +215,25 @@ ${scrubbedContent}`;
 
 const RETRY_DELAYS_MS = [60_000, 120_000, 240_000];
 
-function isRateLimit(err: unknown): boolean {
+// The Kie path (native fetch → HttpError) retries 429 plus transient 5xx.
+// The Anthropic SDK already retries 5xx internally, so on that path we only
+// add 429 on top — never double-retry its 5xx.
+const KIE_RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+
+function isRetryable(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
+  if (err instanceof HttpError) return KIE_RETRYABLE_STATUS.has(err.status);
+  if (err instanceof Anthropic.APIError) return err.status === 429;
   const e = err as { status?: number; statusCode?: number };
-  if (e.status === 429 || e.statusCode === 429) return true;
-  if (err instanceof Anthropic.APIError && err.status === 429) return true;
-  if (err instanceof HttpError && err.status === 429) return true;
-  return false;
+  return e.status === 429 || e.statusCode === 429;
+}
+
+function statusOf(err: unknown): number | string {
+  if (err && typeof err === "object") {
+    const e = err as { status?: number; statusCode?: number };
+    return e.status ?? e.statusCode ?? "?";
+  }
+  return "?";
 }
 
 async function sleep(ms: number): Promise<void> {
@@ -222,10 +245,10 @@ export async function withRateLimitRetry<T>(fn: () => Promise<T>): Promise<T> {
     try {
       return await fn();
     } catch (err) {
-      if (!isRateLimit(err)) throw err;
+      if (!isRetryable(err)) throw err;
       const delay = RETRY_DELAYS_MS[attempt] ?? 240_000;
       console.warn(
-        `[vir] 429 rate limit — retry ${attempt + 1}/${RETRY_DELAYS_MS.length} in ${delay / 1000}s`,
+        `[vir] retryable error (${statusOf(err)}) — retry ${attempt + 1}/${RETRY_DELAYS_MS.length} in ${delay / 1000}s`,
       );
       await sleep(delay);
     }

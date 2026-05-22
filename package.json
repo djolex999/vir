@@ -1,13 +1,13 @@
 {
   "name": "@djolex999/vir-cli",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Distills Claude Code sessions into a compounding knowledge vault",
   "author": "Djordje Marković <djordje@growthq.rs>",
   "license": "MIT",
   "homepage": "https://github.com/djolex999/vir",
   "repository": {
     "type": "git",
-    "url": "https://github.com/djolex999/vir"
+    "url": "git+https://github.com/djolex999/vir.git"
   },
   "keywords": [
     "claude",
@@ -20,7 +20,7 @@
   ],
   "type": "module",
   "bin": {
-    "vir": "./dist/cli.js"
+    "vir": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc",

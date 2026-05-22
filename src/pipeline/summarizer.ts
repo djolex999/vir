@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { Config } from "../config.js";
 import type { DistilledRow, StateDb } from "../state/db.js";
 import {
-  buildAnthropicClient,
+  maybeAnthropicClient,
   callLLM,
   normalizeModelName,
   withRateLimitRetry,
@@ -70,7 +70,7 @@ export async function summarizeProject(
   const counts = countByCategory(group.rows);
   const prompt = buildPrompt(group, counts);
 
-  const client = buildAnthropicClient(cfg);
+  const client = maybeAnthropicClient(cfg);
   const model = normalizeModelName(cfg.models.distill, cfg.provider);
   const body = await withRateLimitRetry(() =>
     callLLM(cfg, client, { prompt, model, maxTokens: 1500 }),

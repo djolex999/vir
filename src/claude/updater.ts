@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "../config.js";
@@ -268,6 +268,40 @@ export function globalClaudePath(): string {
   return join(homedir(), ".claude", "CLAUDE.md");
 }
 
+// Resolve a project's CLAUDE.md across the layouts people actually use.
+// Checks candidates in priority order and returns the first that EXISTS:
+//   1. ~/projects/<slug>/CLAUDE.md
+//   2. ~/projects/<slug>-*/CLAUDE.md   (suffixed dirs, e.g. "<slug>-web")
+//   3. ~/code/<slug>/CLAUDE.md
+//   4. ~/dev/<slug>/CLAUDE.md
+// If none exist, falls back to the canonical (#1) location so the plan
+// reports exists=false there. The returned path flows into PlanItem.target,
+// which the dry-run output prints as each plan's heading — so the matched
+// path is always visible.
 export function projectClaudePath(projectSlug: string): string {
-  return join(homedir(), "projects", projectSlug, "CLAUDE.md");
+  const home = homedir();
+  const candidates: string[] = [];
+
+  const canonical = join(home, "projects", projectSlug, "CLAUDE.md");
+  candidates.push(canonical);
+
+  // Glob ~/projects/<slug>-*  (sorted for deterministic first-match).
+  const projectsDir = join(home, "projects");
+  try {
+    for (const name of readdirSync(projectsDir).sort()) {
+      if (name !== projectSlug && name.startsWith(`${projectSlug}-`)) {
+        candidates.push(join(projectsDir, name, "CLAUDE.md"));
+      }
+    }
+  } catch {
+    // ~/projects may not exist — skip the glob, keep the other candidates.
+  }
+
+  candidates.push(join(home, "code", projectSlug, "CLAUDE.md"));
+  candidates.push(join(home, "dev", projectSlug, "CLAUDE.md"));
+
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  return canonical;
 }

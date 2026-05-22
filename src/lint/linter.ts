@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 import type { Config } from "../config.js";
 import type { DistilledRow, StateDb } from "../state/db.js";
 import {
-  buildAnthropicClient,
+  maybeAnthropicClient,
   callLLM,
   normalizeModelName,
   withRateLimitRetry,
@@ -144,7 +144,7 @@ export async function contradictionCheck(
     return { checked: 0, contradictions: [] };
   }
 
-  const client = buildAnthropicClient(cfg);
+  const client = maybeAnthropicClient(cfg);
   const model = normalizeModelName(cfg.models.classify, cfg.provider);
   const contradictions: ContradictionEntry[] = [];
 

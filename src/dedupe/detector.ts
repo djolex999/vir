@@ -1,7 +1,7 @@
 import type { Config } from "../config.js";
 import type { DistilledRow, StateDb } from "../state/db.js";
 import {
-  buildAnthropicClient,
+  maybeAnthropicClient,
   callLLM,
   normalizeModelName,
   withRateLimitRetry,
@@ -108,7 +108,7 @@ export async function detectDuplicates(
 
   if (pairs.length === 0) return { checked: 0, duplicates: [] };
 
-  const client = buildAnthropicClient(cfg);
+  const client = maybeAnthropicClient(cfg);
   const model = normalizeModelName(cfg.models.classify, cfg.provider);
   const duplicates: DuplicatePair[] = [];
 

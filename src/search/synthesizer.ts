@@ -1,6 +1,6 @@
 import type { Config } from "../config.js";
 import {
-  buildAnthropicClient,
+  maybeAnthropicClient,
   callLLM,
   normalizeModelName,
   withRateLimitRetry,
@@ -32,7 +32,7 @@ Instructions:
 - If notes don't contain relevant info, say so clearly
 - Do not invent information not present in the notes`;
 
-  const client = buildAnthropicClient(cfg);
+  const client = maybeAnthropicClient(cfg);
   const model = normalizeModelName(cfg.models.distill, cfg.provider);
 
   return withRateLimitRetry(() =>
