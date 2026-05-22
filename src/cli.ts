@@ -38,6 +38,12 @@ import { search } from "./search/retriever.js";
 import { synthesize } from "./search/synthesizer.js";
 import { runMcpServer } from "./mcp/server.js";
 import {
+  installToClaudeCode,
+  isClaudeAvailable,
+  isInstalled,
+  uninstallFromClaudeCode,
+} from "./mcp/install.js";
+import {
   daemonStatus,
   installPlist,
   plistPath,
@@ -598,36 +604,74 @@ program
     renderDaemon(ds, cfg.cadenceHours);
   });
 
-program
+const mcpCmd = program
   .command("mcp")
-  .description("Run as an MCP server over stdio (for Claude Code integration)")
+  .description("MCP server + Claude Code registration")
   .addHelpText(
     "after",
     `
-Register with Claude Code by adding to ~/.claude/claude_desktop_config.json:
+Quick start:
+  vir mcp install      register with Claude Code (recommended)
+  vir mcp status       check registration
+  vir mcp run          run the stdio server directly (vir mcp = vir mcp run)
 
-  {
-    "mcpServers": {
-      "vir": {
-        "command": "vir",
-        "args": ["mcp"]
-      }
-    }
-  }
-
-After restarting Claude Code, these tools become available:
+After installing, restart Claude Code. Tools become available:
   vir_query            search the vault (synthesized answer + sources)
   vir_status           knowledge base overview + gaps
   vir_recent_notes     most recently distilled notes
-  vir_project_summary  synthesized per-project summary
+  vir_project_summary  synthesized per-project summary`,
+  );
 
-The server reads ~/.vir/config.json and opens the knowledge DB read-only.
-All logs go to stderr; stdout is reserved for the MCP protocol.`,
-  )
-  .action(async () => {
-    const cfg = loadConfig();
-    await runMcpServer(cfg);
+// Shared by `vir mcp run` and the bare `vir mcp` alias below.
+const runMcp = async (): Promise<void> => {
+  const cfg = loadConfig();
+  await runMcpServer(cfg);
+};
+
+mcpCmd
+  .command("run")
+  .description("Run the MCP server over stdio")
+  .action(runMcp);
+
+mcpCmd
+  .command("install")
+  .description("Register Vir with Claude Code")
+  .option("--scope <scope>", "user or project", "user")
+  .action(async (opts: { scope: string }) => {
+    await installToClaudeCode(opts.scope as "user" | "project");
   });
+
+mcpCmd
+  .command("uninstall")
+  .description("Unregister Vir from Claude Code")
+  .action(async () => {
+    await uninstallFromClaudeCode();
+  });
+
+mcpCmd
+  .command("status")
+  .description("Check Vir MCP registration")
+  .action(async () => {
+    if (!(await isClaudeAvailable())) {
+      ui.row(
+        ui.warn(ui.WARN_GLYPH),
+        ui.text("claude CLI not detected"),
+        "install: https://claude.com/claude-code",
+      );
+      return;
+    }
+    const installed = await isInstalled();
+    ui.row(
+      installed ? ui.success(ui.CHECK) : ui.errorColor(ui.CROSS),
+      ui.text(installed ? "registered with Claude Code" : "not registered"),
+      installed ? undefined : "run: vir mcp install",
+    );
+  });
+
+// Backwards compat: `vir mcp` with no subcommand runs the server. The MCP
+// registration (`claude mcp add vir vir mcp`) invokes exactly this, so it must
+// keep launching the stdio server — don't change it to print help.
+mcpCmd.action(runMcp);
 
 function renderKnowledge(k: KnowledgeStats): void {
   if (k.total === 0) {
@@ -930,6 +974,17 @@ async function cmdInit(): Promise<void> {
   saveConfig(parsed.data);
   ui.blank();
   ui.row(ui.success(ui.CHECK), ui.text(`saved ${CONFIG_PATH}`));
+
+  ui.blank();
+  const wantsMcp = await confirm({
+    message: "Register Vir with Claude Code now? (recommended)",
+    default: true,
+  });
+  if (wantsMcp) {
+    await installToClaudeCode("user");
+  }
+
+  ui.blank();
   ui.line(ui.dim("next: `vir run` to test once, then `vir schedule install`"));
 }
 

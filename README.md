@@ -190,21 +190,20 @@ Falls back to TF-IDF automatically if Ollama is not running.
 Vir runs as an MCP server, letting Claude Code consult your vault mid-session
 instead of relying on static CLAUDE.md content.
 
-Register with Claude Code:
+Register Vir with Claude Code:
 
-```json
-{
-  "mcpServers": {
-    "vir": {
-      "command": "vir",
-      "args": ["mcp"]
-    }
-  }
-}
+```bash
+vir mcp install
 ```
 
-Available tools: `vir_query`, `vir_status`, `vir_recent_notes`,
-`vir_project_summary`.
+Restart Claude Code. The vault is now queryable mid-session via four tools:
+`vir_query`, `vir_status`, `vir_recent_notes`, `vir_project_summary`.
+
+To unregister:
+
+```bash
+vir mcp uninstall
+```
 
 ## Config reference
 
