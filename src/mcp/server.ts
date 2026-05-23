@@ -28,7 +28,6 @@ import { join } from "node:path";
 import { exit } from "node:process";
 import { z } from "zod";
 import { STATE_PATH, type Config } from "../config.js";
-import { summarizeProject } from "../pipeline/summarizer.js";
 import type { Category } from "../pipeline/types.js";
 import { kebab } from "../pipeline/writer.js";
 import { search, type SearchHit } from "../search/retriever.js";
@@ -338,30 +337,23 @@ export async function runMcpServer(cfg: Config): Promise<void> {
           `${slug}.md`,
         );
 
-        if (existsSync(file)) {
-          const content = readFileSync(file, "utf8");
-          const fm = parseFrontmatter(content);
+        // Read-only facade: never generate a summary here — that's an LLM
+        // call and a vault write. If it isn't cached, point the user at the
+        // CLI command that produces it under explicit intent.
+        if (!existsSync(file)) {
           return ok({
-            project: slug,
-            content,
-            sessions_count: fm.sessions ? Number(fm.sessions) : null,
-            generated: fm.generated ?? null,
+            error: `Project summary not yet generated. Run: vir summarize ${slug}`,
+            project_slug: slug,
           });
         }
 
-        // Not cached — generate fresh. summarizeProject only reads the DB and
-        // writes a vault markdown file, so the read-only DB constraint holds.
-        const res = await summarizeProject(cfg, slug, db);
-        if (!res) {
-          return fail(`no distilled notes for project '${slug}'`);
-        }
-        const content = readFileSync(res.path, "utf8");
+        const content = readFileSync(file, "utf8");
         const fm = parseFrontmatter(content);
         return ok({
           project: slug,
           content,
-          sessions_count: res.counts.total,
-          generated: fm.generated ?? new Date().toISOString(),
+          sessions_count: fm.sessions ? Number(fm.sessions) : null,
+          generated: fm.generated ?? null,
         });
       } catch (err) {
         return fail((err as Error).message);

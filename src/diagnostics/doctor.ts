@@ -23,7 +23,6 @@ import {
   maybeAnthropicClient,
   normalizeModelName,
 } from "../pipeline/distiller.js";
-import { VaultWriter } from "../pipeline/writer.js";
 import { status as daemonStatus } from "../daemon/index.js";
 import { isOllamaAvailable } from "../search/embedder.js";
 import { isClaudeAvailable, isInstalled } from "../mcp/install.js";
@@ -148,25 +147,24 @@ function checkVaultPath(cfg: Config): CheckResult {
 }
 
 // ── 4. output directory ───────────────────────────────────────────────────────
+// A diagnostic must not mutate the user's filesystem: just inspect the path.
+// (The previous implementation constructed a VaultWriter, which created the
+// category dirs as a side effect.)
 function checkOutputDir(cfg: Config): CheckResult {
   const dir = join(cfg.vaultPath, cfg.outputDir);
-  if (existsSync(dir)) {
-    let count = 0;
-    try {
-      count = new VaultWriter(cfg).noteCount();
-    } catch {
-      // fall through with 0
-    }
-    return ok("output directory", `${count} note${count === 1 ? "" : "s"}`);
+  if (!existsSync(dir)) {
+    return warn("output directory", "will be created on first run");
   }
-  // Doesn't exist yet — fine as long as the vault is writable (it'll be
-  // created on first run). The vault-path check already verified writability.
+  let count = 0;
   try {
-    accessSync(cfg.vaultPath, constants.W_OK);
-    return ok("output directory", "will be created on first run");
+    count = readdirSync(dir, { recursive: true }).filter(
+      (f) => typeof f === "string" && f.endsWith(".md"),
+    ).length;
   } catch {
-    return fail("output directory", `${collapseHome(dir)} — vault not writable`);
+    // unreadable dir — report it exists but couldn't be counted
+    return warn("output directory", `${collapseHome(dir)} — not readable`);
   }
+  return ok("output directory", `${count} note${count === 1 ? "" : "s"}`);
 }
 
 // ── 5. Claude Code sessions ───────────────────────────────────────────────────

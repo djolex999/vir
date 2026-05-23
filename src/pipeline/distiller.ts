@@ -213,7 +213,11 @@ ${scrubbedContent}`;
   }
 }
 
+// One delay per *retry*. Total attempts = 1 initial + 3 retries = 4: the loop
+// below tries-then-sleeps once per entry (3 tries, 3 backoffs), then makes a
+// final 4th attempt after the last sleep. Backoff schedule: 60s / 120s / 240s.
 const RETRY_DELAYS_MS = [60_000, 120_000, 240_000];
+const MAX_ATTEMPTS = RETRY_DELAYS_MS.length + 1;
 
 // The Kie path (native fetch → HttpError) retries 429 plus transient 5xx.
 // The Anthropic SDK already retries 5xx internally, so on that path we only
@@ -248,11 +252,12 @@ export async function withRateLimitRetry<T>(fn: () => Promise<T>): Promise<T> {
       if (!isRetryable(err)) throw err;
       const delay = RETRY_DELAYS_MS[attempt] ?? 240_000;
       console.warn(
-        `[vir] retryable error (${statusOf(err)}) — retry ${attempt + 1}/${RETRY_DELAYS_MS.length} in ${delay / 1000}s`,
+        `[vir] retryable error (${statusOf(err)}) — attempt ${attempt + 1}/${MAX_ATTEMPTS} failed, retrying in ${delay / 1000}s`,
       );
       await sleep(delay);
     }
   }
+  // Final (4th) attempt after the last backoff — let its error propagate.
   return await fn();
 }
 

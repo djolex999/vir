@@ -117,7 +117,7 @@ sources 4  ·  via embedding  ·  searched 126
 ## Prerequisites
 
 - macOS or Linux (systemd or cron)
-- Node.js 18+
+- Node.js 20+
 - Claude Code (sessions at `~/.claude/projects/`)
 - Obsidian vault
 - Anthropic API key **or** Kie.ai API key (~72% cheaper, same models)
@@ -202,9 +202,9 @@ with your distro, init system, and Node version.
 
 | | |
 |---|---|
-| Tests | 25 passing |
+| Tests | 30 passing |
 | Platforms | macOS (launchd), Linux (systemd/cron) |
-| Node | 18+ |
+| Node | 20+ |
 | First-run cost | $1–5 (Kie.ai recommended for 72% savings) |
 | Ongoing cost | ~$0.05 per run |
 

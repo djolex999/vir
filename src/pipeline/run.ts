@@ -115,6 +115,13 @@ export async function runPipeline(
         }
       }
     }
+    // Rewrite mode skips per-note index appends; rebuild index.md once from the
+    // db so it reflects every note exactly once (no log.md append).
+    try {
+      writer.regenerateIndex();
+    } catch (err) {
+      fileLog(`index regeneration failed: ${(err as Error).message}`);
+    }
     fileLog(
       `vir run done — rewriteOnly rewritten=${summary.rewritten} errored=${summary.errored}`,
     );
@@ -350,7 +357,7 @@ async function rewriteOne(
     },
     markdown: row.content,
   };
-  return writer.write(parsed, note);
+  return writer.write(parsed, note, "rewrite");
 }
 
 // Desktop notification, platform-aware and best-effort. macOS uses osascript;

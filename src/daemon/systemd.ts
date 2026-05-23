@@ -72,6 +72,13 @@ function systemctl(args: string[]): {
   };
 }
 
+// systemd splits ExecStart on whitespace; double-quote each path so spaces
+// survive, escaping embedded backslashes and quotes per systemd's own rules
+// (NOT shell rules — systemd parses the unit, no shell is involved).
+export function systemdQuote(s: string): string {
+  return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
 // %h is systemd's user-home specifier — keeps the unit portable across users.
 export function renderService(opts: {
   nodePath: string;
@@ -82,7 +89,7 @@ Description=Vir Claude Code session distillation
 
 [Service]
 Type=oneshot
-ExecStart=${opts.nodePath} ${opts.cliPath} run --yes
+ExecStart=${systemdQuote(opts.nodePath)} ${systemdQuote(opts.cliPath)} run --daemon
 StandardOutput=append:%h/.vir/daemon.log
 StandardError=append:%h/.vir/daemon.log
 `;

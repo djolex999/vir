@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
@@ -59,6 +66,12 @@ export function expandHome(p: string): string {
 
 export function ensureVirDir(): void {
   if (!existsSync(VIR_DIR)) mkdirSync(VIR_DIR, { recursive: true });
+  // The dir holds config.json with API keys — keep it owner-only.
+  try {
+    chmodSync(VIR_DIR, 0o700);
+  } catch {
+    // best-effort (e.g. exotic filesystems); never block on a chmod
+  }
 }
 
 export function configExists(): boolean {
@@ -70,6 +83,13 @@ export function loadConfig(): Config {
     throw new Error(
       `Config not found at ${CONFIG_PATH}. Run \`vir init\` first.`,
     );
+  }
+  // Migrate pre-0.3.5 installs whose config.json is group/world-readable —
+  // it holds API keys, so tighten to 0600 silently. Best-effort.
+  try {
+    if (statSync(CONFIG_PATH).mode & 0o077) chmodSync(CONFIG_PATH, 0o600);
+  } catch {
+    // ignore — a failed chmod must never block loading config
   }
   const raw = readFileSync(CONFIG_PATH, "utf8");
   const parsed = ConfigSchema.parse(JSON.parse(raw));
@@ -86,4 +106,10 @@ export function saveConfig(cfg: Config): void {
     mkdirSync(dirname(CONFIG_PATH), { recursive: true });
   }
   writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
+  // config.json contains API keys — owner read/write only.
+  try {
+    chmodSync(CONFIG_PATH, 0o600);
+  } catch {
+    // best-effort; a failed chmod must not fail the save
+  }
 }

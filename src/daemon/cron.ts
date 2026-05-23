@@ -30,6 +30,13 @@ export function generateCronLine(cadenceHours: number, command: string): string 
   return `0 */${h} * * * ${command} ${VIR_CRON_MARKER}`;
 }
 
+// POSIX-shell single-quote a path so spaces/special chars in node/cli/log paths
+// survive crontab's `/bin/sh -c` execution. Embedded single quotes close, escape,
+// reopen ('\'').
+export function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
 export function parseCronCadence(line: string): number | null {
   // Hour field is the second whitespace-delimited token; expect "*/N".
   const fields = line.trim().split(/\s+/);
@@ -73,7 +80,11 @@ function writeCrontab(content: string): void {
 }
 
 export function install(opts: InstallOpts): void {
-  const command = `${opts.nodePath} ${opts.cliPath} run --yes >> ${DAEMON_LOG_PATH} 2>&1`;
+  // --daemon gives quiet output + file logging; the redirect still captures any
+  // stderr/crash output cron would otherwise mail to the user.
+  const command =
+    `${shellQuote(opts.nodePath)} ${shellQuote(opts.cliPath)} run --daemon ` +
+    `>> ${shellQuote(DAEMON_LOG_PATH)} 2>&1`;
   const line = generateCronLine(opts.cadenceHours, command);
   const cleaned = removeVirLines(readCrontab());
   writeCrontab(appendLine(cleaned, line));

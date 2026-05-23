@@ -38,7 +38,11 @@ export class VaultWriter {
     this.ensureLog();
   }
 
-  async write(session: ParsedSession, note: DistilledNote): Promise<string[]> {
+  async write(
+    session: ParsedSession,
+    note: DistilledNote,
+    mode: "append" | "rewrite" = "append",
+  ): Promise<string[]> {
     const { classification, markdown } = note;
     const slug = makeSlug(classification.topic, session.sessionId);
     const subDir = CATEGORY_DIR[classification.category];
@@ -68,20 +72,51 @@ export class VaultWriter {
     const finalContent = frontmatter + wikilinkHeader + body + "\n";
     writeFileSync(fullPath, finalContent);
     await this.maybeEmbed(session, note, finalContent);
-    this.appendIndex({
-      date: (session.startedAt ?? new Date().toISOString()).slice(0, 10),
-      topic: classification.topic,
-      category: classification.category,
-      project: classification.project,
-      relPath,
-    });
-    this.appendLog({
-      ts: new Date().toISOString().slice(0, 16).replace("T", " "),
-      category: classification.category,
-      topic: classification.topic,
-      project: classification.project,
-    });
+    // Rewrite mode re-renders existing notes from stored content; the index is
+    // rebuilt wholesale via regenerateIndex() afterward and log.md is left
+    // untouched, so appending per-note here would duplicate every row.
+    if (mode === "append") {
+      this.appendIndex({
+        date: (session.startedAt ?? new Date().toISOString()).slice(0, 10),
+        topic: classification.topic,
+        category: classification.category,
+        project: classification.project,
+        relPath,
+      });
+      this.appendLog({
+        ts: new Date().toISOString().slice(0, 16).replace("T", " "),
+        category: classification.category,
+        topic: classification.topic,
+        project: classification.project,
+      });
+    }
     return [fullPath];
+  }
+
+  // Rebuild index.md from scratch off the distilled rows in SQLite, sorted by
+  // date descending. Used by the --rewrite-only run so re-rendering notes never
+  // appends duplicate index rows. Never touches log.md. No-op without a db.
+  regenerateIndex(): void {
+    if (!this.db) return;
+    const rows = [...this.db.listDistilled()].sort((a, b) =>
+      (b.startedAt ?? "").localeCompare(a.startedAt ?? ""),
+    );
+    const header =
+      "# vir — Distilled Knowledge\n\n" +
+      "| Date | Topic | Category | Project | Link |\n" +
+      "|------|-------|----------|---------|------|\n";
+    const body = rows
+      .map((r) => {
+        const date = (r.startedAt ?? "").slice(0, 10);
+        const relPath = join(CATEGORY_DIR[r.category], `${makeSlug(r.topic, r.sessionId)}.md`);
+        const link = `[[${relPath.replace(/\.md$/, "")}|${r.topic}]]`;
+        return `| ${date} | ${r.topic} | ${r.category} | ${r.project} | ${link} |`;
+      })
+      .join("\n");
+    writeFileSync(
+      join(this.root, "index.md"),
+      body.length > 0 ? `${header}${body}\n` : header,
+    );
   }
 
   // Best-effort: embed the freshly-written note via Ollama and store the
