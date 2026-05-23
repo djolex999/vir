@@ -8,27 +8,47 @@
   Distills Claude Code sessions into a compounding knowledge vault.
 </p>
 
+<!--
+GitHub topics (add manually: repo → About → ⚙ → Topics):
+claude, claude-code, ai-memory, obsidian, knowledge-base, llm,
+developer-tools, mcp, local-first, cross-platform
+-->
+
 <p align="center">
-  <img src="https://img.shields.io/npm/v/@djolex999/vir-cli" alt="npm version">
-  <img src="https://img.shields.io/badge/license-MIT-blue" alt="license">
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey" alt="platform">
-  <img src="https://img.shields.io/badge/node-%3E%3D18-green" alt="node">
+  <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/v/@djolex999/vir-cli?color=7c6af7&label=npm" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/dw/@djolex999/vir-cli?color=4fd1a0" alt="npm downloads"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee" alt="license"></a>
+  <a href="#quality"><img src="https://img.shields.io/badge/tests-25%20passing-22c55e" alt="tests"></a>
+  <a href="#quality"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey" alt="platforms"></a>
+  <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-c084fc" alt="mcp"></a>
+  <a href="#"><img src="https://img.shields.io/badge/local--first-yes-f59e0b" alt="local-first"></a>
+  <a href="https://github.com/djolex999/vir"><img src="https://img.shields.io/github/stars/djolex999/vir?style=social" alt="stars"></a>
 </p>
 
-## Demo
-
-<!-- add terminal screenshot here -->
+<p align="center">
+  <img src="assets/demo.gif" width="800" alt="vir demo">
+</p>
 
 ## What it does
 
 Every Claude Code session produces patterns, gotchas, and architecture
 decisions — and 95% of it sits in JSONL transcripts you never open again.
 
-Vir is a local macOS daemon that runs on a schedule, distills your sessions
-into structured markdown in your Obsidian vault, and feeds that knowledge back
-into your `CLAUDE.md` files. Every future session starts sharper than the last.
+Vir runs on a schedule, distills your sessions into structured markdown in your
+Obsidian vault, and feeds that knowledge back into your `CLAUDE.md` files. Every
+future session starts sharper than the last.
 
-Inspired by Andrej Karpathy's LLM Wiki pattern and Uros Pesic's KB Brain concept.
+## How it works
+
+Vir reads your Claude Code transcripts from `~/.claude/projects/**/*.jsonl`,
+runs each session through a cheap heuristic filter, then classifies the
+survivors with Haiku and distills durable knowledge with Sonnet. The results are
+written as typed notes (patterns, gotchas, decisions, tools) into your Obsidian
+vault, cross-linked with wikilinks and indexed. State lives in a local SQLite
+database — content hashes make reruns idempotent, and embeddings (optional, via
+Ollama) power semantic search. An MCP server exposes the whole vault to Claude
+Code as queryable tools, so future sessions can consult what past sessions
+learned.
 
 ## Why Vir?
 
@@ -103,21 +123,6 @@ sources 4  ·  via embedding  ·  searched 126
 - Anthropic API key **or** Kie.ai API key (~72% cheaper, same models)
 - Optional: Ollama + `nomic-embed-text` for semantic search
 
-## Platform support
-
-| Platform | Daemon | Notifications | Status |
-|---|---|---|---|
-| macOS | launchd | osascript | Stable |
-| Linux (systemd) | systemd user timer | notify-send | Experimental |
-| Linux (cron) | crontab | notify-send | Experimental |
-| Windows | Not supported | — | Planned |
-
-Linux support is **experimental and untested** — `vir schedule install` prefers
-a systemd user timer and falls back to a crontab entry when systemd is absent.
-Please report issues at
-[github.com/djolex999/vir/issues](https://github.com/djolex999/vir/issues)
-with your distro, init system, and Node version.
-
 ## Install
 
 ```bash
@@ -127,16 +132,9 @@ npm install -g @djolex999/vir-cli
 ## Quick start
 
 ```bash
-vir init
-# ✓ guided setup wizard — pick provider, models, vault path, cadence
-# ✓ writes ~/.vir/config.json
-
-vir run
-# scanning ~/.claude/projects … 214 files found · 0 cached · 214 new
-# ✓ distilled 38 sessions → 51 notes written to your vault
-
-vir schedule install
-# ✓ launchd agent registered — vir now runs every 3h
+vir init                 # guided wizard: provider, models, vault, cadence
+vir run                  # one pass over your sessions → notes in your vault
+vir schedule install     # register the daemon (runs every 3h by default)
 ```
 
 `vir schedule install` works on Linux too: systemd is preferred, with cron used
@@ -157,6 +155,21 @@ All subsequent runs process only new sessions: ~$0.05 per run.
 > for 72% cheaper API calls on the same Claude models.
 
 Pass `--yes` to skip the cost confirmation prompt.
+
+## Platform support
+
+| Platform | Daemon | Notifications | Status |
+|---|---|---|---|
+| macOS | launchd | osascript | Stable |
+| Linux (systemd) | systemd user timer | notify-send | Experimental |
+| Linux (cron) | crontab | notify-send | Experimental |
+| Windows | Not supported | — | Planned |
+
+Linux support is **experimental and untested** — `vir schedule install` prefers
+a systemd user timer and falls back to a crontab entry when systemd is absent.
+Please report issues at
+[github.com/djolex999/vir/issues](https://github.com/djolex999/vir/issues)
+with your distro, init system, and Node version.
 
 ## Commands
 
@@ -184,6 +197,16 @@ Pass `--yes` to skip the cost confirmation prompt.
 | `vir schedule uninstall` | free | Remove the background daemon |
 | `vir status` | free | Knowledge heatmap + daemon status |
 | `vir doctor` | cheap | Diagnose installation issues |
+
+## Quality
+
+| | |
+|---|---|
+| Tests | 25 passing |
+| Platforms | macOS (launchd), Linux (systemd/cron) |
+| Node | 18+ |
+| First-run cost | $1–5 (Kie.ai recommended for 72% savings) |
+| Ongoing cost | ~$0.05 per run |
 
 ## Semantic search (optional)
 
@@ -286,9 +309,9 @@ vault/vir/
 ## Contributing
 
 PRs welcome. Open an issue first for large changes. Built with TypeScript
-strict — run `npm run build` to check before submitting.
-
-## Development
+strict — run `npm run build` to check before submitting. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for development setup and how to regenerate
+the demo GIF.
 
 ```bash
 git clone https://github.com/djolex999/vir
@@ -298,15 +321,15 @@ npm run build
 npm test
 ```
 
-Tests use Vitest. Run with `npm test` or `npm test -- --watch` for watch mode.
-
 ## License
 
 MIT
 
 ## Author
 
-Built by Djordje Marković / GrowthQ Lab DOO
+Built by Djordje Marković / GrowthQ Lab DOO.
+
+Inspired by Andrej Karpathy's LLM Wiki pattern and Uros Pesic's KB Brain concept.
 
 [GitHub](https://github.com/djolex999) ·
 [LinkedIn](https://www.linkedin.com/in/djmarkovic/) ·

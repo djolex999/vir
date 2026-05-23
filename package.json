@@ -1,6 +1,6 @@
 {
   "name": "@djolex999/vir-cli",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Distills Claude Code sessions into a compounding knowledge vault",
   "author": "Djordje Marković <djordje@growthq.rs>",
   "license": "MIT",
@@ -26,7 +26,7 @@
   },
   "files": [
     "dist",
-    "assets",
+    "assets/vir_whirlpool_logo.svg",
     "README.md",
     "LICENSE"
   ],
