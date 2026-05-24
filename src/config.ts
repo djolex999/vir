@@ -20,6 +20,11 @@ export const ConfigSchema = z
     anthropicApiKey: z.string().optional(),
     kieApiKey: z.string().optional(),
     filterThreshold: z.number().min(0).max(1).default(0.4),
+    // How aggressively large tool outputs are stripped before distillation.
+    // Existing configs without this field get 'moderate' via the default.
+    filterToolCalls: z
+      .enum(["aggressive", "moderate", "off"])
+      .default("moderate"),
     models: z
       .object({
         classify: z.string().default("claude-haiku-4-5-20251001"),

@@ -24,6 +24,10 @@ export interface ParsedSession {
   assistantText: string;
   userText: string;
   rawSummary: string;
+  // Chronological prose + tool blocks ([tool_use:…] / [tool_result:…]) for the
+  // distill stage. Prose-only fields above feed classification + the heuristic
+  // filter, so tool noise stays out of them.
+  transcriptText: string;
 }
 
 export type Category = "pattern" | "gotcha" | "decision" | "tool";

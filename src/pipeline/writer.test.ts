@@ -15,6 +15,7 @@ function makeCfg(vaultPath: string): Config {
     provider: "anthropic",
     anthropicApiKey: "sk-ant-test",
     filterThreshold: 0.4,
+    filterToolCalls: "moderate",
     models: {
       classify: "claude-haiku-4-5-20251001",
       distill: "claude-sonnet-4-6",
@@ -36,6 +37,7 @@ function makeSession(): ParsedSession {
     assistantText: "",
     userText: "",
     rawSummary: "",
+    transcriptText: "",
   };
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "@djolex999/vir-cli",
-  "version": "0.3.5",
+  "version": "0.4.0",
   "description": "Distills Claude Code sessions into a compounding knowledge vault",
   "author": "Djordje Marković <djordje@growthq.rs>",
   "license": "MIT",

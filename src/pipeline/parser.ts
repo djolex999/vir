@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
+import { renderToolResult, renderToolUse } from "./toolCallFilter.js";
 import type { ParsedSession, TranscriptLine } from "./types.js";
 
 const FILE_TOOLS = new Set([
@@ -20,6 +21,11 @@ export function parseSession(path: string, hash: string): ParsedSession {
   const filesTouched = new Set<string>();
   const assistantBlocks: string[] = [];
   const userBlocks: string[] = [];
+  // Chronological prose + tool blocks for the distill stage.
+  const transcriptParts: string[] = [];
+  // tool_result blocks carry only a tool_use_id, not the tool name; resolve it
+  // from the tool_use we saw earlier in the stream.
+  const toolNameById = new Map<string, string>();
 
   for (const line of lines) {
     let evt: TranscriptLine;
@@ -48,12 +54,15 @@ export function parseSession(path: string, hash: string): ParsedSession {
         if (blockType === "text" && typeof b.text === "string") {
           if (role === "assistant") assistantBlocks.push(b.text);
           else if (role === "user") userBlocks.push(b.text);
+          transcriptParts.push(b.text);
         }
 
         if (blockType === "tool_use") {
           toolCallCount += 1;
           const toolName = typeof b.name === "string" ? b.name : "";
           const input = (b.input as Record<string, unknown> | undefined) ?? {};
+          if (typeof b.id === "string" && toolName)
+            toolNameById.set(b.id, toolName);
           if (FILE_TOOLS.has(toolName)) {
             const fp =
               typeof input.file_path === "string"
@@ -63,6 +72,22 @@ export function parseSession(path: string, hash: string): ParsedSession {
                   : null;
             if (fp) filesTouched.add(fp);
           }
+          transcriptParts.push(
+            renderToolUse(toolName || "unknown", safeStringify(input)),
+          );
+        }
+
+        if (blockType === "tool_result") {
+          const id =
+            typeof b.tool_use_id === "string" ? b.tool_use_id : undefined;
+          const name = (id && toolNameById.get(id)) || "unknown";
+          transcriptParts.push(
+            renderToolResult(
+              name,
+              extractToolResultContent(b.content),
+              b.is_error === true,
+            ),
+          );
         }
       }
     } else if (typeof content === "string") {
@@ -73,6 +98,7 @@ export function parseSession(path: string, hash: string): ParsedSession {
 
   const assistantText = assistantBlocks.join("\n\n");
   const userText = userBlocks.join("\n\n");
+  const transcriptText = transcriptParts.join("\n\n");
   const rawSummary = buildRawSummary({
     userText,
     assistantText,
@@ -93,7 +119,33 @@ export function parseSession(path: string, hash: string): ParsedSession {
     assistantText,
     userText,
     rawSummary,
+    transcriptText,
   };
+}
+
+// tool_use inputs are arbitrary JSON; never let a stringify failure kill a
+// whole session parse.
+function safeStringify(input: unknown): string {
+  try {
+    return JSON.stringify(input) ?? "{}";
+  } catch {
+    return "{}";
+  }
+}
+
+// A tool_result's content is either a plain string or an array of content
+// blocks (text/image/…). Flatten to text; represent non-text blocks compactly.
+function extractToolResultContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  const parts: string[] = [];
+  for (const part of content) {
+    if (!part || typeof part !== "object") continue;
+    const p = part as Record<string, unknown>;
+    if (p.type === "text" && typeof p.text === "string") parts.push(p.text);
+    else if (typeof p.type === "string") parts.push(`[${p.type}]`);
+  }
+  return parts.join("\n");
 }
 
 function buildRawSummary(opts: {

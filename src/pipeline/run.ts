@@ -9,6 +9,7 @@ import { parseSession } from "./parser.js";
 import { scanSessions } from "./scanner.js";
 import { scrub } from "./scrubber.js";
 import { summarizeProject } from "./summarizer.js";
+import { filterToolCalls } from "./toolCallFilter.js";
 import type { DistilledNote, ParsedSession } from "./types.js";
 import { kebab, VaultWriter } from "./writer.js";
 
@@ -216,9 +217,16 @@ export async function runPipeline(
       }
 
       const scrubbedSummary = scrub(parsed.rawSummary);
-      const scrubbedContent = scrub(
-        parsed.assistantText + "\n\n" + parsed.userText,
+      const toolFilter = filterToolCalls(
+        parsed.transcriptText,
+        cfg.filterToolCalls,
       );
+      if (toolFilter.tokensSaved > 1000) {
+        const msg = `filtered ${toolFilter.toolCallsStripped} tool results, saved ~${toolFilter.tokensSaved} tokens`;
+        if (interactive) ui.line(ui.dim(`  ${msg}`));
+        fileLog(msg);
+      }
+      const scrubbedContent = scrub(toolFilter.filtered);
 
       const note = await distiller.run(parsed, scrubbedSummary, scrubbedContent);
       if (!note) {
@@ -347,6 +355,7 @@ async function rewriteOne(
     assistantText: "",
     userText: "",
     rawSummary: "",
+    transcriptText: "",
   };
   const note: DistilledNote = {
     classification: {

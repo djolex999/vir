@@ -42,7 +42,12 @@ future session starts sharper than the last.
 
 Vir reads your Claude Code transcripts from `~/.claude/projects/**/*.jsonl`,
 runs each session through a cheap heuristic filter, then classifies the
-survivors with Haiku and distills durable knowledge with Sonnet. The results are
+survivors with Haiku and distills durable knowledge with Sonnet. Before
+distillation, **tool calls are filtered**: it preserves tool *intent* (file
+paths, commands, search patterns, errors, and short results) for better notes,
+while truncating large embedded content (file writes, edit strings, long bash
+logs, big grep dumps) to keep token cost bounded — tunable via `filterToolCalls`.
+The results are
 written as typed notes (patterns, gotchas, decisions, tools) into your Obsidian
 vault, cross-linked with wikilinks and indexed. State lives in a local SQLite
 database — content hashes make reruns idempotent, and embeddings (optional, via
@@ -261,6 +266,7 @@ Located at `~/.vir/config.json`.
 | `anthropicApiKey` | — | Required if `provider=anthropic` |
 | `kieApiKey` | — | Required if `provider=kie` |
 | `filterThreshold` | `0.4` | Heuristic pre-filter (0..1) |
+| `filterToolCalls` | `moderate` | Tool-output filtering: `aggressive` \| `moderate` \| `off` |
 | `models.classify` | `claude-haiku-4-5-20251001` | Classify model |
 | `models.distill` | `claude-sonnet-4-6` | Distill model |
 

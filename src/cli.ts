@@ -972,6 +972,7 @@ async function cmdInit(): Promise<void> {
     anthropicApiKey,
     kieApiKey,
     filterThreshold,
+    filterToolCalls: existing?.filterToolCalls,
     models: { classify: classifyModel, distill: distillModel },
   });
 
