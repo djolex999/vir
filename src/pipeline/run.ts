@@ -7,6 +7,8 @@ import { Distiller } from "./distiller.js";
 import { scoreSession } from "./filter.js";
 import { parseSession } from "./parser.js";
 import { scanSessions } from "./scanner.js";
+import { scanArticles } from "./articleReader.js";
+import { distillArticle } from "./articleDistiller.js";
 import { scrub } from "./scrubber.js";
 import { summarizeProject } from "./summarizer.js";
 import { filterToolCalls } from "./toolCallFilter.js";
@@ -18,6 +20,8 @@ export interface RunOptions {
   quiet?: boolean;
   logToFile?: boolean;
   rewriteOnly?: boolean;
+  // Distill only web articles, skipping the Claude Code session pipeline.
+  articlesOnly?: boolean;
   // Called after the scan with the count of sessions that will be distilled.
   // Return false to abort cleanly. If omitted, the run always proceeds —
   // daemon callers rely on this default.
@@ -33,6 +37,10 @@ export interface RunSummary {
   errored: number;
   rewritten: number;
   notesWritten: string[];
+  articlesScanned: number;
+  articlesDistilled: number;
+  articlesSkipped: number;
+  articlesErrored: number;
 }
 
 export async function runPipeline(
@@ -52,6 +60,10 @@ export async function runPipeline(
     errored: 0,
     rewritten: 0,
     notesWritten: [],
+    articlesScanned: 0,
+    articlesDistilled: 0,
+    articlesSkipped: 0,
+    articlesErrored: 0,
   };
 
   const interactive = !opts.quiet;
@@ -73,9 +85,11 @@ export async function runPipeline(
     ui.header(
       opts.rewriteOnly
         ? "run  --rewrite-only"
-        : opts.full
-          ? "run  --full"
-          : "run",
+        : opts.articlesOnly
+          ? "run  --articles-only"
+          : opts.full
+            ? "run  --full"
+            : "run",
     );
     ui.blank();
   }
@@ -134,6 +148,38 @@ export async function runPipeline(
         errored: {
           value: summary.errored,
           color: summary.errored > 0 ? ui.errorColor : ui.dim,
+        },
+      });
+      ui.divider();
+    }
+    db.close();
+    return summary;
+  }
+
+  // --articles-only: skip the entire session pipeline.
+  if (opts.articlesOnly) {
+    if (!cfg.articlesDir) {
+      if (interactive) {
+        ui.row(
+          ui.warn(ui.WARN_GLYPH),
+          ui.text("articlesDir is not set — nothing to distill"),
+        );
+      }
+      fileLog("articles-only run but articlesDir is unset");
+      db.close();
+      return summary;
+    }
+    await runArticlePhase(cfg, db, writer, summary, fileLog, interactive);
+    if (interactive) {
+      ui.blank();
+      ui.divider();
+      ui.summary({
+        articles: { value: summary.articlesScanned, color: ui.info },
+        distilled: { value: summary.articlesDistilled, color: ui.success },
+        skipped: { value: summary.articlesSkipped, color: ui.warn },
+        errored: {
+          value: summary.articlesErrored,
+          color: summary.articlesErrored > 0 ? ui.errorColor : ui.dim,
         },
       });
       ui.divider();
@@ -311,14 +357,20 @@ export async function runPipeline(
     }
   }
 
+  // Second input source: web articles. Gated on config; a session-only install
+  // (no articlesDir) skips this entirely and behaves exactly as before.
+  if (cfg.articlesDir && cfg.distillArticles) {
+    await runArticlePhase(cfg, db, writer, summary, fileLog, interactive);
+  }
+
   fileLog(
-    `vir run done — scanned=${summary.scanned} new=${summary.scanned - summary.alreadyProcessed} distilled=${summary.distilled} skipped=${summary.skippedByFilter} lowConf=${summary.lowConfidence} errored=${summary.errored}`,
+    `vir run done — scanned=${summary.scanned} new=${summary.scanned - summary.alreadyProcessed} distilled=${summary.distilled} skipped=${summary.skippedByFilter} lowConf=${summary.lowConfidence} errored=${summary.errored} articles=${summary.articlesDistilled}`,
   );
 
   if (interactive) {
     ui.blank();
     ui.divider();
-    ui.summary({
+    const stats: Record<string, ui.SummaryStat> = {
       scanned: { value: summary.scanned, color: ui.info },
       new: {
         value: summary.scanned - summary.alreadyProcessed,
@@ -330,12 +382,116 @@ export async function runPipeline(
         value: summary.errored,
         color: summary.errored > 0 ? ui.errorColor : ui.dim,
       },
-    });
+    };
+    if (cfg.articlesDir && cfg.distillArticles) {
+      stats.articles = { value: summary.articlesDistilled, color: ui.success };
+    }
+    ui.summary(stats);
     ui.divider();
   }
 
   db.close();
   return summary;
+}
+
+// Distill web articles from cfg.articlesDir into the vault, parallel to the
+// session pipeline. Each article is hashed in SQLite for idempotency and
+// wrapped in its own try/catch so one bad file never aborts the run.
+async function runArticlePhase(
+  cfg: Config,
+  db: StateDb,
+  writer: VaultWriter,
+  summary: RunSummary,
+  fileLog: (msg: string) => void,
+  interactive: boolean,
+): Promise<void> {
+  if (!cfg.articlesDir) return;
+
+  const scanSpinner = interactive
+    ? ui.spinner("scanning articles").start()
+    : null;
+  let articles;
+  try {
+    articles = scanArticles(cfg.articlesDir);
+  } catch (err) {
+    if (scanSpinner) scanSpinner.fail(ui.errorColor("article scan failed"));
+    fileLog(`article scan failed: ${(err as Error).message}`);
+    return;
+  }
+  summary.articlesScanned = articles.length;
+  if (scanSpinner) {
+    scanSpinner.succeed(
+      ui.text(
+        `scanned ${ui.info(String(articles.length))} ${ui.dim("articles")}`,
+      ),
+    );
+  }
+  fileLog(`scanned ${articles.length} articles`);
+
+  for (const article of articles) {
+    try {
+      if (db.isArticleProcessed(article.filePath, article.hash)) continue;
+
+      const distilled = await distillArticle(article, cfg);
+      if (!distilled) {
+        summary.articlesSkipped += 1;
+        db.recordArticle({
+          path: article.filePath,
+          hash: article.hash,
+          skipped: true,
+        });
+        continue;
+      }
+
+      const notePath = await writer.writeArticle(article, distilled);
+      summary.articlesDistilled += 1;
+      summary.notesWritten.push(notePath);
+      db.recordArticle({
+        path: article.filePath,
+        hash: article.hash,
+        skipped: false,
+        notePath,
+        content: distilled.markdown,
+        category: distilled.classification.category,
+        title: article.title,
+        url: article.url ?? null,
+        author: article.author ?? null,
+        published: article.publishedAt ?? null,
+        confidence: distilled.classification.confidence,
+        distilledAt: new Date().toISOString(),
+      });
+      if (interactive) {
+        ui.categoryRow(distilled.classification.category, article.title);
+      }
+      fileLog(
+        `distilled article → ${distilled.classification.category}/${article.title}`,
+      );
+      if (distilled.classification.confidence >= 0.8) {
+        notify(
+          `Vir — new ${distilled.classification.category}`,
+          article.title,
+        );
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    } catch (err) {
+      summary.articlesErrored += 1;
+      const msg = (err as Error).message ?? String(err);
+      if (interactive) {
+        ui.row(ui.errorColor(ui.CROSS), ui.text(`article error: ${msg}`));
+      }
+      fileLog(`error on article ${article.filePath}: ${msg}`);
+      try {
+        db.recordArticle({
+          path: article.filePath,
+          hash: article.hash,
+          skipped: false,
+          error: msg,
+        });
+      } catch {
+        // ignore record errors
+      }
+    }
+  }
 }
 
 async function rewriteOne(

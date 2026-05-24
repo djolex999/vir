@@ -35,6 +35,13 @@ import { synthesize } from "../search/synthesizer.js";
 import { StateDb } from "../state/db.js";
 
 const CATEGORIES = ["pattern", "gotcha", "decision", "tool"] as const;
+const ARTICLE_CATEGORIES = [
+  "concept",
+  "technique",
+  "reference",
+  "opinion",
+] as const;
+const QUERY_TYPES = ["session", "article", "all"] as const;
 
 // Maps the vault subdirectory back to the canonical category, used as a
 // fallback when a hit's frontmatter is missing (e.g. older notes).
@@ -96,13 +103,25 @@ function hitMeta(hit: SearchHit): {
   topic: string;
   category: string;
   project: string;
+  type: "session" | "article";
+  url?: string;
 } {
   const fm = parseFrontmatter(hit.content);
   const base = hit.title.split("/").pop() ?? hit.title;
+  if (fm.type === "article") {
+    return {
+      topic: fm.source_title ?? base,
+      category: fm.category ?? "",
+      project: fm.source_author ?? "",
+      type: "article",
+      url: fm.source_url,
+    };
+  }
   return {
     topic: fm.topic ?? base,
     category: fm.category ?? categoryFromTitle(hit.title),
     project: fm.project ?? "",
+    type: "session",
   };
 }
 
@@ -143,9 +162,11 @@ export async function runMcpServer(cfg: Config): Promise<void> {
     {
       description:
         "Search the knowledge vault for patterns, gotchas, decisions, and " +
-        "tool insights from past Claude Code sessions. Use this before " +
-        "working on a task to consult prior learnings. Human-verified notes " +
-        "(approved via `vir review`) are ranked above unverified ones.",
+        "tool insights from past Claude Code sessions, plus concepts, " +
+        "techniques, references, and opinions distilled from web articles. " +
+        "Use this before working on a task to consult prior learnings. " +
+        "Human-verified notes (approved via `vir review`) are ranked above " +
+        "unverified ones.",
       inputSchema: {
         query: z.string().describe("The question or topic to search for"),
         top_k: z
@@ -155,10 +176,17 @@ export async function runMcpServer(cfg: Config): Promise<void> {
           .max(10)
           .optional()
           .describe("Number of notes to retrieve (default 5, max 10)"),
+        type: z
+          .enum(QUERY_TYPES)
+          .optional()
+          .describe(
+            "Restrict to 'session' notes (Claude Code), 'article' notes " +
+              "(web articles), or 'all' (default).",
+          ),
         category: z
           .enum(CATEGORIES)
           .optional()
-          .describe("Restrict results to one category"),
+          .describe("Restrict results to one session category"),
         project: z
           .string()
           .optional()
@@ -172,10 +200,13 @@ export async function runMcpServer(cfg: Config): Promise<void> {
           ),
       },
     },
-    async ({ query, top_k, category, project, verified_only }) => {
+    async ({ query, top_k, type, category, project, verified_only }) => {
       try {
         const topK = Math.min(Math.max(top_k ?? 5, 1), 10);
-        const hasFilter = Boolean(category || project || verified_only);
+        const typeFilter = type ?? "all";
+        const hasFilter = Boolean(
+          category || project || verified_only || typeFilter !== "all",
+        );
         // Over-fetch when filtering so post-filtering can still fill top_k.
         const fetchK = hasFilter ? Math.min(30, topK * 5) : topK;
         const projSlug = project ? kebab(project) : null;
@@ -184,6 +215,7 @@ export async function runMcpServer(cfg: Config): Promise<void> {
         const selected = hits
           .filter((h) => {
             const meta = hitMeta(h);
+            if (typeFilter !== "all" && meta.type !== typeFilter) return false;
             if (category && meta.category !== category) return false;
             if (projSlug && kebab(meta.project) !== projSlug) return false;
             if (verified_only && !isVerifiedContent(h.content)) return false;
@@ -205,6 +237,8 @@ export async function runMcpServer(cfg: Config): Promise<void> {
             topic: meta.topic,
             category: meta.category,
             project: meta.project,
+            type: meta.type,
+            ...(meta.url ? { url: meta.url } : {}),
             score: h.score,
             file: h.title,
           };
@@ -359,6 +393,71 @@ export async function runMcpServer(cfg: Config): Promise<void> {
   );
 
   server.registerTool(
+    "vir_recent_articles",
+    {
+      description:
+        "Get the most recently distilled web articles (clipped via Obsidian " +
+        "Web Clipper or saved as markdown). Use this to see what the user has " +
+        "been reading and saving, with source URLs for follow-up.",
+      inputSchema: {
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(20)
+          .optional()
+          .describe("Max articles to return (default 10, max 20)"),
+        category: z
+          .enum(ARTICLE_CATEGORIES)
+          .optional()
+          .describe("Restrict to one article category"),
+        since_days: z
+          .number()
+          .positive()
+          .optional()
+          .describe("Only articles from the last N days"),
+      },
+    },
+    async ({ limit, category, since_days }) => {
+      try {
+        const max = Math.min(Math.max(limit ?? 10, 1), 20);
+        const cutoff =
+          typeof since_days === "number"
+            ? Date.now() - since_days * 86_400_000
+            : null;
+        const dateOf = (a: { published: string | null; distilledAt: string | null }) => {
+          const raw = a.published ?? a.distilledAt;
+          const t = raw ? Date.parse(raw) : NaN;
+          return Number.isFinite(t) ? t : 0;
+        };
+
+        const articles = db
+          .listArticles()
+          .filter((a) => {
+            if (category && a.category !== category) return false;
+            if (cutoff !== null && dateOf(a) < cutoff) return false;
+            return true;
+          })
+          .sort((a, b) => dateOf(b) - dateOf(a))
+          .slice(0, max)
+          .map((a) => ({
+            title: a.title,
+            category: a.category,
+            url: a.url,
+            author: a.author,
+            published: a.published,
+            confidence: a.confidence,
+            summary: excerpt(a.content),
+          }));
+
+        return ok(articles);
+      } catch (err) {
+        return fail((err as Error).message);
+      }
+    },
+  );
+
+  server.registerTool(
     "vir_project_summary",
     {
       description:
@@ -405,7 +504,7 @@ export async function runMcpServer(cfg: Config): Promise<void> {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  log("vir MCP server ready on stdio (4 tools)");
+  log("vir MCP server ready on stdio (5 tools)");
 
   const shutdown = async (sig: string): Promise<void> => {
     log(`received ${sig}, shutting down`);

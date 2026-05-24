@@ -60,6 +60,19 @@ export interface DistilledRow {
   content: string;
 }
 
+export interface ArticleRow {
+  path: string;
+  notePath: string | null;
+  title: string;
+  url: string | null;
+  author: string | null;
+  published: string | null;
+  category: string;
+  confidence: number;
+  distilledAt: string | null;
+  content: string;
+}
+
 interface ColumnInfo {
   name: string;
 }
@@ -124,6 +137,24 @@ export class StateDb {
         error TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_sessions_hash ON sessions(hash);
+      CREATE TABLE IF NOT EXISTS articles (
+        path TEXT PRIMARY KEY,
+        hash TEXT NOT NULL,
+        processed_at TEXT NOT NULL,
+        skipped INTEGER NOT NULL DEFAULT 0,
+        note_path TEXT,
+        error TEXT,
+        content TEXT,
+        category TEXT,
+        title TEXT,
+        url TEXT,
+        author TEXT,
+        published TEXT,
+        confidence REAL,
+        distilled_at TEXT,
+        embedding TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_articles_hash ON articles(hash);
     `);
     this.migrate();
   }
@@ -436,6 +467,175 @@ export class StateDb {
 
   reset(): void {
     this.db.exec("DELETE FROM sessions");
+  }
+
+  // ── articles ────────────────────────────────────────────────────────────
+  // Articles live in their own table so the article taxonomy
+  // (concept/technique/reference/opinion) never pollutes session listings,
+  // stats, or the rewrite path. Read methods guard against a missing table:
+  // the read-only MCP path skips migrations, so an install that upgraded but
+  // never ran a writable pass won't have the articles table yet.
+
+  private hasArticlesTable(): boolean {
+    try {
+      const r = this.db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='articles'",
+        )
+        .get();
+      return r !== undefined;
+    } catch {
+      return false;
+    }
+  }
+
+  isArticleProcessed(path: string, hash: string): boolean {
+    if (!this.hasArticlesTable()) return false;
+    const row = this.db
+      .prepare("SELECT hash FROM articles WHERE path = ?")
+      .get(path) as { hash: string } | undefined;
+    return row !== undefined && row.hash === hash;
+  }
+
+  recordArticle(opts: {
+    path: string;
+    hash: string;
+    skipped: boolean;
+    notePath?: string | null;
+    error?: string | null;
+    content?: string | null;
+    category?: string | null;
+    title?: string | null;
+    url?: string | null;
+    author?: string | null;
+    published?: string | null;
+    confidence?: number | null;
+    distilledAt?: string | null;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO articles (
+           path, hash, processed_at, skipped, note_path, error,
+           content, category, title, url, author, published,
+           confidence, distilled_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(path) DO UPDATE SET
+           hash = excluded.hash,
+           processed_at = excluded.processed_at,
+           skipped = excluded.skipped,
+           error = excluded.error,
+           note_path = COALESCE(excluded.note_path, articles.note_path),
+           content = COALESCE(excluded.content, articles.content),
+           category = COALESCE(excluded.category, articles.category),
+           title = COALESCE(excluded.title, articles.title),
+           url = COALESCE(excluded.url, articles.url),
+           author = COALESCE(excluded.author, articles.author),
+           published = COALESCE(excluded.published, articles.published),
+           confidence = COALESCE(excluded.confidence, articles.confidence),
+           distilled_at = COALESCE(excluded.distilled_at, articles.distilled_at)`,
+      )
+      .run(
+        opts.path,
+        opts.hash,
+        new Date().toISOString(),
+        opts.skipped ? 1 : 0,
+        opts.notePath ?? null,
+        opts.error ?? null,
+        opts.content ?? null,
+        opts.category ?? null,
+        opts.title ?? null,
+        opts.url ?? null,
+        opts.author ?? null,
+        opts.published ?? null,
+        opts.confidence ?? null,
+        opts.distilledAt ?? null,
+      );
+  }
+
+  listArticles(): ArticleRow[] {
+    if (!this.hasArticlesTable()) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT path, note_path, title, url, author, published,
+                category, confidence, distilled_at, content
+         FROM articles
+         WHERE skipped = 0 AND error IS NULL AND content IS NOT NULL`,
+      )
+      .all() as Array<{
+      path: string;
+      note_path: string | null;
+      title: string | null;
+      url: string | null;
+      author: string | null;
+      published: string | null;
+      category: string | null;
+      confidence: number | null;
+      distilled_at: string | null;
+      content: string;
+    }>;
+    return rows.map((r) => ({
+      path: r.path,
+      notePath: r.note_path,
+      title: r.title ?? "",
+      url: r.url,
+      author: r.author,
+      published: r.published,
+      category: r.category ?? "",
+      confidence: r.confidence ?? 0,
+      distilledAt: r.distilled_at,
+      content: r.content,
+    }));
+  }
+
+  storeArticleEmbedding(path: string, embedding: number[]): void {
+    this.db
+      .prepare("UPDATE articles SET embedding = ? WHERE path = ?")
+      .run(JSON.stringify(embedding), path);
+  }
+
+  // Article embeddings, shaped like session EmbeddingRow so the retriever can
+  // concat both lists. filePath is the stored note path; project is empty
+  // (articles have no project), category is the article taxonomy.
+  getArticleEmbeddings(): EmbeddingRow[] {
+    if (!this.hasArticlesTable()) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT note_path, embedding, title, category
+         FROM articles
+         WHERE skipped = 0
+           AND error IS NULL
+           AND embedding IS NOT NULL
+           AND note_path IS NOT NULL`,
+      )
+      .all() as Array<{
+      note_path: string;
+      embedding: string;
+      title: string | null;
+      category: string | null;
+    }>;
+
+    const out: EmbeddingRow[] = [];
+    for (const r of rows) {
+      let vec: number[];
+      try {
+        const parsed = JSON.parse(r.embedding) as unknown;
+        if (!Array.isArray(parsed)) continue;
+        vec = parsed.map((x) => Number(x));
+        if (vec.some((n) => !Number.isFinite(n))) continue;
+      } catch {
+        continue;
+      }
+      out.push({
+        sessionId: deriveSessionId(r.note_path),
+        topic: r.title ?? "",
+        category: r.category ?? "",
+        project: "",
+        filePath: r.note_path,
+        embedding: vec,
+      });
+    }
+    return out;
   }
 
   close(): void {

@@ -7,7 +7,7 @@ import {
   readdirSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import type { Config } from "../config.js";
 import {
   embeddingForNote,
@@ -15,6 +15,13 @@ import {
 } from "../search/embedder.js";
 import type { StateDb } from "../state/db.js";
 import type { Category, DistilledNote, ParsedSession } from "./types.js";
+import type { ParsedArticle } from "./articleReader.js";
+import {
+  ARTICLES_SUBDIR,
+  articleRelPath,
+  buildArticleFrontmatter,
+  type DistilledArticle,
+} from "./articleDistiller.js";
 
 const CATEGORY_DIR: Record<Category, string> = {
   pattern: "patterns",
@@ -30,7 +37,7 @@ export class VaultWriter {
   constructor(cfg: Config, db: StateDb | null = null) {
     this.root = join(cfg.vaultPath, cfg.outputDir);
     this.db = db;
-    for (const sub of Object.values(CATEGORY_DIR)) {
+    for (const sub of [...Object.values(CATEGORY_DIR), ARTICLES_SUBDIR]) {
       const p = join(this.root, sub);
       if (!existsSync(p)) mkdirSync(p, { recursive: true });
     }
@@ -97,25 +104,112 @@ export class VaultWriter {
     return [fullPath];
   }
 
+  // Write a distilled web article into articles/<slug>.md. Parallel to write()
+  // but uses the article taxonomy + frontmatter, and always preserves the
+  // source URL as a clickable backlink. Returns the note's absolute path.
+  async writeArticle(
+    article: ParsedArticle,
+    distilled: DistilledArticle,
+    mode: "append" | "rewrite" = "append",
+  ): Promise<string> {
+    const relPath = articleRelPath(article);
+    const fullPath = join(this.root, relPath);
+
+    const frontmatter = buildArticleFrontmatter(article, distilled);
+    const sourceLine = article.url
+      ? `Source: [${article.title.replace(/[[\]]/g, "")}](${article.url})\n`
+      : "";
+    const header =
+      sourceLine + `Category: [[${distilled.classification.category}]]\n\n`;
+    const body = wikilinkRelated(distilled.markdown);
+
+    const finalContent = frontmatter + header + body + "\n";
+    writeFileSync(fullPath, finalContent);
+    await this.maybeEmbedArticle(article, finalContent);
+
+    const indexProject = article.author ?? "web";
+    if (mode === "append") {
+      this.appendIndex({
+        date: (article.publishedAt ?? new Date().toISOString()).slice(0, 10),
+        topic: article.title,
+        category: distilled.classification.category,
+        project: indexProject,
+        relPath,
+      });
+      this.appendLog({
+        ts: new Date().toISOString().slice(0, 16).replace("T", " "),
+        category: distilled.classification.category,
+        topic: article.title,
+        project: indexProject,
+      });
+    }
+    return fullPath;
+  }
+
+  // Best-effort article embedding — mirrors maybeEmbed() but keyed by the
+  // article's source path in the articles table. Failure never fails a write.
+  private async maybeEmbedArticle(
+    article: ParsedArticle,
+    fileContent: string,
+  ): Promise<void> {
+    if (!this.db) return;
+    try {
+      if (!(await isOllamaAvailableCached())) return;
+      const vec = await embeddingForNote(fileContent);
+      if (!vec) return;
+      this.db.storeArticleEmbedding(article.filePath, vec);
+    } catch {
+      // never crash the writer on embedding failure
+    }
+  }
+
   // Rebuild index.md from scratch off the distilled rows in SQLite, sorted by
   // date descending. Used by the --rewrite-only run so re-rendering notes never
   // appends duplicate index rows. Never touches log.md. No-op without a db.
   regenerateIndex(): void {
     if (!this.db) return;
-    const rows = [...this.db.listDistilled()].sort((a, b) =>
-      (b.startedAt ?? "").localeCompare(a.startedAt ?? ""),
-    );
+    type Entry = {
+      date: string;
+      topic: string;
+      category: string;
+      project: string;
+      link: string;
+    };
+    const entries: Entry[] = [];
+    for (const r of this.db.listDistilled()) {
+      const relPath = join(
+        CATEGORY_DIR[r.category],
+        `${makeSlug(r.topic, r.sessionId)}.md`,
+      );
+      entries.push({
+        date: (r.startedAt ?? "").slice(0, 10),
+        topic: r.topic,
+        category: r.category,
+        project: r.project,
+        link: `[[${relPath.replace(/\.md$/, "")}|${r.topic}]]`,
+      });
+    }
+    for (const a of this.db.listArticles()) {
+      if (!a.notePath) continue;
+      const rel = relative(this.root, a.notePath).replace(/\.md$/, "");
+      entries.push({
+        date: (a.published ?? a.distilledAt ?? "").slice(0, 10),
+        topic: a.title,
+        category: a.category,
+        project: a.author ?? "web",
+        link: `[[${rel}|${a.title}]]`,
+      });
+    }
+    entries.sort((x, y) => y.date.localeCompare(x.date));
     const header =
       "# vir — Distilled Knowledge\n\n" +
       "| Date | Topic | Category | Project | Link |\n" +
       "|------|-------|----------|---------|------|\n";
-    const body = rows
-      .map((r) => {
-        const date = (r.startedAt ?? "").slice(0, 10);
-        const relPath = join(CATEGORY_DIR[r.category], `${makeSlug(r.topic, r.sessionId)}.md`);
-        const link = `[[${relPath.replace(/\.md$/, "")}|${r.topic}]]`;
-        return `| ${date} | ${r.topic} | ${r.category} | ${r.project} | ${link} |`;
-      })
+    const body = entries
+      .map(
+        (e) =>
+          `| ${e.date} | ${e.topic} | ${e.category} | ${e.project} | ${e.link} |`,
+      )
       .join("\n");
     writeFileSync(
       join(this.root, "index.md"),
@@ -192,7 +286,7 @@ export class VaultWriter {
   private appendIndex(row: {
     date: string;
     topic: string;
-    category: Category;
+    category: string;
     project: string;
     relPath: string;
   }): void {
@@ -214,7 +308,7 @@ export class VaultWriter {
 
   private appendLog(entry: {
     ts: string;
-    category: Category;
+    category: string;
     topic: string;
     project: string;
   }): void {
@@ -227,7 +321,7 @@ export class VaultWriter {
 
   noteCount(): number {
     let n = 0;
-    for (const sub of Object.values(CATEGORY_DIR)) {
+    for (const sub of [...Object.values(CATEGORY_DIR), ARTICLES_SUBDIR]) {
       const dir = join(this.root, sub);
       if (!existsSync(dir)) continue;
       try {

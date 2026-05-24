@@ -87,23 +87,28 @@ program
     "--rewrite-only",
     "Skip scan/filter/LLM; re-render stored notes from SQLite",
   )
+  .option("--articles-only", "Distill only web articles, skip sessions")
   .option("--yes", "Skip the cost confirmation prompt")
   .action(
     async (opts: {
       full?: boolean;
       daemon?: boolean;
       rewriteOnly?: boolean;
+      articlesOnly?: boolean;
       yes?: boolean;
     }) => {
       const cfg = loadConfig();
       const daemon = opts.daemon === true;
       const rewriteOnly = opts.rewriteOnly === true;
-      const skipPrompt = opts.yes === true || daemon || rewriteOnly;
+      const articlesOnly = opts.articlesOnly === true;
+      const skipPrompt =
+        opts.yes === true || daemon || rewriteOnly || articlesOnly;
       await runPipeline(cfg, {
         full: opts.full,
         quiet: daemon,
         logToFile: daemon,
         rewriteOnly,
+        articlesOnly,
         onConfirm: skipPrompt
           ? undefined
           : async (newCount) => confirmCostIfNeeded(cfg, newCount),
@@ -638,7 +643,8 @@ Quick start:
 After installing, restart Claude Code. Tools become available:
   vir_query            search the vault (synthesized answer + sources)
   vir_status           knowledge base overview + gaps
-  vir_recent_notes     most recently distilled notes
+  vir_recent_notes     most recently distilled session notes
+  vir_recent_articles  most recently distilled web articles
   vir_project_summary  synthesized per-project summary`,
   );
 
@@ -865,6 +871,44 @@ async function cmdInit(): Promise<void> {
     if (cont) break;
   }
 
+  // ── web articles (optional second input source) ─────────────────────────
+  let articlesDir: string | undefined = existing?.articlesDir;
+  const wantsArticles = await confirm({
+    message:
+      "Do you save web articles to a folder (e.g. Obsidian Web Clipper)?",
+    default: existing?.articlesDir !== undefined,
+  });
+  if (wantsArticles) {
+    for (;;) {
+      articlesDir = await input({
+        message: "Articles (raw/) directory",
+        default:
+          existing?.articlesDir ??
+          join(homedir(), "Documents", "Obsidian", "raw"),
+      });
+      const expanded = expandHome(articlesDir);
+      if (existsSync(expanded)) break;
+      const create = await confirm({
+        message: `Path does not exist (${expanded}). Create it?`,
+        default: true,
+      });
+      if (create) {
+        try {
+          mkdirSync(expanded, { recursive: true });
+          break;
+        } catch (err) {
+          console.error(
+            chalk.red(`failed to create: ${(err as Error).message}`),
+          );
+        }
+      } else {
+        break;
+      }
+    }
+  } else {
+    articlesDir = undefined;
+  }
+
   const cadenceHours = Number(
     await input({
       message: "Cadence (hours)",
@@ -981,6 +1025,8 @@ async function cmdInit(): Promise<void> {
     anthropicApiKey,
     kieApiKey,
     filterThreshold,
+    articlesDir,
+    distillArticles: existing?.distillArticles,
     filterToolCalls: existing?.filterToolCalls,
     models: { classify: classifyModel, distill: distillModel },
   });

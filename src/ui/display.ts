@@ -17,6 +17,11 @@ export const colorForCategory: Record<string, ChalkInstance> = {
   gotcha: errorColor,
   decision: info,
   tool: warn,
+  // article taxonomy
+  concept: info,
+  technique: success,
+  reference: muted,
+  opinion: accent,
 };
 
 // ─── glyphs ─────────────────────────────────────────────────────────────────

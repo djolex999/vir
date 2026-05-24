@@ -18,7 +18,7 @@ developer-tools, mcp, local-first, cross-platform, llm-wiki
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/v/@djolex999/vir-cli?color=7c6af7&label=npm" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/dw/@djolex999/vir-cli?color=4fd1a0" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee" alt="license"></a>
-  <a href="#project-status"><img src="https://img.shields.io/badge/tests-59%20passing-22c55e" alt="tests"></a>
+  <a href="#project-status"><img src="https://img.shields.io/badge/tests-79%20passing-22c55e" alt="tests"></a>
   <a href="#project-status"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey" alt="platforms"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-c084fc" alt="mcp"></a>
   <a href="#"><img src="https://img.shields.io/badge/local--first-yes-f59e0b" alt="local-first"></a>
@@ -33,8 +33,12 @@ instead of resetting at the end of every session. He ended his post with: _"I
 think there is room here for an incredible new product instead of a hacky
 collection of scripts."_
 
-Vir is one implementation of that pattern, focused on Claude Code sessions with
-Obsidian as the frontend.
+Vir is one implementation of that pattern, with Obsidian as the frontend.
+
+> Vir reads two input sources today: Claude Code session transcripts (`.jsonl`)
+> and web articles (markdown clipped via Obsidian Web Clipper). Both get
+> distilled into the same vault. Future versions will add PDFs, code repos, and
+> images — matching the full LLM Wiki pattern.
 
 [Karpathy's post →](https://x.com/karpathy/status/2039805659525644595)
 
@@ -94,6 +98,13 @@ Results are written as typed notes — patterns, gotchas, decisions, tools —
 cross-linked with wikilinks and indexed. State lives in local SQLite; content
 hashes make reruns idempotent. Optional Ollama embeddings power semantic search,
 and an MCP server exposes the whole vault to Claude Code mid-session.
+
+Web articles saved to a `raw/` directory (e.g. via Obsidian Web Clipper) flow
+through a **parallel pipeline** with its own taxonomy — `concept`, `technique`,
+`reference`, `opinion` — filed under `articles/` in the same vault, embedded and
+indexed alongside session notes, and queryable through the same MCP tools.
+Articles always keep their source URL in frontmatter for backlinks; distillation
+paraphrases and never reproduces more than a short quote.
 
 ```
 Claude Code sessions
@@ -195,10 +206,15 @@ npm install -g @djolex999/vir-cli
 ## Quick start
 
 ```bash
-vir init                 # guided wizard: provider, models, vault, cadence
+vir init                 # guided wizard: provider, models, vault, cadence,
+                         # and an optional web-articles (raw/) folder
 vir run                  # one pass over your sessions → notes in your vault
 vir schedule install     # register the daemon (runs every 3h by default)
 ```
+
+`vir init` asks whether you save web articles to a folder (e.g. Obsidian Web
+Clipper). Point it at that `raw/` directory and Vir distills those articles into
+the same vault. Leave it blank to keep Vir session-only.
 
 `vir schedule install` works on Linux too: systemd is preferred, with cron used
 as a fallback when `systemctl` isn't available.
@@ -242,6 +258,7 @@ with your distro, init system, and Node version.
 | `vir run`                   | cheap | Process new sessions                      |
 | `vir run --full`            | $$    | Reprocess all sessions                    |
 | `vir run --rewrite-only`    | free  | Reformat notes, no API calls              |
+| `vir run --articles-only`   | cheap | Distill only web articles, skip sessions  |
 | `vir run --yes`             | cheap | Skip cost confirmation                    |
 | `vir query "<question>"`    | cheap | Semantic search your vault                |
 | `vir summarize <project>`   | cheap | Cross-session project synthesis           |
@@ -275,10 +292,13 @@ Register Vir with Claude Code:
 vir mcp install
 ```
 
-Restart Claude Code. The vault is now queryable mid-session via four tools:
-`vir_query`, `vir_status`, `vir_recent_notes`, `vir_project_summary`.
-Human-verified notes (approved via `vir review`) are ranked first; pass
-`verified_only: true` to `vir_query` or `vir_recent_notes` to see only those.
+Restart Claude Code. The vault is now queryable mid-session via five tools:
+`vir_query`, `vir_status`, `vir_recent_notes`, `vir_recent_articles`,
+`vir_project_summary`. `vir_query` takes a `type` filter
+(`session` | `article` | `all`) so Claude can scope a search to your dev
+sessions or your saved articles. Human-verified notes (approved via
+`vir review`) are ranked first; pass `verified_only: true` to `vir_query` or
+`vir_recent_notes` to see only those.
 
 To unregister:
 
@@ -319,6 +339,8 @@ Located at `~/.vir/config.json`.
 | `anthropicApiKey`   | —                           | Required if `provider=anthropic`                           |
 | `kieApiKey`         | —                           | Required if `provider=kie`                                 |
 | `filterThreshold`   | `0.4`                       | Heuristic pre-filter (0..1)                                |
+| `articlesDir`       | _(unset)_                   | `raw/` dir for web articles. Unset → article ingestion off |
+| `distillArticles`   | `true`                      | Distill articles alongside sessions (needs `articlesDir`)  |
 | `filterToolCalls`   | `moderate`                  | Tool-output filtering: `aggressive` \| `moderate` \| `off` |
 | `models.classify`   | `claude-haiku-4-5-20251001` | Classify model                                             |
 | `models.distill`    | `claude-sonnet-4-6`         | Distill model                                              |
@@ -333,6 +355,7 @@ vault/vir/
   gotchas/       # bugs, footguns, and edge cases
   decisions/     # architecture decisions with their rationale
   tools/         # per-tool knowledge and usage notes
+  articles/      # web articles distilled from your raw/ folder
   projects/      # cross-session project summaries
   archived/      # deduplicated notes (kept, never deleted)
 ```
@@ -349,7 +372,7 @@ vault/vir/
 
 |                |                                           |
 | -------------- | ----------------------------------------- |
-| Tests          | 59 passing                                |
+| Tests          | 79 passing                                |
 | Platforms      | macOS (launchd), Linux (systemd/cron)     |
 | Node           | 20+                                       |
 | First-run cost | $1–5 (Kie.ai recommended for 72% savings) |
@@ -359,6 +382,8 @@ vault/vir/
 
 - [x] Linux support (systemd timer + cron fallback) — experimental
 - [x] Active learning — `vir review` to approve, edit, or reject distillations, with verified notes prioritized in retrieval
+- [x] Web article ingestion — distill markdown clipped via Obsidian Web Clipper into the same vault (the LLM Wiki pivot)
+- [ ] More input sources — PDFs, code repos, images (the full LLM Wiki pattern)
 - [ ] Windows support
 - [ ] GUI installer for non-developers
 - [ ] Obsidian plugin for in-vault queries

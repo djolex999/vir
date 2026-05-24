@@ -81,7 +81,9 @@ async function searchByEmbedding(
   }
 
   const root = vaultRoot(cfg);
-  const rows = db.getEmbeddings(root);
+  // Sessions and articles are embedded into the same vector space; concat both
+  // so semantic search (and the type filter in vir_query) covers articles too.
+  const rows = [...db.getEmbeddings(root), ...db.getArticleEmbeddings()];
   if (rows.length === 0) return [];
 
   // Read each candidate's content once, here, so the verified boost can be

@@ -33,6 +33,7 @@ function sampleConfig(): Config {
     provider: "anthropic",
     anthropicApiKey: "sk-ant-test",
     filterThreshold: 0.4,
+    distillArticles: true,
     filterToolCalls: "moderate",
     models: {
       classify: "claude-haiku-4-5-20251001",

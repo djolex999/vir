@@ -20,6 +20,24 @@ export const ConfigSchema = z
     anthropicApiKey: z.string().optional(),
     kieApiKey: z.string().optional(),
     filterThreshold: z.number().min(0).max(1).default(0.4),
+    // Path to the raw/ directory of web articles (e.g. Obsidian Web Clipper
+    // output). Optional — when unset, article ingestion is skipped entirely
+    // and existing session-only configs keep working unchanged.
+    articlesDir: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Path to raw/ directory for web articles. Optional. If unset, article ingestion is disabled.",
+      ),
+    // Whether to distill articles alongside Claude Code sessions. Only takes
+    // effect when articlesDir is set.
+    distillArticles: z
+      .boolean()
+      .default(true)
+      .describe(
+        "Whether to distill articles in addition to Claude Code sessions.",
+      ),
     // How aggressively large tool outputs are stripped before distillation.
     // Existing configs without this field get 'moderate' via the default.
     filterToolCalls: z
@@ -102,6 +120,9 @@ export function loadConfig(): Config {
     ...parsed,
     vaultPath: expandHome(parsed.vaultPath),
     claudeProjectsDir: expandHome(parsed.claudeProjectsDir),
+    ...(parsed.articlesDir
+      ? { articlesDir: expandHome(parsed.articlesDir) }
+      : {}),
   };
 }
 
