@@ -80,6 +80,9 @@ results, not better."_ Fair. Vir addresses it in layers:
   approve, edit, or reject each one. Verified notes get retrieval priority over
   unverified ones (in `vir query` and the MCP server). Rejected notes are moved
   to `.rejected/` — recoverable, not deleted.
+- **MMR-diverse retrieval**. Queries return notes covering different aspects of
+  the topic, not 5 similar duplicates. The retrieval algorithm balances
+  relevance against diversity automatically.
 
 The bet: with these controls, signal-to-noise stays high enough that the vault
 is a net positive. If your discipline is strong enough to maintain `CLAUDE.md`
@@ -325,6 +328,12 @@ vir query "how do I handle rate limiting in Next.js"
 
 Falls back to TF-IDF automatically if Ollama is not running.
 
+Vir uses MMR (Maximum Marginal Relevance) reranking to balance relevance and
+diversity in query results. Instead of returning 5 notes that all say similar
+things, you get 5 notes covering different aspects of the topic. Tunable via
+`retrievalDiversity` in config (default 0.3, range 0.0–1.0; higher = more
+diverse).
+
 ## Config reference
 
 Located at `~/.vir/config.json`.
@@ -342,6 +351,7 @@ Located at `~/.vir/config.json`.
 | `articlesDir`       | _(unset)_                   | `raw/` dir for web articles. Unset → article ingestion off |
 | `distillArticles`   | `true`                      | Distill articles alongside sessions (needs `articlesDir`)  |
 | `filterToolCalls`   | `moderate`                  | Tool-output filtering: `aggressive` \| `moderate` \| `off` |
+| `retrievalDiversity`| `0.3`                       | MMR diversity (0..1): 0.0 = pure relevance, 1.0 = pure diversity |
 | `models.classify`   | `claude-haiku-4-5-20251001` | Classify model                                             |
 | `models.distill`    | `claude-sonnet-4-6`         | Distill model                                              |
 

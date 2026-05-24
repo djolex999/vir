@@ -35,6 +35,7 @@ function sampleConfig(): Config {
     filterThreshold: 0.4,
     distillArticles: true,
     filterToolCalls: "moderate",
+    retrievalDiversity: 0.3,
     models: {
       classify: "claude-haiku-4-5-20251001",
       distill: "claude-sonnet-4-6",

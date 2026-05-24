@@ -34,6 +34,16 @@ export interface SearchHit {
   method: "embedding" | "tfidf";
 }
 
+// A relevance-scored candidate carrying enough to both diversify (embedding) and
+// reconstruct the eventual SearchHit (docId = filePath, content). `score` already
+// includes the verified boost — MMR treats it as the relevance term.
+export interface ScoredCandidate {
+  docId: string;
+  score: number;
+  embedding: number[];
+  content: string;
+}
+
 const MIN_EMBEDDING_SCORE = 0.3;
 
 // Notes a user has approved via `vir review` carry `verified: true` in their
@@ -104,20 +114,74 @@ async function searchByEmbedding(
     const score = isVerified(content) ? s + VERIFIED_BOOST : s;
     enriched.push({ row: r, content, score });
   }
-  enriched.sort((a, b) => b.score - a.score);
 
-  const hits: SearchHit[] = [];
-  for (const { row, content, score } of enriched.slice(0, topK)) {
-    const rel = relative(root, row.filePath);
-    hits.push({
-      filePath: row.filePath,
+  // MMR reranks the relevance-sorted pool to balance relevance against diversity
+  // so results cover different facets of the query, not 5 near-duplicates. The
+  // candidate has the embedding it needs to diversify; docId carries the file
+  // path through so the hit can be reconstructed. (TF-IDF stays score-only —
+  // too sparse for MMR to help.)
+  const candidates: ScoredCandidate[] = enriched.map((e) => ({
+    docId: e.row.filePath,
+    score: e.score,
+    embedding: e.row.embedding,
+    content: e.content,
+  }));
+  // `retrievalDiversity` is user-facing (1.0 = pure diversity) so the config
+  // number reads naturally as "how much diversity". mmrRerank uses the standard
+  // MMR convention where lambda is the *relevance* weight, so invert here.
+  const ranked = mmrRerank(candidates, topK, 1 - cfg.retrievalDiversity);
+
+  return ranked.map((c) => {
+    const rel = relative(root, c.docId);
+    return {
+      filePath: c.docId,
       title: rel.replace(/\.md$/, ""),
-      content,
-      score: Math.round(score * 10000) / 10000,
-      method: "embedding",
-    });
+      content: c.content,
+      score: Math.round(c.score * 10000) / 10000,
+      method: "embedding" as const,
+    };
+  });
+}
+
+// Maximal Marginal Relevance: greedily reranks a candidate pool to trade off
+// relevance against diversity. lambda is the relevance weight — 1.0 is pure
+// relevance (MMR collapses to a score sort), 0.0 is pure diversity. The first
+// pick is always pure top relevance; each subsequent pick maximizes
+// `lambda*relevance - (1-lambda)*maxSimToSelected`. O(N*topK) over the pool.
+export function mmrRerank(
+  candidates: ScoredCandidate[],
+  topK: number,
+  lambda = 0.7,
+): ScoredCandidate[] {
+  if (candidates.length === 0 || topK <= 0) return [];
+
+  // Sort a copy so top-1 and the shortcut below are deterministic regardless of
+  // input order; the caller's array is left untouched.
+  const pool = [...candidates].sort((a, b) => b.score - a.score);
+
+  // Nothing to diversify: fewer candidates than slots, or only one slot.
+  if (pool.length <= topK || topK === 1) return pool.slice(0, topK);
+
+  const selected: ScoredCandidate[] = [pool.shift()!];
+  while (selected.length < topK && pool.length > 0) {
+    let bestIdx = 0;
+    let bestMmr = -Infinity;
+    for (let i = 0; i < pool.length; i += 1) {
+      const c = pool[i]!;
+      let maxSim = 0;
+      for (const sel of selected) {
+        const sim = cosineSimilarity(c.embedding, sel.embedding);
+        if (sim > maxSim) maxSim = sim;
+      }
+      const mmr = lambda * c.score - (1 - lambda) * maxSim;
+      if (mmr > bestMmr) {
+        bestMmr = mmr;
+        bestIdx = i;
+      }
+    }
+    selected.push(pool.splice(bestIdx, 1)[0]!);
   }
-  return hits;
+  return selected;
 }
 
 function searchByTfIdf(cfg: Config, query: string, topK: number): SearchHit[] {

@@ -43,6 +43,16 @@ export const ConfigSchema = z
     filterToolCalls: z
       .enum(["aggressive", "moderate", "off"])
       .default("moderate"),
+    // MMR diversity weight for `vir query` / `vir_query` retrieval. Applied in
+    // the embedding path only (TF-IDF is too sparse to benefit).
+    retrievalDiversity: z
+      .number()
+      .min(0)
+      .max(1)
+      .default(0.3)
+      .describe(
+        "MMR diversity parameter. 0.0 = pure relevance, 1.0 = pure diversity. Default 0.3 favors relevance with moderate diversity.",
+      ),
     models: z
       .object({
         classify: z.string().default("claude-haiku-4-5-20251001"),

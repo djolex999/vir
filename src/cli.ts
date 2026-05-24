@@ -1028,6 +1028,7 @@ async function cmdInit(): Promise<void> {
     articlesDir,
     distillArticles: existing?.distillArticles,
     filterToolCalls: existing?.filterToolCalls,
+    retrievalDiversity: existing?.retrievalDiversity,
     models: { classify: classifyModel, distill: distillModel },
   });
 
