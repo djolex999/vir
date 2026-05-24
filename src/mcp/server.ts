@@ -29,7 +29,7 @@ import { exit } from "node:process";
 import { z } from "zod";
 import { STATE_PATH, type Config } from "../config.js";
 import type { Category } from "../pipeline/types.js";
-import { kebab } from "../pipeline/writer.js";
+import { kebab, makeSlug } from "../pipeline/writer.js";
 import { search, type SearchHit } from "../search/retriever.js";
 import { synthesize } from "../search/synthesizer.js";
 import { StateDb } from "../state/db.js";
@@ -111,6 +111,21 @@ function excerpt(content: string): string {
   return body.replace(/\s+/g, " ").trim().slice(0, 200);
 }
 
+function isVerifiedContent(content: string): boolean {
+  return parseFrontmatter(content).verified === "true";
+}
+
+// Verified status lives in the note file's frontmatter, not SQLite — so a
+// DB-backed lister (vir_recent_notes) must reconstruct the path and read it.
+function noteIsVerified(vaultRoot: string, dir: string, fileBase: string): boolean {
+  try {
+    const fp = join(vaultRoot, dir, fileBase);
+    return existsSync(fp) && isVerifiedContent(readFileSync(fp, "utf8"));
+  } catch {
+    return false;
+  }
+}
+
 export async function runMcpServer(cfg: Config): Promise<void> {
   let db: StateDb;
   try {
@@ -129,7 +144,8 @@ export async function runMcpServer(cfg: Config): Promise<void> {
       description:
         "Search the knowledge vault for patterns, gotchas, decisions, and " +
         "tool insights from past Claude Code sessions. Use this before " +
-        "working on a task to consult prior learnings.",
+        "working on a task to consult prior learnings. Human-verified notes " +
+        "(approved via `vir review`) are ranked above unverified ones.",
       inputSchema: {
         query: z.string().describe("The question or topic to search for"),
         top_k: z
@@ -147,12 +163,19 @@ export async function runMcpServer(cfg: Config): Promise<void> {
           .string()
           .optional()
           .describe("Restrict results to one project slug"),
+        verified_only: z
+          .boolean()
+          .optional()
+          .describe(
+            "Return only human-verified notes (approved via `vir review`). " +
+              "Default false.",
+          ),
       },
     },
-    async ({ query, top_k, category, project }) => {
+    async ({ query, top_k, category, project, verified_only }) => {
       try {
         const topK = Math.min(Math.max(top_k ?? 5, 1), 10);
-        const hasFilter = Boolean(category || project);
+        const hasFilter = Boolean(category || project || verified_only);
         // Over-fetch when filtering so post-filtering can still fill top_k.
         const fetchK = hasFilter ? Math.min(30, topK * 5) : topK;
         const projSlug = project ? kebab(project) : null;
@@ -163,6 +186,7 @@ export async function runMcpServer(cfg: Config): Promise<void> {
             const meta = hitMeta(h);
             if (category && meta.category !== category) return false;
             if (projSlug && kebab(meta.project) !== projSlug) return false;
+            if (verified_only && !isVerifiedContent(h.content)) return false;
             return true;
           })
           .slice(0, topK);
@@ -271,9 +295,16 @@ export async function runMcpServer(cfg: Config): Promise<void> {
           .positive()
           .optional()
           .describe("Only notes from the last N days"),
+        verified_only: z
+          .boolean()
+          .optional()
+          .describe(
+            "Return only human-verified notes (approved via `vir review`). " +
+              "Default false.",
+          ),
       },
     },
-    async ({ limit, category, project, since_days }) => {
+    async ({ limit, category, project, since_days, verified_only }) => {
       try {
         const max = Math.min(Math.max(limit ?? 10, 1), 20);
         const projSlug = project ? kebab(project) : null;
@@ -281,6 +312,7 @@ export async function runMcpServer(cfg: Config): Promise<void> {
           typeof since_days === "number"
             ? Date.now() - since_days * 86_400_000
             : null;
+        const vaultRoot = join(cfg.vaultPath, cfg.outputDir);
 
         const notes = db
           .listDistilled()
@@ -291,6 +323,16 @@ export async function runMcpServer(cfg: Config): Promise<void> {
               if (!r.startedAt) return false;
               const t = Date.parse(r.startedAt);
               if (!Number.isFinite(t) || t < cutoff) return false;
+            }
+            if (
+              verified_only &&
+              !noteIsVerified(
+                vaultRoot,
+                `${r.category}s`,
+                `${makeSlug(r.topic, r.sessionId)}.md`,
+              )
+            ) {
+              return false;
             }
             return true;
           })

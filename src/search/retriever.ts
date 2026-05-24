@@ -36,6 +36,21 @@ export interface SearchHit {
 
 const MIN_EMBEDDING_SCORE = 0.3;
 
+// Notes a user has approved via `vir review` carry `verified: true` in their
+// frontmatter. They get a flat ranking boost so human-verified knowledge floats
+// above unverified auto-distillations of comparable relevance. Applied before
+// the topK slice in both the embedding and TF-IDF paths.
+const VERIFIED_BOOST = 0.2;
+
+// Cheap frontmatter check — true only when the YAML block has `verified: true`.
+function isVerified(raw: string): boolean {
+  const m = raw.match(/^---\n([\s\S]*?)\n---/);
+  if (!m?.[1]) return false;
+  return /(^|\n)\s*verified:\s*true\s*(\r?\n|$)/i.test(m[1]);
+}
+
+// Verified notes get +VERIFIED_BOOST, pushing human-approved knowledge to the
+// top of results over unverified auto-distillations of similar relevance.
 export async function search(
   cfg: Config,
   db: StateDb,
@@ -69,22 +84,28 @@ async function searchByEmbedding(
   const rows = db.getEmbeddings(root);
   if (rows.length === 0) return [];
 
-  const scored: Array<{ row: (typeof rows)[number]; score: number }> = [];
+  // Read each candidate's content once, here, so the verified boost can be
+  // applied BEFORE the topK slice — a verified note must be able to outrank an
+  // unverified one just outside the window. Reads are bounded to docs above the
+  // cosine floor (a personal-scale vault), and the content is reused for hits.
+  const enriched: Array<{ row: (typeof rows)[number]; content: string; score: number }> = [];
   for (const r of rows) {
     const s = cosineSimilarity(queryVec, r.embedding);
-    if (s >= MIN_EMBEDDING_SCORE) scored.push({ row: r, score: s });
-  }
-  scored.sort((a, b) => b.score - a.score);
-
-  const hits: SearchHit[] = [];
-  for (const { row, score } of scored.slice(0, topK)) {
+    if (s < MIN_EMBEDDING_SCORE) continue;
     let content = "";
     try {
-      content = existsSync(row.filePath) ? readFileSync(row.filePath, "utf8") : "";
+      content = existsSync(r.filePath) ? readFileSync(r.filePath, "utf8") : "";
     } catch {
       content = "";
     }
     if (content.length === 0) continue;
+    const score = isVerified(content) ? s + VERIFIED_BOOST : s;
+    enriched.push({ row: r, content, score });
+  }
+  enriched.sort((a, b) => b.score - a.score);
+
+  const hits: SearchHit[] = [];
+  for (const { row, content, score } of enriched.slice(0, topK)) {
     const rel = relative(root, row.filePath);
     hits.push({
       filePath: row.filePath,
@@ -175,6 +196,9 @@ export function searchTfIdf(
       score += tfNorm * idf;
     }
     if (score > 0) {
+      // Boost only docs that already match the query (score > 0) so a verified
+      // note can't surface on zero lexical overlap.
+      if (isVerified(d.raw)) score += VERIFIED_BOOST;
       scored.push({
         relPath: d.relPath,
         title: d.title,

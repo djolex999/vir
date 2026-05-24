@@ -57,6 +57,10 @@ export class VaultWriter {
       `session_id: ${session.sessionId}`,
       `date: ${session.startedAt ?? new Date().toISOString()}`,
       `confidence: ${classification.confidence}`,
+      // A user's review verdict (set by `vir review`) lives in frontmatter, not
+      // SQLite — so any rewrite of the file (rewrite-only OR a --full re-distill
+      // that re-emits an existing note) would clobber it. Carry it over verbatim.
+      ...this.preservedReviewFields(fullPath),
       "---",
       "",
     ].join("\n");
@@ -117,6 +121,30 @@ export class VaultWriter {
       join(this.root, "index.md"),
       body.length > 0 ? `${header}${body}\n` : header,
     );
+  }
+
+  // Read back any review verdict already stamped on an existing note so a
+  // rewrite preserves it. Returns the raw frontmatter lines (e.g.
+  // `verified: true`) in stable order; [] for a brand-new note or no fields.
+  private preservedReviewFields(fullPath: string): string[] {
+    if (!existsSync(fullPath)) return [];
+    let content: string;
+    try {
+      content = readFileSync(fullPath, "utf8");
+    } catch {
+      return [];
+    }
+    const m = content.match(/^---\n([\s\S]*?)\n---/);
+    if (!m?.[1]) return [];
+    const keep = ["verified", "reviewed_at", "rejected_at"];
+    const found = new Map<string, string>();
+    for (const line of m[1].split("\n")) {
+      const idx = line.indexOf(":");
+      if (idx === -1) continue;
+      const key = line.slice(0, idx).trim();
+      if (keep.includes(key) && !found.has(key)) found.set(key, line.trim());
+    }
+    return keep.filter((k) => found.has(k)).map((k) => found.get(k)!);
   }
 
   // Best-effort: embed the freshly-written note via Ollama and store the
@@ -212,7 +240,7 @@ export class VaultWriter {
   }
 }
 
-function makeSlug(topic: string, sessionId: string): string {
+export function makeSlug(topic: string, sessionId: string): string {
   const base = kebab(topic).slice(0, 50);
   const suffix = sessionId.slice(0, 8);
   return base.length > 0 ? `${base}-${suffix}` : `note-${suffix}`;

@@ -18,7 +18,7 @@ developer-tools, mcp, local-first, cross-platform, llm-wiki
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/v/@djolex999/vir-cli?color=7c6af7&label=npm" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/dw/@djolex999/vir-cli?color=4fd1a0" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee" alt="license"></a>
-  <a href="#project-status"><img src="https://img.shields.io/badge/tests-50%20passing-22c55e" alt="tests"></a>
+  <a href="#project-status"><img src="https://img.shields.io/badge/tests-59%20passing-22c55e" alt="tests"></a>
   <a href="#project-status"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey" alt="platforms"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-c084fc" alt="mcp"></a>
   <a href="#"><img src="https://img.shields.io/badge/local--first-yes-f59e0b" alt="local-first"></a>
@@ -72,6 +72,10 @@ results, not better."_ Fair. Vir addresses it in layers:
   inspect.
 - **Lint and dedupe.** `vir lint` flags contradictions and stale notes;
   `vir dedupe` merges similar notes that have drifted apart.
+- **Active learning** via `vir review`. Walk through new distillations and
+  approve, edit, or reject each one. Verified notes get retrieval priority over
+  unverified ones (in `vir query` and the MCP server). Rejected notes are moved
+  to `.rejected/` — recoverable, not deleted.
 
 The bet: with these controls, signal-to-noise stays high enough that the vault
 is a net positive. If your discipline is strong enough to maintain `CLAUDE.md`
@@ -247,6 +251,9 @@ with your distro, init system, and Node version.
 | `vir lint --stale`          | free  | Staleness check only                      |
 | `vir lint --contradictions` | cheap | Contradiction check (Haiku)               |
 | `vir dedupe`                | cheap | Interactive duplicate detection           |
+| `vir review`                | free  | Walk new notes: approve/edit/reject       |
+| `vir review --project <s>`  | free  | Review one project's notes                |
+| `vir review --all`          | free  | Re-review, including verified notes        |
 | `vir sync-claude`           | free  | Inject top knowledge into CLAUDE.md       |
 | `vir sync-claude --dry-run` | free  | Preview changes, no writes                |
 | `vir sync-claude --force`   | free  | Apply without confirmation                |
@@ -270,6 +277,8 @@ vir mcp install
 
 Restart Claude Code. The vault is now queryable mid-session via four tools:
 `vir_query`, `vir_status`, `vir_recent_notes`, `vir_project_summary`.
+Human-verified notes (approved via `vir review`) are ranked first; pass
+`verified_only: true` to `vir_query` or `vir_recent_notes` to see only those.
 
 To unregister:
 
@@ -340,7 +349,7 @@ vault/vir/
 
 |                |                                           |
 | -------------- | ----------------------------------------- |
-| Tests          | 50 passing                                |
+| Tests          | 59 passing                                |
 | Platforms      | macOS (launchd), Linux (systemd/cron)     |
 | Node           | 20+                                       |
 | First-run cost | $1–5 (Kie.ai recommended for 72% savings) |
@@ -349,7 +358,7 @@ vault/vir/
 ## Roadmap
 
 - [x] Linux support (systemd timer + cron fallback) — experimental
-- [ ] Active learning — `vir review` to approve, edit, or reject distillations, with verified notes prioritized in retrieval
+- [x] Active learning — `vir review` to approve, edit, or reject distillations, with verified notes prioritized in retrieval
 - [ ] Windows support
 - [ ] GUI installer for non-developers
 - [ ] Obsidian plugin for in-vault queries

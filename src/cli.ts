@@ -37,6 +37,7 @@ import {
 import { search } from "./search/retriever.js";
 import { synthesize } from "./search/synthesizer.js";
 import { runMcpServer } from "./mcp/server.js";
+import { runReview } from "./cli/review.js";
 import {
   installToClaudeCode,
   isClaudeAvailable,
@@ -609,6 +610,14 @@ program
     ui.blank();
     renderDaemon(ds, cfg.cadenceHours);
   });
+
+program
+  .command("review")
+  .description("Walk through new distilled notes and approve/edit/reject")
+  .option("--all", "Review all notes, including verified ones")
+  .option("--project <slug>", "Filter by project")
+  .option("--limit <n>", "Max notes to review in this session", "50")
+  .action(runReview);
 
 program
   .command("doctor")

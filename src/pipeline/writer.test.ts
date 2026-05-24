@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -97,5 +97,25 @@ describe("VaultWriter write modes", () => {
 
     const index = readFileSync(join(vault, "vir", "index.md"), "utf8");
     expect(index).toContain("test topic");
+  });
+
+  it("preserves a reviewer's verified/reviewed_at fields on rewrite", async () => {
+    const writer = new VaultWriter(makeCfg(vault), null);
+    const [notePath] = await writer.write(makeSession(), makeNote());
+
+    // Simulate `vir review` approving the note by stamping its frontmatter.
+    const original = readFileSync(notePath!, "utf8");
+    const reviewed = original.replace(
+      /\nconfidence: 0\.9\n/,
+      "\nconfidence: 0.9\nverified: true\nreviewed_at: 2026-05-24T00:00:00.000Z\n",
+    );
+    writeFileSync(notePath!, reviewed);
+
+    // A later rewrite (or --full re-distill) must not wipe the verdict.
+    await writer.write(makeSession(), makeNote(), "rewrite");
+
+    const after = readFileSync(notePath!, "utf8");
+    expect(after).toContain("verified: true");
+    expect(after).toContain("reviewed_at: 2026-05-24T00:00:00.000Z");
   });
 });
