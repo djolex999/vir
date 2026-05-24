@@ -18,7 +18,7 @@ developer-tools, mcp, local-first, cross-platform, llm-wiki
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/v/@djolex999/vir-cli?color=7c6af7&label=npm" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/dw/@djolex999/vir-cli?color=4fd1a0" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee" alt="license"></a>
-  <a href="#project-status"><img src="https://img.shields.io/badge/tests-79%20passing-22c55e" alt="tests"></a>
+  <a href="#project-status"><img src="https://img.shields.io/badge/tests-85%20passing-22c55e" alt="tests"></a>
   <a href="#project-status"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey" alt="platforms"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-c084fc" alt="mcp"></a>
   <a href="#"><img src="https://img.shields.io/badge/local--first-yes-f59e0b" alt="local-first"></a>
@@ -27,18 +27,25 @@ developer-tools, mcp, local-first, cross-platform, llm-wiki
 
 ## The pattern
 
-Recently, Andrej Karpathy described a pattern he calls the **LLM Wiki** — AI work
-that feeds back into itself through a persistent, curated, structured artifact,
-instead of resetting at the end of every session. He ended his post with: _"I
-think there is room here for an incredible new product instead of a hacky
-collection of scripts."_
+In April 2026, Andrej Karpathy described a pattern he calls the **LLM Wiki** — AI
+work that feeds back into itself through a persistent, curated, structured
+artifact, instead of resetting at the end of every session. He published the idea
+file at [karpathy/llm-wiki.md](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
+and ended his
+post saying: _"I think there is room here for an incredible new product instead of
+a hacky collection of scripts."_
 
-Vir is one implementation of that pattern, with Obsidian as the frontend.
+Several open source implementations of this pattern now exist
+([lucasastorian/llmwiki](https://github.com/lucasastorian/llmwiki),
+[Pratiyush/llm-wiki](https://github.com/Pratiyush/llm-wiki),
+[nashsu/llm_wiki](https://github.com/nashsu/llm_wiki) among them). Each takes a
+different shape.
 
-> Vir reads two input sources today: Claude Code session transcripts (`.jsonl`)
-> and web articles (markdown clipped via Obsidian Web Clipper). Both get
-> distilled into the same vault. Future versions will add PDFs, code repos, and
-> images — matching the full LLM Wiki pattern.
+Vir is the Obsidian-native one. It treats Obsidian as the primary frontend — not
+just a storage location — and integrates deeply (sidebar plugin coming,
+dataview-compatible frontmatter, canvas integration planned). It reads AI coding
+session transcripts retroactively, so months of existing history become a
+queryable knowledge base in one run.
 
 [Karpathy's post →](https://x.com/karpathy/status/2039805659525644595)
 
@@ -56,6 +63,20 @@ implementation of [the pattern above](#the-pattern).
 <p align="center">
   <img src="assets/demo.gif" width="800" alt="vir distilling Claude Code sessions into notes in an Obsidian vault">
 </p>
+
+## What's coming
+
+Vir is actively developed. In the next 30–60 days:
+
+- **Obsidian plugin v1** — sidebar, command palette, canvas integration,
+  submitted to the community plugin marketplace
+- **Multi-agent support** — Codex CLI, Cursor, Aider, Cline (one per release)
+- **Topic synthesis** — `vir compose` generates LLM Wiki-style topic pages that
+  merge insights across sessions
+- **PDF/paper ingestion** — broaden beyond developer workflows
+
+Track progress via [GitHub issues](https://github.com/djolex999/vir/issues) or
+watch the repo for releases.
 
 ## Quality controls
 
@@ -125,32 +146,41 @@ better sessions
 
 ## How Vir compares
 
-The AI memory space has grown fast. An honest comparison to the options worth
-knowing about:
+The LLM Wiki space has grown fast. Honest comparison:
 
-|                                     | Vir                             | claude-mem              | claude-memory              | mem0              |
-| ----------------------------------- | ------------------------------- | ----------------------- | -------------------------- | ----------------- |
-| Reads existing Claude Code sessions | ✓                               | from install forward    | from install forward       | n/a               |
-| Markdown output (Obsidian-native)   | ✓                               | ChromaDB                | LanceDB                    | various backends  |
-| MCP server                          | ✓                               | ✓                       | ✓                          | n/a               |
-| Setup complexity                    | `npm install -g`                | Bun + Python + ChromaDB | pnpm + LM Studio + LanceDB | API/cloud setup   |
-| Cross-platform daemon               | mac launchd, linux systemd/cron | mac, linux              | mac, linux                 | n/a               |
-| Open source license                 | MIT                             | Apache 2.0              | MIT                        | open core + cloud |
+### vs other LLM Wiki implementations
 
-**Different tools for different needs:**
+|                                   | Vir                          | lucasastorian/llmwiki         | Pratiyush/llm-wiki                       | nashsu/llm_wiki           |
+| --------------------------------- | ---------------------------- | ----------------------------- | ---------------------------------------- | ------------------------- |
+| Language                          | TypeScript / Node            | Python                        | Python                                   | Cross-platform desktop    |
+| Distribution                      | `npm install -g`             | Local app + hosted SaaS       | `git clone` + python                     | Desktop app installer     |
+| Obsidian integration              | Native (plugin v1 in dev)    | Markdown output               | Outputs to vault                         | Own UI, no Obsidian       |
+| Input sources                     | Claude Code, Web Clipper (more agents coming) | PDFs, docs upload | Claude Code, Cursor, Cline, Codex, Gemini | Documents, mixed sources  |
+| Retroactive on existing sessions  | ✓                            | n/a                           | from install forward                     | n/a                       |
+| MCP server                        | ✓                            | ✓                             | ✓                                        | ✓                         |
+| License                           | MIT                          | open source + hosted commercial | MIT                                    | open source               |
 
-- Want a heavyweight memory plugin with real-time capture and vector storage?
-  Use **claude-mem**.
-- Want sophisticated retrieval (MMR diversity, web dashboard, multi-phase
-  maintenance)? Use **claude-memory**.
-- Building AI applications that need to remember users long-term? Use **mem0** —
-  it's infrastructure for apps.
-- Want your Claude Code sessions distilled into markdown notes you can browse,
-  edit, and own in Obsidian? Use **Vir**.
+### vs Claude Code memory tools
 
-These aren't all competitors. mem0 is a different layer of the stack entirely.
-claude-mem and claude-memory share the same input data as Vir but take different
-opinions on storage and integration.
+|                                     | Vir              | claude-mem           | claude-memory      | mem0              |
+| ----------------------------------- | ---------------- | -------------------- | ------------------ | ----------------- |
+| Reads existing Claude Code sessions | ✓                | from install forward | from install forward | n/a             |
+| Markdown output                     | ✓                | ChromaDB             | LanceDB            | various backends  |
+| Setup                               | `npm install -g` | Bun + uv + Python    | pnpm + LM Studio   | API/cloud setup   |
+| License                             | MIT              | Apache 2.0           | MIT                | open core + cloud |
+
+### Different tools for different needs:
+
+- **If you want a polished cross-platform desktop app** for general document
+  knowledge bases, use lucasastorian/llmwiki or nashsu/llm_wiki.
+- **If you want multi-agent support** with rich entity/concept page taxonomy and
+  don't care about Obsidian integration depth, use Pratiyush/llm-wiki.
+- **If you want a heavyweight Claude Code memory plugin** with real-time capture
+  and vector storage, use claude-mem.
+- **If you're building AI applications that need to remember users** long-term,
+  use mem0 (different layer entirely).
+- **If you want an Obsidian-native LLM Wiki** that reads your existing Claude Code
+  sessions and is on its way to supporting multiple AI coding agents, use Vir.
 
 ## Real-world results
 
@@ -164,6 +194,11 @@ Real output from the author's first run across 226 Claude Code sessions.
 | High signal (≥0.8)  | 121 of 126                                        |
 | Projects covered    | 8 projects                                        |
 | Knowledge breakdown | 54 patterns · 47 decisions · 23 gotchas · 2 tools |
+
+These numbers show Vir works at scale, not that it's uniquely capable. Other LLM
+Wiki implementations would produce similar results with the same input. The
+distinguishing question for Vir is workflow fit — does the Obsidian-native +
+retroactive + multi-agent positioning match how you actually work?
 
 Example query against the distilled vault:
 
@@ -382,7 +417,7 @@ vault/vir/
 
 |                |                                           |
 | -------------- | ----------------------------------------- |
-| Tests          | 79 passing                                |
+| Tests          | 85 passing                                |
 | Platforms      | macOS (launchd), Linux (systemd/cron)     |
 | Node           | 20+                                       |
 | First-run cost | $1–5 (Kie.ai recommended for 72% savings) |
