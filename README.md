@@ -5,67 +5,91 @@
 <h1 align="center">vir</h1>
 
 <p align="center">
-  Distills Claude Code sessions into a compounding knowledge vault.
+  An LLM Wiki for Claude Code, in your Obsidian vault.
 </p>
 
 <!--
 GitHub topics (add manually: repo → About → ⚙ → Topics):
 claude, claude-code, ai-memory, obsidian, knowledge-base, llm,
-developer-tools, mcp, local-first, cross-platform
+developer-tools, mcp, local-first, cross-platform, llm-wiki
 -->
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/v/@djolex999/vir-cli?color=7c6af7&label=npm" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/dw/@djolex999/vir-cli?color=4fd1a0" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee" alt="license"></a>
-  <a href="#quality"><img src="https://img.shields.io/badge/tests-25%20passing-22c55e" alt="tests"></a>
-  <a href="#quality"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey" alt="platforms"></a>
+  <a href="#project-status"><img src="https://img.shields.io/badge/tests-50%20passing-22c55e" alt="tests"></a>
+  <a href="#project-status"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey" alt="platforms"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-c084fc" alt="mcp"></a>
   <a href="#"><img src="https://img.shields.io/badge/local--first-yes-f59e0b" alt="local-first"></a>
   <a href="https://github.com/djolex999/vir"><img src="https://img.shields.io/github/stars/djolex999/vir?style=social" alt="stars"></a>
 </p>
 
+## The pattern
+
+Recently, Andrej Karpathy described a pattern he calls the **LLM Wiki** — AI work
+that feeds back into itself through a persistent, curated, structured artifact,
+instead of resetting at the end of every session. He ended his post with: _"I
+think there is room here for an incredible new product instead of a hacky
+collection of scripts."_
+
+Vir is one implementation of that pattern, focused on Claude Code sessions with
+Obsidian as the frontend.
+
+[Karpathy's post →](https://x.com/karpathy/status/2039805659525644595)
+
+## Why this exists
+
+Every Claude Code session produces patterns, gotchas, and architecture decisions.
+Almost all of it ends up in `~/.claude/projects/**/*.jsonl` — transcripts you
+open once and never again. The knowledge is real; the storage is a graveyard.
+
+Vir reads those transcripts, distills the durable knowledge into typed markdown
+notes in your Obsidian vault, and feeds the best of it back into your `CLAUDE.md`
+files — so every future session starts sharper than the last. It's a concrete
+implementation of [the pattern above](#the-pattern).
+
 <p align="center">
-  <img src="assets/demo.gif" width="800" alt="vir demo">
+  <img src="assets/demo.gif" width="800" alt="vir distilling Claude Code sessions into notes in an Obsidian vault">
 </p>
 
-## What it does
+## Quality controls
 
-Every Claude Code session produces patterns, gotchas, and architecture
-decisions — and 95% of it sits in JSONL transcripts you never open again.
+Auto-distilled notes can be wrong. The most common concern from early users:
+_"if your distillations are wrong, Claude treats them as truth and you get worse
+results, not better."_ Fair. Vir addresses it in layers:
 
-Vir runs on a schedule, distills your sessions into structured markdown in your
-Obsidian vault, and feeds that knowledge back into your `CLAUDE.md` files. Every
-future session starts sharper than the last.
+- **Confidence scores on every note**, written into the frontmatter
+  (`confidence: 0.xx`). A cheap heuristic pre-filter drops low-signal sessions
+  before any LLM call; classification then scores what survives, and anything at
+  or below `0.6` is dropped _before_ the more expensive distill step. Only
+  high-confidence notes reach the vault.
+- **Opt-in `CLAUDE.md` sync.** Nothing vir generates touches your prompt context
+  automatically. `vir sync-claude` shows a diff and waits for your confirmation —
+  you decide what reaches Claude.
+- **Plain markdown output.** Every note is a file in your Obsidian vault. Read
+  it, edit it, delete it. Nothing is hidden in a compressed database you can't
+  inspect.
+- **Lint and dedupe.** `vir lint` flags contradictions and stale notes;
+  `vir dedupe` merges similar notes that have drifted apart.
+
+The bet: with these controls, signal-to-noise stays high enough that the vault
+is a net positive. If your discipline is strong enough to maintain `CLAUDE.md`
+and `lessons.md` by hand, you may not need this. If — like most of us — you let
+those files drift after the first week, Vir catches what slips through.
 
 ## How it works
 
-Vir reads your Claude Code transcripts from `~/.claude/projects/**/*.jsonl`,
-runs each session through a cheap heuristic filter, then classifies the
-survivors with Haiku and distills durable knowledge with Sonnet. Before
-distillation, **tool calls are filtered**: it preserves tool *intent* (file
-paths, commands, search patterns, errors, and short results) for better notes,
-while truncating large embedded content (file writes, edit strings, long bash
-logs, big grep dumps) to keep token cost bounded — tunable via `filterToolCalls`.
-The results are
-written as typed notes (patterns, gotchas, decisions, tools) into your Obsidian
-vault, cross-linked with wikilinks and indexed. State lives in a local SQLite
-database — content hashes make reruns idempotent, and embeddings (optional, via
-Ollama) power semantic search. An MCP server exposes the whole vault to Claude
-Code as queryable tools, so future sessions can consult what past sessions
-learned.
-
-## Why Vir?
-
-Vir (вир) is the Serbian word for whirlpool — the place where a river pulls
-everything in and concentrates it. That is exactly what this tool does.
-Sessions flow in, Vir pulls out what matters, and deposits it somewhere
-permanent.
-
-The name felt right for a tool whose job is to take the chaos of a Claude Code
-session and find the still point at the center.
-
-## The loop
+Vir reads your transcripts from `~/.claude/projects/**/*.jsonl`, runs each
+session through a cheap heuristic filter, classifies the survivors with Haiku,
+and distills durable knowledge with Sonnet. Before distillation it **filters tool
+calls** — preserving intent (file paths, commands, search patterns, errors, short
+results) while truncating large embedded content (file writes, long bash logs,
+big grep dumps) to keep token cost bounded (tunable via `filterToolCalls`).
+Results are written as typed notes — patterns, gotchas, decisions, tools —
+cross-linked with wikilinks and indexed. State lives in local SQLite; content
+hashes make reruns idempotent. Optional Ollama embeddings power semantic search,
+and an MCP server exposes the whole vault to Claude Code mid-session.
 
 ```
 Claude Code sessions
@@ -81,17 +105,46 @@ better sessions
      ...
 ```
 
-## After one night
+## How Vir compares
+
+The AI memory space has grown fast. An honest comparison to the options worth
+knowing about:
+
+|                                     | Vir                             | claude-mem              | claude-memory              | mem0              |
+| ----------------------------------- | ------------------------------- | ----------------------- | -------------------------- | ----------------- |
+| Reads existing Claude Code sessions | ✓                               | from install forward    | from install forward       | n/a               |
+| Markdown output (Obsidian-native)   | ✓                               | ChromaDB                | LanceDB                    | various backends  |
+| MCP server                          | ✓                               | ✓                       | ✓                          | n/a               |
+| Setup complexity                    | `npm install -g`                | Bun + Python + ChromaDB | pnpm + LM Studio + LanceDB | API/cloud setup   |
+| Cross-platform daemon               | mac launchd, linux systemd/cron | mac, linux              | mac, linux                 | n/a               |
+| Open source license                 | MIT                             | Apache 2.0              | MIT                        | open core + cloud |
+
+**Different tools for different needs:**
+
+- Want a heavyweight memory plugin with real-time capture and vector storage?
+  Use **claude-mem**.
+- Want sophisticated retrieval (MMR diversity, web dashboard, multi-phase
+  maintenance)? Use **claude-memory**.
+- Building AI applications that need to remember users long-term? Use **mem0** —
+  it's infrastructure for apps.
+- Want your Claude Code sessions distilled into markdown notes you can browse,
+  edit, and own in Obsidian? Use **Vir**.
+
+These aren't all competitors. mem0 is a different layer of the stack entirely.
+claude-mem and claude-memory share the same input data as Vir but take different
+opinions on storage and integration.
+
+## Real-world results
 
 Real output from the author's first run across 226 Claude Code sessions.
 
-| Metric | Value |
-|---|---|
-| Sessions scanned | 226 |
-| Notes distilled | 126 |
-| Avg confidence | 0.91 |
-| High signal (≥0.8) | 121 of 126 |
-| Projects covered | 8 projects |
+| Metric              | Value                                             |
+| ------------------- | ------------------------------------------------- |
+| Sessions scanned    | 226                                               |
+| Notes distilled     | 126                                               |
+| Avg confidence      | 0.91                                              |
+| High signal (≥0.8)  | 121 of 126                                        |
+| Projects covered    | 8 projects                                        |
 | Knowledge breakdown | 54 patterns · 47 decisions · 23 gotchas · 2 tools |
 
 Example query against the distilled vault:
@@ -99,6 +152,7 @@ Example query against the distilled vault:
 ```bash
 $ vir query "what gotchas should I know about my auth implementation"
 ```
+
 Based on the notes, here are the key auth gotchas:
 
 JWT dual-token setup needs silent refresh on mount — access tokens
@@ -117,7 +171,7 @@ Logout must clear both the access token cookie and the refresh
 token — clearing only one leaves the session partially alive and
 causes confusing re-auth loops.
 
-sources 4  ·  via embedding  ·  searched 126
+sources 4 · via embedding · searched 126
 
 ## Prerequisites
 
@@ -163,12 +217,12 @@ Pass `--yes` to skip the cost confirmation prompt.
 
 ## Platform support
 
-| Platform | Daemon | Notifications | Status |
-|---|---|---|---|
-| macOS | launchd | osascript | Stable |
-| Linux (systemd) | systemd user timer | notify-send | Experimental |
-| Linux (cron) | crontab | notify-send | Experimental |
-| Windows | Not supported | — | Planned |
+| Platform        | Daemon             | Notifications | Status       |
+| --------------- | ------------------ | ------------- | ------------ |
+| macOS           | launchd            | osascript     | Stable       |
+| Linux (systemd) | systemd user timer | notify-send   | Experimental |
+| Linux (cron)    | crontab            | notify-send   | Experimental |
+| Windows         | Not supported      | —             | Planned      |
 
 Linux support is **experimental and untested** — `vir schedule install` prefers
 a systemd user timer and falls back to a crontab entry when systemd is absent.
@@ -178,59 +232,30 @@ with your distro, init system, and Node version.
 
 ## Commands
 
-| Command | Cost | Description |
-|---|---|---|
-| `vir init` | free | Interactive setup |
-| `vir run` | cheap | Process new sessions |
-| `vir run --full` | $$ | Reprocess all sessions |
-| `vir run --rewrite-only` | free | Reformat notes, no API calls |
-| `vir run --yes` | cheap | Skip cost confirmation |
-| `vir query "<question>"` | cheap | Semantic search your vault |
-| `vir summarize <project>` | cheap | Cross-session project synthesis |
-| `vir summarize --all` | $$ | Summarize all projects |
-| `vir lint` | cheap | Find orphans, stale notes, contradictions |
-| `vir lint --orphans` | free | Orphan check only |
-| `vir lint --stale` | free | Staleness check only |
-| `vir lint --contradictions` | cheap | Contradiction check (Haiku) |
-| `vir dedupe` | cheap | Interactive duplicate detection |
-| `vir sync-claude` | free | Inject top knowledge into CLAUDE.md |
-| `vir sync-claude --dry-run` | free | Preview changes, no writes |
-| `vir sync-claude --force` | free | Apply without confirmation |
-| `vir embed` | free | Generate embeddings for semantic search |
-| `vir embed --force` | free | Regenerate all embeddings |
-| `vir schedule install` | free | Register the background daemon |
-| `vir schedule uninstall` | free | Remove the background daemon |
-| `vir status` | free | Knowledge heatmap + daemon status |
-| `vir doctor` | cheap | Diagnose installation issues |
-
-## Quality
-
-| | |
-|---|---|
-| Tests | 30 passing |
-| Platforms | macOS (launchd), Linux (systemd/cron) |
-| Node | 20+ |
-| First-run cost | $1–5 (Kie.ai recommended for 72% savings) |
-| Ongoing cost | ~$0.05 per run |
-
-## Semantic search (optional)
-
-Vir uses TF-IDF by default. For semantic search via embeddings:
-
-```bash
-brew install ollama
-ollama pull nomic-embed-text
-ollama serve
-```
-
-Then in a new terminal:
-
-```bash
-vir embed
-vir query "how do I handle rate limiting in Next.js"
-```
-
-Falls back to TF-IDF automatically if Ollama is not running.
+| Command                     | Cost  | Description                               |
+| --------------------------- | ----- | ----------------------------------------- |
+| `vir init`                  | free  | Interactive setup                         |
+| `vir run`                   | cheap | Process new sessions                      |
+| `vir run --full`            | $$    | Reprocess all sessions                    |
+| `vir run --rewrite-only`    | free  | Reformat notes, no API calls              |
+| `vir run --yes`             | cheap | Skip cost confirmation                    |
+| `vir query "<question>"`    | cheap | Semantic search your vault                |
+| `vir summarize <project>`   | cheap | Cross-session project synthesis           |
+| `vir summarize --all`       | $$    | Summarize all projects                    |
+| `vir lint`                  | cheap | Find orphans, stale notes, contradictions |
+| `vir lint --orphans`        | free  | Orphan check only                         |
+| `vir lint --stale`          | free  | Staleness check only                      |
+| `vir lint --contradictions` | cheap | Contradiction check (Haiku)               |
+| `vir dedupe`                | cheap | Interactive duplicate detection           |
+| `vir sync-claude`           | free  | Inject top knowledge into CLAUDE.md       |
+| `vir sync-claude --dry-run` | free  | Preview changes, no writes                |
+| `vir sync-claude --force`   | free  | Apply without confirmation                |
+| `vir embed`                 | free  | Generate embeddings for semantic search   |
+| `vir embed --force`         | free  | Regenerate all embeddings                 |
+| `vir schedule install`      | free  | Register the background daemon            |
+| `vir schedule uninstall`    | free  | Remove the background daemon              |
+| `vir status`                | free  | Knowledge heatmap + daemon status         |
+| `vir doctor`                | cheap | Diagnose installation issues              |
 
 ## MCP server (Claude Code integration)
 
@@ -252,23 +277,42 @@ To unregister:
 vir mcp uninstall
 ```
 
+## Semantic search (optional)
+
+Vir uses TF-IDF by default. For semantic search via embeddings:
+
+```bash
+brew install ollama
+ollama pull nomic-embed-text
+ollama serve
+```
+
+Then in a new terminal:
+
+```bash
+vir embed
+vir query "how do I handle rate limiting in Next.js"
+```
+
+Falls back to TF-IDF automatically if Ollama is not running.
+
 ## Config reference
 
 Located at `~/.vir/config.json`.
 
-| Field | Default | Description |
-|---|---|---|
-| `vaultPath` | — | Absolute path to Obsidian vault |
-| `outputDir` | `vir` | Subdir inside vault |
-| `claudeProjectsDir` | `~/.claude/projects` | Claude Code sessions |
-| `cadenceHours` | `3` | Daemon run frequency (hours) |
-| `provider` | `anthropic` | `anthropic` or `kie` |
-| `anthropicApiKey` | — | Required if `provider=anthropic` |
-| `kieApiKey` | — | Required if `provider=kie` |
-| `filterThreshold` | `0.4` | Heuristic pre-filter (0..1) |
-| `filterToolCalls` | `moderate` | Tool-output filtering: `aggressive` \| `moderate` \| `off` |
-| `models.classify` | `claude-haiku-4-5-20251001` | Classify model |
-| `models.distill` | `claude-sonnet-4-6` | Distill model |
+| Field               | Default                     | Description                                                |
+| ------------------- | --------------------------- | ---------------------------------------------------------- |
+| `vaultPath`         | —                           | Absolute path to Obsidian vault                            |
+| `outputDir`         | `vir`                       | Subdir inside vault                                        |
+| `claudeProjectsDir` | `~/.claude/projects`        | Claude Code sessions                                       |
+| `cadenceHours`      | `3`                         | Daemon run frequency (hours)                               |
+| `provider`          | `anthropic`                 | `anthropic` or `kie`                                       |
+| `anthropicApiKey`   | —                           | Required if `provider=anthropic`                           |
+| `kieApiKey`         | —                           | Required if `provider=kie`                                 |
+| `filterThreshold`   | `0.4`                       | Heuristic pre-filter (0..1)                                |
+| `filterToolCalls`   | `moderate`                  | Tool-output filtering: `aggressive` \| `moderate` \| `off` |
+| `models.classify`   | `claude-haiku-4-5-20251001` | Classify model                                             |
+| `models.distill`    | `claude-sonnet-4-6`         | Distill model                                              |
 
 ## Vault structure
 
@@ -292,20 +336,20 @@ vault/vir/
 ~/.vir/daemon.log    — daemon run log
 ```
 
-## How it compares
+## Project status
 
-| | Vir | mem0 | Manual notes |
-|---|---|---|---|
-| Source | Claude Code sessions | Any conversation | You |
-| Output | Typed markdown vault | Key-value store | Anything |
-| CLAUDE.md injection | ✓ | ✗ | Manual |
-| Local / private | ✓ | ✗ | ✓ |
-| Semantic search | ✓ (Ollama) | ✓ | ✗ |
-| Cost | ~$0.05/run | Subscription | Free |
+|                |                                           |
+| -------------- | ----------------------------------------- |
+| Tests          | 50 passing                                |
+| Platforms      | macOS (launchd), Linux (systemd/cron)     |
+| Node           | 20+                                       |
+| First-run cost | $1–5 (Kie.ai recommended for 72% savings) |
+| Ongoing cost   | ~$0.05 per run                            |
 
 ## Roadmap
 
 - [x] Linux support (systemd timer + cron fallback) — experimental
+- [ ] Active learning — `vir review` to approve, edit, or reject distillations, with verified notes prioritized in retrieval
 - [ ] Windows support
 - [ ] GUI installer for non-developers
 - [ ] Obsidian plugin for in-vault queries
@@ -331,9 +375,13 @@ npm test
 
 MIT
 
-## Author
+## Author & credits
 
 Built by Djordje Marković / GrowthQ Lab DOO.
+
+Vir (вир) is the Serbian word for _whirlpool_ — the place where a river pulls
+everything in and concentrates it. Sessions flow in, Vir pulls out what matters,
+and deposits it somewhere permanent.
 
 Inspired by Andrej Karpathy's LLM Wiki pattern and Uros Pesic's KB Brain concept.
 
