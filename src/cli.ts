@@ -8,7 +8,7 @@ import { createInterface } from "node:readline/promises";
 import { stdin, stdout, argv, exit } from "node:process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   CONFIG_PATH,
@@ -29,6 +29,12 @@ import {
   stalenessCheck,
 } from "./lint/linter.js";
 import { runPipeline } from "./pipeline/run.js";
+import { scanSessions } from "./pipeline/scanner.js";
+import { parseSession } from "./pipeline/parser.js";
+import { scoreSession } from "./pipeline/filter.js";
+import { scrub } from "./pipeline/scrubber.js";
+import { filterToolCalls } from "./pipeline/toolCallFilter.js";
+import { Distiller } from "./pipeline/distiller.js";
 import { summarizeAll, summarizeProject } from "./pipeline/summarizer.js";
 import {
   embeddingForNote,
@@ -216,6 +222,65 @@ program
       }
     },
   );
+
+program
+  .command("calibrate <sessionId>")
+  .description(
+    "Distill ONE session to stdout for A/B model comparison — never writes vault or DB",
+  )
+  .option("--model <model>", "Distill model: haiku | sonnet", "sonnet")
+  .action(async (sessionId: string, opts: { model?: string }) => {
+    const cfg = loadConfig();
+    const model = opts.model ?? "sonnet";
+    if (!["haiku", "sonnet"].includes(model)) {
+      console.error(chalk.red(`--model must be 'haiku' or 'sonnet', got '${model}'`));
+      exit(1);
+    }
+    const found = scanSessions(cfg.claudeProjectsDir).find(
+      (s) => basename(s.path, ".jsonl") === sessionId,
+    );
+    if (!found) {
+      console.error(chalk.red(`session not found under ${cfg.claudeProjectsDir}: ${sessionId}`));
+      exit(1);
+    }
+
+    // Same pipeline as production up to (but NOT including) writer.write / db.record.
+    // classify always runs on Haiku (matches production); only distill varies.
+    const parsed = parseSession(found.path, found.hash);
+    const score = scoreSession(parsed, cfg.filterThreshold);
+    const scrubbedSummary = scrub(parsed.rawSummary);
+    const scrubbedContent = scrub(
+      filterToolCalls(parsed.transcriptText, cfg.filterToolCalls).filtered,
+    );
+    const distiller = new Distiller(cfg, { forceDistillModel: model });
+    const cls = await distiller.classify(parsed, scrubbedSummary);
+    const markdown = await distiller.distill(parsed, scrubbedContent, cls);
+
+    // The callLLM chokepoint already logged this distill to cost.log; read it
+    // back so the footer is guaranteed to match cost.log exactly.
+    const distillRecs = readCostLog().filter(
+      (r) => r.session === sessionId && r.stage === "distill",
+    );
+    const last = distillRecs[distillRecs.length - 1];
+
+    console.log(`# calibrate ${sessionId}`);
+    console.log(
+      `model=${model} filterScore=${score.score} passes=${score.passes} ` +
+        `toolCalls=${parsed.toolCallCount} proseChars=${parsed.assistantText.length + parsed.userText.length} ` +
+        `distillInputChars=${scrubbedContent.length}`,
+    );
+    console.log(`\n## classification\n${JSON.stringify(cls, null, 2)}`);
+    console.log(`\n## distilled markdown\n${markdown}`);
+    if (last) {
+      console.log(
+        `\n## cost\nmodel=${last.model} input_tokens=${last.input_tokens} ` +
+          `output_tokens=${last.output_tokens} token_source=${last.token_source} ` +
+          `estimated_cost_usd=${last.estimated_cost_usd}`,
+      );
+    } else {
+      console.log(`\n## cost\n(no distill cost record found for ${sessionId})`);
+    }
+  });
 
 const schedule = program
   .command("schedule")
