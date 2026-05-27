@@ -289,7 +289,7 @@ Distill output dominates. A multi-hour Claude Code epic with hundreds of tool ca
 - `vir cost --since 7d` aggregates real (not estimated) token usage from `~/.vir/cost.log`.
 - `vir cost --by-session` surfaces outliers for cost investigation.
 - `vir cost --top 5` shows your most expensive sessions.
-- `vir run --dry-run` previews per-session cost projections before the live run. Estimates are calibrated to code-heavy sessions and run within ~50% of actual for most batches.
+- `vir run --dry-run` previews per-session cost projections before the live run. Estimates are recalibrated from real v0.7.0 token data and run as a rough projection; actual cost varies with session content.
 
 ### Reducing cost further
 
