@@ -326,6 +326,7 @@ with your distro, init system, and Node version.
 | `vir cost --since <dur>`    | free  | Cost within a window, e.g. `7d` `24h` `2w` |
 | `vir cost --by-session`     | free  | Full per-session cost distribution        |
 | `vir query "<question>"`    | cheap | Semantic search your vault                |
+| `vir query … --json`        | cheap | Machine-readable results for tooling       |
 | `vir summarize <project>`   | cheap | Cross-session project synthesis           |
 | `vir summarize --all`       | $$    | Summarize all projects                    |
 | `vir lint`                  | cheap | Find orphans, stale notes, contradictions |
@@ -345,6 +346,13 @@ with your distro, init system, and Node version.
 | `vir schedule uninstall`    | free  | Remove the background daemon              |
 | `vir status`                | free  | Knowledge heatmap + daemon status         |
 | `vir doctor`                | cheap | Diagnose installation issues              |
+| `vir doctor --json`         | cheap | Machine-readable install/health snapshot   |
+
+Both `vir query` and `vir doctor` accept `--json` for programmatic consumers
+(e.g. the [vir-obsidian](https://github.com/djolex999/vir) plugin). `query --json`
+emits a JSON array of results to stdout (`[]` when none) and, on failure, a
+single-line error object to stderr with empty stdout. `doctor --json` emits one
+JSON object and always exits 0 (health lives in its `daemon` field).
 
 ## MCP server (Claude Code integration)
 

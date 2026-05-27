@@ -9,11 +9,13 @@
 import Database from "better-sqlite3";
 import { accessSync, constants, existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   CONFIG_PATH,
   ConfigSchema,
+  DAEMON_LOG_PATH,
   STATE_PATH,
   expandHome,
   type Config,
@@ -24,8 +26,10 @@ import {
   normalizeModelName,
 } from "../pipeline/distiller.js";
 import { status as daemonStatus } from "../daemon/index.js";
-import { isOllamaAvailable } from "../search/embedder.js";
+import { EMBED_MODEL, isOllamaAvailable } from "../search/embedder.js";
 import { isClaudeAvailable, isInstalled } from "../mcp/install.js";
+import { StateDb } from "../state/db.js";
+import { buildDoctorResult } from "../output/json.js";
 import * as ui from "../ui/display.js";
 
 interface CheckResult {
@@ -334,4 +338,85 @@ export async function runDoctor(): Promise<void> {
   ui.line(parts.join(ui.dim(`  ${ui.BULLET}  `)));
 
   if (failed > 0) process.exitCode = 1;
+}
+
+// package.json sits one dir up from dist/doctor.js's parent — read it at runtime
+// (rootDir is ./src, so it can't be imported) exactly like cli.ts does for
+// --version. Resilient: any failure yields "unknown" rather than throwing.
+function readVirVersion(): string {
+  try {
+    const pkgPath = join(
+      dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "..",
+      "package.json",
+    );
+    return (JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: string })
+      .version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+// The daemon writes a preflight line to ~/.vir/daemon.log on every pass, so its
+// mtime is the truest "last poll" signal — distinct from the DB's last *distill*
+// (most recent processed_at), which only advances when a session actually
+// changed. Returns null when the daemon has never run.
+function lastPollAt(): string | null {
+  try {
+    return existsSync(DAEMON_LOG_PATH)
+      ? statSync(DAEMON_LOG_PATH).mtime.toISOString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function lastDistillAt(): string | null {
+  if (!existsSync(STATE_PATH)) return null;
+  let db: StateDb | null = null;
+  try {
+    db = new StateDb(STATE_PATH, { readonly: true });
+    return db.stats().lastRun;
+  } catch {
+    return null;
+  } finally {
+    db?.close();
+  }
+}
+
+function dbSizeMb(): number {
+  try {
+    if (!existsSync(STATE_PATH)) return 0;
+    return Math.round((statSync(STATE_PATH).size / 1_048_576) * 100) / 100;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * `vir doctor --json` — emits a single VirDoctorResult object to stdout and
+ * always exits 0; health is expressed in the `daemon` field, not the exit code.
+ * Platform detection (launchd/systemd/cron) is abstracted inside daemonStatus;
+ * the JSON output stays platform-agnostic.
+ */
+export async function runDoctorJson(): Promise<void> {
+  const { cfg } = checkConfig();
+  const ds = await daemonStatus();
+  const ollamaReachable = await isOllamaAvailable();
+
+  const result = buildDoctorResult({
+    daemonInstalled: ds.installed,
+    lastPollAt: lastPollAt(),
+    lastDistillAt: lastDistillAt(),
+    dbSizeMb: dbSizeMb(),
+    vaultPath: cfg?.vaultPath ?? "",
+    configValid: cfg !== null,
+    ollamaReachable,
+    ollamaModel: ollamaReachable ? EMBED_MODEL : null,
+    cadenceHours: cfg?.cadenceHours ?? 3,
+    version: readVirVersion(),
+  });
+
+  process.stdout.write(JSON.stringify(result, null, 2) + "\n");
 }

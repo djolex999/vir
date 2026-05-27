@@ -40,7 +40,8 @@ import {
   embeddingForNote,
   isOllamaAvailable,
 } from "./search/embedder.js";
-import { search } from "./search/retriever.js";
+import { search, vaultRoot } from "./search/retriever.js";
+import { buildQueryResults, errorPayload } from "./output/json.js";
 import { synthesize } from "./search/synthesizer.js";
 import { runMcpServer } from "./mcp/server.js";
 import { runReview } from "./cli/review.js";
@@ -61,7 +62,7 @@ import { parseDuration, readCostLog } from "./cost/log.js";
 import { buildReport } from "./cost/report.js";
 import * as ui from "./ui/display.js";
 import { VaultWriter } from "./pipeline/writer.js";
-import { runDoctor } from "./diagnostics/doctor.js";
+import { runDoctor, runDoctorJson } from "./diagnostics/doctor.js";
 
 // Read version at runtime from package.json (one dir up from dist/cli.js) so
 // `vir --version` never drifts from the published version. rootDir is ./src,
@@ -683,10 +684,57 @@ program
     }
   });
 
+// JSON path for `vir query --json`: stdout gets a single JSON array on success
+// (`[]` when nothing matched), exit 0. On failure stdout stays EMPTY so the
+// plugin can `JSON.parse(stdout)` unguarded — the error goes to stderr as a
+// one-line VirErrorPayload and the exit code is non-zero. Ollama being down is
+// NOT a failure here: search() degrades to TF-IDF (Ollama is best-effort).
+async function runQueryJson(question: string, limit: number): Promise<void> {
+  let cfg;
+  try {
+    cfg = loadConfig();
+  } catch (err) {
+    process.stderr.write(
+      JSON.stringify(errorPayload("no_vault", (err as Error).message)) + "\n",
+    );
+    process.exitCode = 1;
+    return;
+  }
+  if (!existsSync(cfg.vaultPath)) {
+    process.stderr.write(
+      JSON.stringify(
+        errorPayload("no_vault", `vault path not found: ${cfg.vaultPath}`),
+      ) + "\n",
+    );
+    process.exitCode = 1;
+    return;
+  }
+  const db = new StateDb();
+  try {
+    const hits = await search(cfg, db, question, limit);
+    const results = buildQueryResults(hits, vaultRoot(cfg));
+    process.stdout.write(JSON.stringify(results) + "\n");
+  } catch (err) {
+    process.stderr.write(
+      JSON.stringify(errorPayload("internal", (err as Error).message)) + "\n",
+    );
+    process.exitCode = 1;
+  } finally {
+    db.close();
+  }
+}
+
 program
   .command("query <question>")
   .description("Search the vault: embedding/TF-IDF retrieval + Claude synthesis")
-  .action(async (question: string) => {
+  .option("--json", "Emit machine-readable JSON for programmatic consumers")
+  .option("--limit <n>", "Number of notes to retrieve", "8")
+  .action(async (question: string, opts: { json?: boolean; limit?: string }) => {
+    const limit = Math.max(1, Number.parseInt(opts.limit ?? "8", 10) || 8);
+    if (opts.json) {
+      await runQueryJson(question, limit);
+      return;
+    }
     const cfg = loadConfig();
     const db = new StateDb();
     try {
@@ -771,7 +819,14 @@ program
 program
   .command("doctor")
   .description("Run diagnostic checks on Vir installation")
-  .action(runDoctor);
+  .option("--json", "Emit machine-readable JSON for programmatic consumers")
+  .action(async (opts: { json?: boolean }) => {
+    if (opts.json) {
+      await runDoctorJson();
+      return;
+    }
+    await runDoctor();
+  });
 
 const mcpCmd = program
   .command("mcp")
