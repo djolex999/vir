@@ -160,7 +160,12 @@ ${excerpt(pair.b.content)}`;
 
     try {
       const text = await withRateLimitRetry(() =>
-        callLLM(cfg, client, { prompt, model, maxTokens: 200 }),
+        callLLM(cfg, client, {
+          prompt,
+          model,
+          maxTokens: 200,
+          cost: { stage: "lint-contradiction" },
+        }),
       );
       const parsed = parseContradictionResponse(text);
       if (parsed.contradicts) {

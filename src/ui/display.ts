@@ -214,4 +214,13 @@ export function statusRow(
   }
 }
 
+// USD formatting for cost output. Sub-dollar amounts need extra precision or
+// they all collapse to "$0.00".
+export function formatUsd(n: number): string {
+  if (n <= 0) return "$0";
+  if (n < 0.01) return `$${n.toFixed(4)}`;
+  if (n < 1) return `$${n.toFixed(3)}`;
+  return `$${n.toFixed(2)}`;
+}
+
 export { ora };

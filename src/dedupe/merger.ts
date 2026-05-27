@@ -94,7 +94,12 @@ ${b.content}`;
   const model = normalizeModelName(cfg.models.distill, cfg.provider);
   const merged = (
     await withRateLimitRetry(() =>
-      callLLM(cfg, client, { prompt, model, maxTokens: 2000 }),
+      callLLM(cfg, client, {
+        prompt,
+        model,
+        maxTokens: 2000,
+        cost: { stage: "dedupe-merge" },
+      }),
     )
   ).trim();
 

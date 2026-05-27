@@ -73,7 +73,12 @@ export async function summarizeProject(
   const client = maybeAnthropicClient(cfg);
   const model = normalizeModelName(cfg.models.distill, cfg.provider);
   const body = await withRateLimitRetry(() =>
-    callLLM(cfg, client, { prompt, model, maxTokens: 1500 }),
+    callLLM(cfg, client, {
+      prompt,
+      model,
+      maxTokens: 1500,
+      cost: { stage: "summarize", project: projectSlug },
+    }),
   );
 
   const outPath = writeSummaryFile(cfg, projectSlug, body.trim(), counts);

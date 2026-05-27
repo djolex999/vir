@@ -1,5 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Config } from "../config.js";
+import { computeCost } from "../cost/pricing.js";
+import { appendCostRecord } from "../cost/log.js";
 import type {
   Category,
   Classification,
@@ -43,6 +45,15 @@ export function normalizeModelName(model: string, provider: string): string {
   return model.replace(/-\d{8}$/, "");
 }
 
+// `--force-model haiku|sonnet` shorthand → full model id. We map to the dated
+// Anthropic ids; normalizeModelName then collapses them for the Kie path. Any
+// other value passes through (already a full id), so a full id still works.
+export function resolveModelShorthand(model: string): string {
+  if (model === "haiku") return "claude-haiku-4-5-20251001";
+  if (model === "sonnet") return "claude-sonnet-4-6";
+  return model;
+}
+
 interface KieResponseBlock {
   type?: string;
   text?: string;
@@ -50,6 +61,27 @@ interface KieResponseBlock {
 interface KieResponse {
   content?: KieResponseBlock[];
   error?: { message?: string };
+  // Anthropic-compatible usage — present on most Kie responses, but we never
+  // depend on it: a missing usage block falls back to a chars/4 estimate.
+  usage?: { input_tokens?: number; output_tokens?: number };
+}
+
+// Real token counts when the provider reports them; null forces a chars/4
+// estimate downstream (the cost record then marks token_source: "estimated").
+export interface TokenUsage {
+  input_tokens: number;
+  output_tokens: number;
+}
+
+interface LlmResult {
+  text: string;
+  usage: TokenUsage | null;
+}
+
+function usageOf(input: unknown, output: unknown): TokenUsage | null {
+  return typeof input === "number" && typeof output === "number"
+    ? { input_tokens: input, output_tokens: output }
+    : null;
 }
 
 async function callKie(opts: {
@@ -57,7 +89,7 @@ async function callKie(opts: {
   model: string;
   maxTokens: number;
   prompt: string;
-}): Promise<string> {
+}): Promise<LlmResult> {
   const response = await fetch("https://api.kie.ai/claude/v1/messages", {
     method: "POST",
     headers: {
@@ -81,7 +113,7 @@ async function callKie(opts: {
 
   const data = (await response.json()) as KieResponse;
   const text = data.content?.[0]?.text ?? "";
-  return text;
+  return { text, usage: usageOf(data.usage?.input_tokens, data.usage?.output_tokens) };
 }
 
 async function callAnthropic(opts: {
@@ -89,7 +121,7 @@ async function callAnthropic(opts: {
   model: string;
   maxTokens: number;
   prompt: string;
-}): Promise<string> {
+}): Promise<LlmResult> {
   const resp = await opts.client.messages.create({
     model: opts.model,
     max_tokens: opts.maxTokens,
@@ -99,13 +131,68 @@ async function callAnthropic(opts: {
   for (const block of resp.content) {
     if (block.type === "text") parts.push(block.text);
   }
-  return parts.join("\n");
+  return {
+    text: parts.join("\n"),
+    usage: usageOf(resp.usage.input_tokens, resp.usage.output_tokens),
+  };
+}
+
+// Optional cost-attribution context. When present, callLLM emits one cost.log
+// record for the (successful) call; when absent — e.g. the doctor key-probe —
+// nothing is recorded.
+export interface CostContext {
+  session?: string | null;
+  project?: string | null;
+  stage: string;
 }
 
 export interface LlmCallOpts {
   prompt: string;
   model: string;
   maxTokens: number;
+  cost?: CostContext;
+}
+
+// Reporting heuristic only — never used for billing. ~4 chars per token.
+function estimateTokens(s: string): number {
+  return Math.ceil(s.length / 4);
+}
+
+// Best-effort: a cost-log failure must never fail a distill. Real usage when the
+// provider reported it, else a chars/4 estimate of prompt + response.
+function recordCost(
+  config: Config,
+  opts: LlmCallOpts,
+  result: LlmResult,
+): void {
+  if (!opts.cost) return;
+  try {
+    const real = result.usage;
+    const inputTokens = real ? real.input_tokens : estimateTokens(opts.prompt);
+    const outputTokens = real
+      ? real.output_tokens
+      : estimateTokens(result.text);
+    appendCostRecord({
+      ts: new Date().toISOString(),
+      session: opts.cost.session ?? null,
+      project: opts.cost.project ?? null,
+      stage: opts.cost.stage,
+      model: opts.model,
+      provider: config.provider,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      token_source: real ? "real" : "estimated",
+      estimated_cost_usd: computeCost(
+        config.provider,
+        opts.model,
+        inputTokens,
+        outputTokens,
+        config.pricing,
+      ),
+    });
+  } catch {
+    // swallow — cost telemetry is never allowed to break the pipeline
+  }
 }
 
 export async function callLLM(
@@ -113,25 +200,29 @@ export async function callLLM(
   client: Anthropic | null,
   opts: LlmCallOpts,
 ): Promise<string> {
+  let result: LlmResult;
   if (config.provider === "kie") {
-    return callKie({
+    result = await callKie({
       apiKey: config.kieApiKey ?? "",
       model: opts.model,
       maxTokens: opts.maxTokens,
       prompt: opts.prompt,
     });
+  } else {
+    if (!client) {
+      throw new Error(
+        "Anthropic client is required for provider 'anthropic' but was null",
+      );
+    }
+    result = await callAnthropic({
+      client,
+      model: opts.model,
+      maxTokens: opts.maxTokens,
+      prompt: opts.prompt,
+    });
   }
-  if (!client) {
-    throw new Error(
-      "Anthropic client is required for provider 'anthropic' but was null",
-    );
-  }
-  return callAnthropic({
-    client,
-    model: opts.model,
-    maxTokens: opts.maxTokens,
-    prompt: opts.prompt,
-  });
+  recordCost(config, opts, result);
+  return result.text;
 }
 
 export class Distiller {
@@ -140,11 +231,15 @@ export class Distiller {
   private classifyModel: string;
   private distillModel: string;
 
-  constructor(cfg: Config) {
+  constructor(cfg: Config, opts: { forceDistillModel?: string } = {}) {
     this.cfg = cfg;
     this.client = maybeAnthropicClient(cfg);
     this.classifyModel = normalizeModelName(cfg.models.classify, cfg.provider);
-    this.distillModel = normalizeModelName(cfg.models.distill, cfg.provider);
+    // --force-model overrides only the distill model, for this run only.
+    const distill = resolveModelShorthand(
+      opts.forceDistillModel ?? cfg.models.distill,
+    );
+    this.distillModel = normalizeModelName(distill, cfg.provider);
   }
 
   async classify(
@@ -167,6 +262,14 @@ ${scrubbedSummary}`;
         prompt,
         model: this.classifyModel,
         maxTokens: 400,
+        cost: {
+          session: session.sessionId,
+          // classify runs before classification, so the only project name it
+          // has is the raw dir slug. Leave it null and let distill's clean
+          // cls.project be the label buildReport keeps for the session.
+          project: null,
+          stage: "classify",
+        },
       }),
     );
     return parseClassification(text, session.projectSlug);
@@ -196,6 +299,11 @@ ${scrubbedContent}`;
         prompt,
         model: this.distillModel,
         maxTokens: 1500,
+        cost: {
+          session: session.sessionId,
+          project: cls.project,
+          stage: "distill",
+        },
       }),
     );
     return text.trim();
