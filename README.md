@@ -18,7 +18,7 @@ developer-tools, mcp, local-first, cross-platform, llm-wiki
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/v/@djolex999/vir-cli?color=7c6af7&label=npm" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/dw/@djolex999/vir-cli?color=4fd1a0" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee" alt="license"></a>
-  <a href="#project-status"><img src="https://img.shields.io/badge/tests-85%20passing-22c55e" alt="tests"></a>
+  <a href="#project-status"><img src="https://img.shields.io/badge/tests-110%20passing-22c55e" alt="tests"></a>
   <a href="#project-status"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey" alt="platforms"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-c084fc" alt="mcp"></a>
   <a href="#"><img src="https://img.shields.io/badge/local--first-yes-f59e0b" alt="local-first"></a>
@@ -104,6 +104,13 @@ results, not better."_ Fair. Vir addresses it in layers:
 - **MMR-diverse retrieval**. Queries return notes covering different aspects of
   the topic, not 5 similar duplicates. The retrieval algorithm balances
   relevance against diversity automatically.
+- **Cost transparency.** `vir run --dry-run` estimates per-session cost _before_
+  you spend a cent; `vir cost` reports the actuals (total, median, p90, top
+  sessions) from a local `~/.vir/cost.log`; and `--force-model haiku|sonnet`
+  lets you calibrate quality against price. Pricing is provider-aware (Anthropic
+  list rates + Kie's discount), so the numbers reflect _your_ bill — not a
+  blended guess. Kie rates are approximate; override them in `config.pricing` if
+  a report looks off.
 
 The bet: with these controls, signal-to-noise stays high enough that the vault
 is a net positive. If your discipline is strong enough to maintain `CLAUDE.md`
@@ -298,6 +305,11 @@ with your distro, init system, and Node version.
 | `vir run --rewrite-only`    | free  | Reformat notes, no API calls              |
 | `vir run --articles-only`   | cheap | Distill only web articles, skip sessions  |
 | `vir run --yes`             | cheap | Skip cost confirmation                    |
+| `vir run --dry-run`         | free  | Estimate per-session cost, exit before LLM |
+| `vir run --force-model <m>` | cheap | Override distill model: `haiku` \| `sonnet` |
+| `vir cost`                  | free  | API cost report (total/median/p90/top)    |
+| `vir cost --since <dur>`    | free  | Cost within a window, e.g. `7d` `24h` `2w` |
+| `vir cost --by-session`     | free  | Full per-session cost distribution        |
 | `vir query "<question>"`    | cheap | Semantic search your vault                |
 | `vir summarize <project>`   | cheap | Cross-session project synthesis           |
 | `vir summarize --all`       | $$    | Summarize all projects                    |
@@ -389,6 +401,7 @@ Located at `~/.vir/config.json`.
 | `retrievalDiversity`| `0.3`                       | MMR diversity (0..1): 0.0 = pure relevance, 1.0 = pure diversity |
 | `models.classify`   | `claude-haiku-4-5-20251001` | Classify model                                             |
 | `models.distill`    | `claude-sonnet-4-6`         | Distill model                                              |
+| `pricing`           | _(built-in)_                | Optional per-provider `$/1M` overrides (`inputPer1M`/`outputPer1M`). Anthropic defaults track list rates; Kie defaults are approximate — verify on your Kie dashboard |
 
 ## Vault structure
 
@@ -417,7 +430,7 @@ vault/vir/
 
 |                |                                           |
 | -------------- | ----------------------------------------- |
-| Tests          | 85 passing                                |
+| Tests          | 110 passing                               |
 | Platforms      | macOS (launchd), Linux (systemd/cron)     |
 | Node           | 20+                                       |
 | First-run cost | $1–5 (Kie.ai recommended for 72% savings) |

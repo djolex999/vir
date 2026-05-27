@@ -4,6 +4,7 @@ import {
   renderToolResult,
   renderToolUse,
 } from "./toolCallFilter.js";
+import type { FilterResult } from "./toolCallFilter.js";
 
 // Build a tool_result block with exactly `n` lines of content, via the same
 // renderer the parser uses — so these tests exercise the real grammar.
@@ -189,5 +190,85 @@ describe("filterToolCalls tool_use payload bounding", () => {
     });
     const res = filterToolCalls(input, "off");
     expect(res.filtered).toBe(input);
+  });
+});
+
+describe("filterToolCalls Skill result stripping", () => {
+  function skillBlock(skillName: string, bodyLength: number): string {
+    const useJson = JSON.stringify({ skill: skillName });
+    const body = "s".repeat(bodyLength);
+    return (
+      renderToolUse("Skill", useJson) +
+      "\n\n" +
+      renderToolResult("Skill", body, false)
+    );
+  }
+
+  it("moderate: strips an oversized Skill result and sets skillResultsStripped=1", () => {
+    const input = skillBlock("superpowers:brainstorming", 1500);
+    const res: FilterResult = filterToolCalls(input, "moderate");
+    expect(res.skillResultsStripped).toBe(1);
+    expect(res.filtered).toContain("[Skill superpowers:brainstorming loaded]");
+    expect(res.filtered).not.toContain("ssss");
+  });
+
+  it("off: still strips an oversized Skill result (always runs regardless of mode)", () => {
+    const input = skillBlock("superpowers:brainstorming", 1500);
+    const res: FilterResult = filterToolCalls(input, "off");
+    expect(res.skillResultsStripped).toBe(1);
+    expect(res.filtered).toContain("[Skill superpowers:brainstorming loaded]");
+    expect(res.filtered).not.toContain("ssss");
+  });
+
+  it("small Skill result (<=1000 chars): not stripped, body preserved", () => {
+    const input = skillBlock("frontend-design:frontend-design", 500);
+    const res: FilterResult = filterToolCalls(input, "moderate");
+    expect(res.skillResultsStripped).toBe(0);
+    // body content should still be present
+    expect(res.filtered).toContain("s".repeat(10));
+  });
+
+  it("name fallback: empty input JSON {} with oversized body → placeholder uses 'skill'", () => {
+    const use = renderToolUse("Skill", "{}");
+    const body = "z".repeat(1500);
+    const input = use + "\n\n" + renderToolResult("Skill", body, false);
+    const res: FilterResult = filterToolCalls(input, "moderate");
+    expect(res.skillResultsStripped).toBe(1);
+    expect(res.filtered).toContain("[Skill skill loaded]");
+  });
+
+  it("Skill error result is left alone (ERROR tag breaks the match pattern)", () => {
+    const useJson = JSON.stringify({ skill: "some-skill" });
+    const use = renderToolUse("Skill", useJson);
+    const body = "e".repeat(2000);
+    const input = use + "\n\n" + renderToolResult("Skill", body, true);
+    const res: FilterResult = filterToolCalls(input, "moderate");
+    // error result must not be stripped
+    expect(res.skillResultsStripped).toBe(0);
+    expect(res.filtered).toContain("[tool_result: Skill ERROR]");
+    expect(res.filtered).toContain("e".repeat(10));
+  });
+
+  it("Skill strip and normal large-Bash strip coexist in same transcript", () => {
+    const useJson = JSON.stringify({ skill: "superpowers:brainstorming" });
+    const skillInput =
+      renderToolUse("Skill", useJson) +
+      "\n\n" +
+      renderToolResult("Skill", "s".repeat(1500), false);
+    const bashInput = renderToolResult("Bash", "line\n".repeat(60), false);
+    const input = skillInput + "\n\n" + bashInput;
+    const res: FilterResult = filterToolCalls(input, "moderate");
+    expect(res.skillResultsStripped).toBe(1);
+    expect(res.toolCallsStripped).toBe(1);
+    expect(res.filtered).toContain("[Skill superpowers:brainstorming loaded]");
+    expect(res.filtered).toContain("Bash output");
+    expect(res.filtered).toContain("stripped");
+  });
+
+  it("skillResultsStripped is 0 on the off path with a small Skill result", () => {
+    const input = skillBlock("init", 200);
+    const res: FilterResult = filterToolCalls(input, "off");
+    expect(res.skillResultsStripped).toBe(0);
+    expect(res.filtered).toContain("s".repeat(10));
   });
 });

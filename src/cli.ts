@@ -51,6 +51,8 @@ import {
   type DaemonStatus,
 } from "./daemon/index.js";
 import { StateDb, type KnowledgeStats } from "./state/db.js";
+import { parseDuration, readCostLog } from "./cost/log.js";
+import { buildReport } from "./cost/report.js";
 import * as ui from "./ui/display.js";
 import { VaultWriter } from "./pipeline/writer.js";
 import { runDoctor } from "./diagnostics/doctor.js";
@@ -89,6 +91,14 @@ program
   )
   .option("--articles-only", "Distill only web articles, skip sessions")
   .option("--yes", "Skip the cost confirmation prompt")
+  .option(
+    "--force-model <model>",
+    "Override the distill model for this run only: haiku | sonnet",
+  )
+  .option(
+    "--dry-run",
+    "Estimate per-session cost after filtering, then exit before any LLM call",
+  )
   .action(
     async (opts: {
       full?: boolean;
@@ -96,19 +106,30 @@ program
       rewriteOnly?: boolean;
       articlesOnly?: boolean;
       yes?: boolean;
+      forceModel?: string;
+      dryRun?: boolean;
     }) => {
       const cfg = loadConfig();
       const daemon = opts.daemon === true;
       const rewriteOnly = opts.rewriteOnly === true;
       const articlesOnly = opts.articlesOnly === true;
+      const dryRun = opts.dryRun === true;
+      if (opts.forceModel && !["haiku", "sonnet"].includes(opts.forceModel)) {
+        console.error(
+          chalk.red(`--force-model must be 'haiku' or 'sonnet', got '${opts.forceModel}'`),
+        );
+        exit(1);
+      }
       const skipPrompt =
-        opts.yes === true || daemon || rewriteOnly || articlesOnly;
+        opts.yes === true || daemon || rewriteOnly || articlesOnly || dryRun;
       await runPipeline(cfg, {
         full: opts.full,
         quiet: daemon,
         logToFile: daemon,
         rewriteOnly,
         articlesOnly,
+        forceDistillModel: opts.forceModel,
+        dryRun,
         onConfirm: skipPrompt
           ? undefined
           : async (newCount) => confirmCostIfNeeded(cfg, newCount),
@@ -137,6 +158,64 @@ async function confirmCostIfNeeded(
   rl.close();
   return ans === "y" || ans === "yes";
 }
+
+program
+  .command("cost")
+  .description("Report API cost from ~/.vir/cost.log")
+  .option("--since <duration>", "Time window, e.g. 7d, 24h, 2w", "7d")
+  .option("--by-session", "Show the full per-session distribution")
+  .option("--top <n>", "How many top sessions to show (default 5)", "5")
+  .action(
+    (opts: { since?: string; bySession?: boolean; top?: string }) => {
+      ui.header("cost");
+      ui.blank();
+      const since = opts.since ?? "7d";
+      let cutoffMs: number;
+      try {
+        cutoffMs = Date.now() - parseDuration(since);
+      } catch {
+        console.error(chalk.red(`invalid --since value: ${since}`));
+        exit(1);
+      }
+      const records = readCostLog(cutoffMs);
+      if (records.length === 0) {
+        ui.row(
+          ui.warn(ui.WARN_GLYPH),
+          ui.text(`no cost records in the last ${since}`),
+        );
+        ui.line(ui.dim("  cost.log fills as vir distills — run `vir run` first"));
+        return;
+      }
+
+      const report = buildReport(records);
+      ui.stat("window", since);
+      ui.stat("llm calls", report.recordCount);
+      ui.stat("sessions", report.sessionCount);
+      ui.stat("total", ui.formatUsd(report.total), ui.warn);
+      ui.stat("median/session", ui.formatUsd(report.median));
+      ui.stat("p90/session", ui.formatUsd(report.p90), ui.warn);
+      ui.blank();
+
+      const topN = Math.max(1, Number(opts.top ?? "5") || 5);
+      const rows = opts.bySession
+        ? report.bySession
+        : report.bySession.slice(0, topN);
+      ui.line(
+        ui.dim(
+          opts.bySession
+            ? "  by session"
+            : `  top ${Math.min(topN, rows.length)} sessions`,
+        ),
+      );
+      for (const s of rows) {
+        const id = s.session.slice(0, 8);
+        const label = s.project ? `${s.project}/${id}` : id;
+        ui.line(
+          `  ${ui.dim(ui.BULLET)} ${ui.text(label.padEnd(42))} ${ui.dim(`${s.calls}×`)}  ${ui.warn(ui.formatUsd(s.cost))}`,
+        );
+      }
+    },
+  );
 
 const schedule = program
   .command("schedule")

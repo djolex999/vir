@@ -62,6 +62,32 @@ export const ConfigSchema = z
         classify: "claude-haiku-4-5-20251001",
         distill: "claude-sonnet-4-6",
       }),
+    // Per-provider, per-model price overrides ($/1M tokens). Optional and
+    // partial — set only the rates you want to override; anything unset falls
+    // back to the built-in DEFAULT_PRICING. Kie users especially: vir's Kie
+    // defaults are approximate, so override here if `vir cost` looks off.
+    pricing: z
+      .object({
+        anthropic: z
+          .record(
+            z.string(),
+            z.object({
+              inputPer1M: z.number().nonnegative().optional(),
+              outputPer1M: z.number().nonnegative().optional(),
+            }),
+          )
+          .optional(),
+        kie: z
+          .record(
+            z.string(),
+            z.object({
+              inputPer1M: z.number().nonnegative().optional(),
+              outputPer1M: z.number().nonnegative().optional(),
+            }),
+          )
+          .optional(),
+      })
+      .optional(),
   })
   .superRefine((val, ctx) => {
     if (val.provider === "anthropic" && !val.anthropicApiKey) {

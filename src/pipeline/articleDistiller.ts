@@ -59,6 +59,7 @@ export async function distillArticle(
       prompt: classifyPrompt(article, body),
       model: classifyModel,
       maxTokens: 200,
+      cost: { stage: "article-classify" },
     }),
   );
   const classification = parseArticleClassification(clsText);
@@ -69,6 +70,7 @@ export async function distillArticle(
         prompt: distillPrompt(article, body),
         model: distillModel,
         maxTokens: 1500,
+        cost: { stage: "article-distill" },
       }),
     )
   ).trim();

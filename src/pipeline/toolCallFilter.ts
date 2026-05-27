@@ -31,11 +31,59 @@ export interface FilterResult {
   filteredTokens: number;
   tokensSaved: number;
   toolCallsStripped: number;
+  skillResultsStripped: number;
 }
 
 // Reporting heuristic only — never used for billing. ~4 chars per token.
 function estimateTokens(s: string): number {
   return Math.ceil(s.length / 4);
+}
+
+// Skill tool results are boilerplate skill-loading content — never durable
+// knowledge — so we strip them regardless of filter mode.
+const SKILL_RESULT_CHAR_LIMIT = 1000;
+
+// Matches a Skill tool_use immediately followed by its (non-error) tool_result.
+// The " ERROR" variant won't match because the pattern omits it — error results
+// are left alone intentionally.
+const SKILL_PAIR_RE =
+  /\[tool_use: Skill\] (.+)\n\n\[tool_result: Skill\]\n([\s\S]*?)\n\[\/tool_result\]/g;
+
+function stripSkillResults(text: string): {
+  text: string;
+  skillResultsStripped: number;
+} {
+  let skillResultsStripped = 0;
+  const result = text.replace(
+    SKILL_PAIR_RE,
+    (match, useJson: string, body: string) => {
+      if (body.length <= SKILL_RESULT_CHAR_LIMIT) return match;
+
+      let name = "skill";
+      try {
+        const parsed: unknown = JSON.parse(useJson);
+        if (parsed && typeof parsed === "object") {
+          const obj = parsed as Record<string, unknown>;
+          const candidate =
+            typeof obj["skill"] === "string"
+              ? obj["skill"]
+              : typeof obj["command"] === "string"
+                ? obj["command"]
+                : typeof obj["name"] === "string"
+                  ? obj["name"]
+                  : null;
+          if (candidate !== null) name = candidate;
+        }
+      } catch {
+        // unparseable JSON — keep fallback "skill"
+      }
+
+      skillResultsStripped += 1;
+      const useLine = `[tool_use: Skill] ${useJson}`;
+      return `${useLine}\n\n[tool_result: Skill] [Skill ${name} loaded]`;
+    },
+  );
+  return { text: result, skillResultsStripped };
 }
 
 export function renderToolUse(name: string, inputJson: string): string {
@@ -132,13 +180,19 @@ export function filterToolCalls(
 ): FilterResult {
   const originalTokens = estimateTokens(sessionText);
 
+  // Skill strip always runs — Skill loads are boilerplate regardless of mode.
+  const { text: afterSkills, skillResultsStripped } =
+    stripSkillResults(sessionText);
+
   if (mode === "off") {
+    const filteredTokens = estimateTokens(afterSkills);
     return {
-      filtered: sessionText,
+      filtered: afterSkills,
       originalTokens,
-      filteredTokens: originalTokens,
-      tokensSaved: 0,
+      filteredTokens,
+      tokensSaved: Math.max(0, originalTokens - filteredTokens),
       toolCallsStripped: 0,
+      skillResultsStripped,
     };
   }
 
@@ -150,7 +204,7 @@ export function filterToolCalls(
   // First bound oversized tool_use payloads (Write/Edit file bodies), keeping
   // intent fields intact. Done before the tool_result pass so the two regexes
   // never compete over the same span.
-  const usesBounded = sessionText.replace(
+  const usesBounded = afterSkills.replace(
     TOOL_USE_RE,
     (_match, name: string, json: string) =>
       renderToolUse(name, boundToolUseInput(name, json, mode)),
@@ -185,5 +239,6 @@ export function filterToolCalls(
     filteredTokens,
     tokensSaved: Math.max(0, originalTokens - filteredTokens),
     toolCallsStripped,
+    skillResultsStripped,
   };
 }

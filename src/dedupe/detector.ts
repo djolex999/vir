@@ -134,7 +134,12 @@ ${headOf(pair.b.content, 400)}`;
 
     try {
       const text = await withRateLimitRetry(() =>
-        callLLM(cfg, client, { prompt, model, maxTokens: 250 }),
+        callLLM(cfg, client, {
+          prompt,
+          model,
+          maxTokens: 250,
+          cost: { stage: "dedupe-detect" },
+        }),
       );
       const parsed = parseResponse(text);
       if (parsed.isDuplicate && parsed.confidence >= MIN_DUP_CONFIDENCE) {

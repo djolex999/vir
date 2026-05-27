@@ -3,7 +3,12 @@ import { appendFileSync } from "node:fs";
 import { DAEMON_LOG_PATH, ensureVirDir, type Config } from "../config.js";
 import { StateDb } from "../state/db.js";
 import * as ui from "../ui/display.js";
-import { Distiller } from "./distiller.js";
+import {
+  Distiller,
+  normalizeModelName,
+  resolveModelShorthand,
+} from "./distiller.js";
+import { computeCost } from "../cost/pricing.js";
 import { scoreSession } from "./filter.js";
 import { parseSession } from "./parser.js";
 import { scanSessions } from "./scanner.js";
@@ -22,6 +27,11 @@ export interface RunOptions {
   rewriteOnly?: boolean;
   // Distill only web articles, skipping the Claude Code session pipeline.
   articlesOnly?: boolean;
+  // Override models.distill for this run only (full id or "haiku"/"sonnet").
+  forceDistillModel?: string;
+  // Estimate per-session cost after filtering, print a table, and exit before
+  // any LLM call. Skips the cost-confirmation prompt.
+  dryRun?: boolean;
   // Called after the scan with the count of sessions that will be distilled.
   // Return false to abort cleanly. If omitted, the run always proceeds —
   // daemon callers rely on this default.
@@ -83,13 +93,15 @@ export async function runPipeline(
 
   if (interactive) {
     ui.header(
-      opts.rewriteOnly
-        ? "run  --rewrite-only"
-        : opts.articlesOnly
-          ? "run  --articles-only"
-          : opts.full
-            ? "run  --full"
-            : "run",
+      opts.dryRun
+        ? "run  --dry-run"
+        : opts.rewriteOnly
+          ? "run  --rewrite-only"
+          : opts.articlesOnly
+            ? "run  --articles-only"
+            : opts.full
+              ? "run  --full"
+              : "run",
     );
     ui.blank();
   }
@@ -188,7 +200,16 @@ export async function runPipeline(
     return summary;
   }
 
-  const distiller = new Distiller(cfg);
+  const distiller = new Distiller(cfg, {
+    forceDistillModel: opts.forceDistillModel,
+  });
+  if (interactive && opts.forceDistillModel) {
+    ui.line(ui.dim(`  forcing distill model: ${opts.forceDistillModel}`));
+    ui.blank();
+  }
+  fileLog(
+    `force-model: ${opts.forceDistillModel ?? "(none)"}`,
+  );
   const newPerProject = new Map<string, number>();
 
   const scanSpinner = interactive
@@ -232,6 +253,90 @@ export async function runPipeline(
   fileLog(
     `preflight: found=${discovered.length} cached=${cached} new=${preflightNew}`,
   );
+
+  // --dry-run: estimate per-session cost AFTER filtering but BEFORE any LLM
+  // call, then exit. Output sizes + the input divisor are calibrated from real
+  // cost.log data (output medians ran ~335 classify / ~4500 distill; code/JSON
+  // transcripts tokenize denser than the chars/4 house heuristic, ~chars/3), so
+  // the estimate lands in the right ballpark instead of ~5x low. Still rough —
+  // deep sessions vary, and low-confidence drops aren't knowable without the LLM.
+  if (opts.dryRun) {
+    const classifyModel = normalizeModelName(cfg.models.classify, cfg.provider);
+    const distillModel = normalizeModelName(
+      resolveModelShorthand(opts.forceDistillModel ?? cfg.models.distill),
+      cfg.provider,
+    );
+    const CLASSIFY_OUTPUT_TOKENS = 350;
+    const DISTILL_OUTPUT_TOKENS = 4500;
+    const CHARS_PER_TOKEN = 3;
+    let totalCost = 0;
+    let estimated = 0;
+    let filteredOut = 0;
+    for (const found of discovered) {
+      if (!opts.full && db.isProcessed(found.path, found.hash)) continue;
+      let parsed: ParsedSession;
+      try {
+        parsed = parseSession(found.path, found.hash);
+      } catch {
+        continue;
+      }
+      if (!scoreSession(parsed, cfg.filterThreshold).passes) {
+        filteredOut += 1;
+        continue;
+      }
+      const classifyIn = Math.ceil(
+        scrub(parsed.rawSummary).length / CHARS_PER_TOKEN,
+      );
+      const distillIn = Math.ceil(
+        scrub(filterToolCalls(parsed.transcriptText, cfg.filterToolCalls).filtered)
+          .length / CHARS_PER_TOKEN,
+      );
+      const cost =
+        computeCost(
+          cfg.provider,
+          classifyModel,
+          classifyIn,
+          CLASSIFY_OUTPUT_TOKENS,
+          cfg.pricing,
+        ) +
+        computeCost(
+          cfg.provider,
+          distillModel,
+          distillIn,
+          DISTILL_OUTPUT_TOKENS,
+          cfg.pricing,
+        );
+      totalCost += cost;
+      estimated += 1;
+      if (interactive) {
+        const label = `${parsed.projectSlug}/${parsed.sessionId.slice(0, 8)}`;
+        ui.line(
+          `  ${label.padEnd(42)} ${ui.dim(`${(classifyIn + distillIn).toLocaleString()} in`)}  ${ui.warn(ui.formatUsd(cost))}`,
+        );
+      }
+    }
+    if (interactive) {
+      ui.blank();
+      ui.divider();
+      ui.summary({
+        sessions: { value: estimated, color: ui.info },
+        "filtered out": { value: filteredOut, color: ui.dim },
+        "est. total": { value: ui.formatUsd(totalCost), color: ui.warn },
+      });
+      ui.divider();
+      ui.line(
+        ui.dim(
+          "  estimates assume typical output sizes; actuals may vary ±30%",
+        ),
+      );
+    }
+    fileLog(
+      `dry-run: sessions=${estimated} filtered=${filteredOut} estTotal=${ui.formatUsd(totalCost)}`,
+    );
+    db.close();
+    return summary;
+  }
+
   if (opts.onConfirm) {
     const proceed = await opts.onConfirm(preflightNew);
     if (!proceed) {
@@ -267,8 +372,12 @@ export async function runPipeline(
         parsed.transcriptText,
         cfg.filterToolCalls,
       );
-      if (toolFilter.tokensSaved > 1000) {
-        const msg = `filtered ${toolFilter.toolCallsStripped} tool results, saved ~${toolFilter.tokensSaved} tokens`;
+      if (toolFilter.tokensSaved > 1000 || toolFilter.skillResultsStripped > 0) {
+        const skills =
+          toolFilter.skillResultsStripped > 0
+            ? `, ${toolFilter.skillResultsStripped} skill loads`
+            : "";
+        const msg = `filtered ${toolFilter.toolCallsStripped} tool results${skills}, saved ~${toolFilter.tokensSaved} tokens`;
         if (interactive) ui.line(ui.dim(`  ${msg}`));
         fileLog(msg);
       }

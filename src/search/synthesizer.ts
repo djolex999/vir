@@ -40,6 +40,7 @@ Instructions:
       prompt,
       model,
       maxTokens: 600,
+      cost: { stage: "query-synthesis" },
     }),
   );
 }
