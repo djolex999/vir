@@ -264,21 +264,36 @@ the same vault. Leave it blank to keep Vir session-only.
 `vir schedule install` works on Linux too: systemd is preferred, with cron used
 as a fallback when `systemctl` isn't available.
 
-## First run cost
+## Cost
 
-Vir processes all historical Claude Code sessions on first run. Cost varies by
-session depth:
+Vir runs two API calls per session: a Haiku classify (cheap) and a Sonnet distill (the main cost). Cost depends on session size and your provider.
 
-- Simple sessions: ~$0.02 each
-- Deep code reviews: up to ~$0.10 each
-- Typical first run (200 sessions): $1–5 one-time
+### Real cost shape (verified on 226 historical sessions via Kie)
 
-All subsequent runs process only new sessions: ~$0.05 per run.
+| Metric | Sonnet (current default) | Haiku (opt-in via config) |
+|---|---|---|
+| Median session | $0.07 | $0.025 |
+| p90 session | $0.20 | $0.07 |
+| Long-tail outliers (5-hour epics) | $0.25-$0.30 | $0.08-$0.10 |
+| 226-session backfill | ~$21 | ~$7 |
 
-> **Tip:** Use Kie.ai as provider during `vir init`
-> for 72% cheaper API calls on the same Claude models.
+Costs assume Kie.ai pricing (~28% of Anthropic direct). Multiply by ~3.5× for Anthropic direct rates.
 
-Pass `--yes` to skip the cost confirmation prompt.
+### What drives cost
+
+Distill output dominates. A multi-hour Claude Code epic with hundreds of tool calls and architectural decisions distills to ~4500 output tokens at $4.27/M = $0.02 just for output, plus 25-30k input tokens at $0.85/M = $0.02. Skills, tool result payloads, and code blocks compound the input side. Vir v0.7.0 ships skill-stripping that drops average distill cost 60-70% versus pre-v0.7.0 builds, but multi-hour sessions remain the long tail.
+
+### Cost controls in v0.7.0
+
+- `vir run` shows a cost estimate before any API call when more than 20 new sessions are queued. Accept with `y`, decline with `n`, skip with `--yes`.
+- `vir cost --since 7d` aggregates real (not estimated) token usage from `~/.vir/cost.log`.
+- `vir cost --by-session` surfaces outliers for cost investigation.
+- `vir cost --top 5` shows your most expensive sessions.
+- `vir run --dry-run` previews per-session cost projections before the live run. Estimates are calibrated to code-heavy sessions and run within ~50% of actual for most batches.
+
+### Reducing cost further
+
+Set `models.distill` to `claude-haiku-4-5` in `~/.vir/config.json` for ~3× cost reduction. Quality is comparable on routine sessions and tool-heavy work; degrades on decision-heavy and very large sessions (calibration data shows Haiku misses architectural/judgment lessons that Sonnet catches). Hybrid routing (Haiku default + Sonnet on decision category and large sessions) is planned for v0.8.0.
 
 ## Platform support
 
