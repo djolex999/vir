@@ -109,15 +109,21 @@ function categoryOf(
 
 // Maps retriever SearchHits (already ordered by score desc) onto the wire
 // schema. Pure: derives every field from the hit's path + frontmatter + body.
+// Topic pages (`vir compose`) are filtered out: the plugin's category enum has
+// no `topic` member yet, so surfacing them here would break its rendering until
+// plugin v0.2.0 ships a coordinated enum extension. They still reach the plugin
+// via its independent vault frontmatter scan (Recent tab), which degrades safely.
 export function buildQueryResults(
   hits: SearchHit[],
   vaultRoot: string,
 ): VirQueryResult[] {
-  return hits.map((h) => {
+  const out: VirQueryResult[] = [];
+  for (const h of hits) {
     const fm = parseFrontmatter(h.content);
     const relPath = relative(vaultRoot, h.filePath);
+    if (fm.type === "topic" || relPath.split("/")[0] === "topics") continue;
     const conf = Number(fm.confidence);
-    return {
+    out.push({
       path: relPath,
       score: h.score,
       category: categoryOf(fm, relPath),
@@ -125,8 +131,9 @@ export function buildQueryResults(
       preview: excerpt(h.content),
       project: fm.project && fm.project.length > 0 ? fm.project : null,
       date: fm.date ?? "",
-    };
-  });
+    });
+  }
+  return out;
 }
 
 export function errorPayload(

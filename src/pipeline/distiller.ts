@@ -61,9 +61,32 @@ interface KieResponseBlock {
 interface KieResponse {
   content?: KieResponseBlock[];
   error?: { message?: string };
+  // Kie reports failures as HTTP 200 with an in-body `code`/`msg` (e.g. 402
+  // insufficient credits, 429 rate limit) rather than a non-2xx status.
+  code?: number;
+  msg?: string;
   // Anthropic-compatible usage — present on most Kie responses, but we never
   // depend on it: a missing usage block falls back to a chars/4 estimate.
   usage?: { input_tokens?: number; output_tokens?: number };
+}
+
+// Kie returns errors as HTTP 200 with an in-body error code, so `response.ok`
+// can't catch them. Detect them here and surface as an HttpError, so the
+// pipeline fails loudly (and 429 stays retryable) instead of silently
+// distilling an empty note from `content: undefined`. Returns null on success.
+export function kieResponseError(data: {
+  code?: number;
+  msg?: string;
+  error?: { message?: string };
+  content?: unknown;
+}): HttpError | null {
+  if (typeof data.code === "number" && data.code >= 400) {
+    return new HttpError(data.code, `Kie ${data.code}: ${data.msg ?? "request failed"}`);
+  }
+  if (data.error?.message) {
+    return new HttpError(502, `Kie error: ${data.error.message}`);
+  }
+  return null;
 }
 
 // Real token counts when the provider reports them; null forces a chars/4
@@ -112,6 +135,8 @@ async function callKie(opts: {
   }
 
   const data = (await response.json()) as KieResponse;
+  const inBodyError = kieResponseError(data);
+  if (inBodyError) throw inBodyError;
   const text = data.content?.[0]?.text ?? "";
   return { text, usage: usageOf(data.usage?.input_tokens, data.usage?.output_tokens) };
 }

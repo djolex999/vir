@@ -14,6 +14,9 @@ export const ConfigSchema = z
   .object({
     vaultPath: z.string().min(1),
     outputDir: z.string().min(1).default("vir"),
+    // Vault subdirectory (inside outputDir) for `vir compose` topic pages.
+    // Existing configs without this field get "topics" via the default.
+    topicsDir: z.string().min(1).default("topics"),
     claudeProjectsDir: z.string().min(1),
     cadenceHours: z.number().positive().default(3),
     provider: z.enum(["anthropic", "kie"]).default("anthropic"),

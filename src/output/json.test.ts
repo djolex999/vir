@@ -99,6 +99,26 @@ describe("buildQueryResults", () => {
   it("preserves input order and returns [] for no hits", () => {
     expect(buildQueryResults([], VAULT_ROOT)).toEqual([]);
   });
+
+  it("excludes topic notes from results (vir-obsidian plugin compat)", () => {
+    const results = buildQueryResults(
+      [
+        hit({
+          filePath: "/vault/vir/patterns/auth-flow-abc.md",
+          content: sessionNote(),
+        }),
+        hit({
+          filePath: "/vault/vir/topics/auth-flow-patterns.md",
+          content:
+            "---\ntype: topic\ntitle: Auth\nconfidence: 0.9\n---\n# Auth\n\nbody",
+        }),
+      ],
+      VAULT_ROOT,
+    );
+    expect(results).toHaveLength(1);
+    expect(results[0]!.category).toBe("pattern");
+    expect(results.some((r) => r.path.startsWith("topics/"))).toBe(false);
+  });
 });
 
 describe("errorPayload", () => {

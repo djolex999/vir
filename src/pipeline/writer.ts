@@ -22,6 +22,12 @@ import {
   buildArticleFrontmatter,
   type DistilledArticle,
 } from "./articleDistiller.js";
+import {
+  TOPICS_SUBDIR,
+  buildComposeFrontmatter,
+  composeRelPath,
+  type ComposedTopic,
+} from "./composer.js";
 
 const CATEGORY_DIR: Record<Category, string> = {
   pattern: "patterns",
@@ -33,11 +39,17 @@ const CATEGORY_DIR: Record<Category, string> = {
 export class VaultWriter {
   private root: string;
   private db: StateDb | null;
+  private topicsDir: string;
 
   constructor(cfg: Config, db: StateDb | null = null) {
     this.root = join(cfg.vaultPath, cfg.outputDir);
     this.db = db;
-    for (const sub of [...Object.values(CATEGORY_DIR), ARTICLES_SUBDIR]) {
+    this.topicsDir = cfg.topicsDir ?? TOPICS_SUBDIR;
+    for (const sub of [
+      ...Object.values(CATEGORY_DIR),
+      ARTICLES_SUBDIR,
+      this.topicsDir,
+    ]) {
       const p = join(this.root, sub);
       if (!existsSync(p)) mkdirSync(p, { recursive: true });
     }
@@ -163,6 +175,77 @@ export class VaultWriter {
     }
   }
 
+  // Write a synthesized topic page into topics/<slug>.md. Parallel to write()/
+  // writeArticle() but uses the topic frontmatter and a deterministic Sources
+  // section built from the real source slugs (so every wikilink resolves and
+  // backlinks the topic into each source's graph). Idempotent: re-composing the
+  // same slug overwrites the body; created/updated come from the caller, which
+  // preserves the original created date via the topics table.
+  async writeTopic(
+    topic: ComposedTopic,
+    mode: "append" | "rewrite" = "append",
+  ): Promise<string> {
+    const relPath = composeRelPath(topic.slug, this.topicsDir);
+    const fullPath = join(this.root, relPath);
+
+    const frontmatter = buildComposeFrontmatter({
+      title: topic.title,
+      topicQuery: topic.topicQuery,
+      sources: topic.sources,
+      confidence: topic.confidence,
+      model: topic.model,
+      created: topic.createdAt.slice(0, 10),
+      updated: topic.updatedAt.slice(0, 10),
+    });
+
+    const sourcesSection =
+      topic.sources.length > 0
+        ? "\n## Sources\n\n" +
+          topic.sources.map((s) => `- [[${s.slug}]]`).join("\n") +
+          "\n"
+        : "";
+    const body = wikilinkRelated(topic.content);
+    const finalContent =
+      `${frontmatter}# ${topic.title}\n\n${body}\n${sourcesSection}`;
+
+    writeFileSync(fullPath, finalContent);
+    await this.maybeEmbedTopic(topic.slug, finalContent);
+
+    if (mode === "append") {
+      this.appendIndex({
+        date: topic.updatedAt.slice(0, 10),
+        topic: topic.title,
+        category: "topic",
+        project: "topics",
+        relPath,
+      });
+      this.appendLog({
+        ts: new Date().toISOString().slice(0, 16).replace("T", " "),
+        category: "topic",
+        topic: topic.title,
+        project: "topics",
+      });
+    }
+    return fullPath;
+  }
+
+  // Best-effort topic embedding, keyed by the topic id (slug) in the topics
+  // table. Stored for future topic-aware retrieval; failure never fails a write.
+  private async maybeEmbedTopic(
+    id: string,
+    fileContent: string,
+  ): Promise<void> {
+    if (!this.db) return;
+    try {
+      if (!(await isOllamaAvailableCached())) return;
+      const vec = await embeddingForNote(fileContent);
+      if (!vec) return;
+      this.db.storeTopicEmbedding(id, vec);
+    } catch {
+      // never crash the writer on embedding failure
+    }
+  }
+
   // Rebuild index.md from scratch off the distilled rows in SQLite, sorted by
   // date descending. Used by the --rewrite-only run so re-rendering notes never
   // appends duplicate index rows. Never touches log.md. No-op without a db.
@@ -198,6 +281,16 @@ export class VaultWriter {
         category: a.category,
         project: a.author ?? "web",
         link: `[[${rel}|${a.title}]]`,
+      });
+    }
+    for (const t of this.db.listTopics()) {
+      const rel = composeRelPath(t.id, this.topicsDir).replace(/\.md$/, "");
+      entries.push({
+        date: (t.updatedAt ?? t.createdAt ?? "").slice(0, 10),
+        topic: t.title,
+        category: "topic",
+        project: "topics",
+        link: `[[${rel}|${t.title}]]`,
       });
     }
     entries.sort((x, y) => y.date.localeCompare(x.date));

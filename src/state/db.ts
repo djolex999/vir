@@ -73,6 +73,18 @@ export interface ArticleRow {
   content: string;
 }
 
+export interface TopicRow {
+  id: string;
+  topicText: string;
+  title: string;
+  content: string;
+  sourceNoteIds: string[];
+  confidence: number | null;
+  model: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface ColumnInfo {
   name: string;
 }
@@ -155,6 +167,18 @@ export class StateDb {
         embedding TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_articles_hash ON articles(hash);
+      CREATE TABLE IF NOT EXISTS topics (
+        id TEXT PRIMARY KEY,
+        topic_text TEXT NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        source_note_ids TEXT NOT NULL,
+        confidence REAL,
+        model TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        embedding TEXT
+      );
     `);
     this.migrate();
   }
@@ -638,9 +662,153 @@ export class StateDb {
     return out;
   }
 
+  // ── topics ──────────────────────────────────────────────────────────────
+  // Synthesized topic pages (`vir compose`). Their own table so the `topic`
+  // taxonomy never pollutes session/article listings, stats, or the rewrite
+  // path. Read methods guard against a missing table — the read-only MCP path
+  // skips migrations, so an upgraded-but-never-rewritten install lacks it.
+
+  private hasTopicsTable(): boolean {
+    try {
+      const r = this.db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='topics'",
+        )
+        .get();
+      return r !== undefined;
+    } catch {
+      return false;
+    }
+  }
+
+  getTopic(id: string): TopicRow | undefined {
+    if (!this.hasTopicsTable()) return undefined;
+    const r = this.db
+      .prepare("SELECT * FROM topics WHERE id = ?")
+      .get(id) as
+      | {
+          id: string;
+          topic_text: string;
+          title: string;
+          content: string;
+          source_note_ids: string;
+          confidence: number | null;
+          model: string;
+          created_at: string;
+          updated_at: string;
+        }
+      | undefined;
+    if (!r) return undefined;
+    return mapTopicRow(r);
+  }
+
+  recordTopic(opts: {
+    id: string;
+    topicText: string;
+    title: string;
+    content: string;
+    sourceNoteIds: string[];
+    confidence?: number | null;
+    model: string;
+    createdAt: string;
+    updatedAt: string;
+  }): void {
+    // ON CONFLICT preserves created_at (re-composing a topic keeps its birth
+    // date) and bumps updated_at — the idempotency contract from the spec.
+    this.db
+      .prepare(
+        `INSERT INTO topics (
+           id, topic_text, title, content, source_note_ids,
+           confidence, model, created_at, updated_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           topic_text = excluded.topic_text,
+           title = excluded.title,
+           content = excluded.content,
+           source_note_ids = excluded.source_note_ids,
+           confidence = excluded.confidence,
+           model = excluded.model,
+           updated_at = excluded.updated_at`,
+      )
+      .run(
+        opts.id,
+        opts.topicText,
+        opts.title,
+        opts.content,
+        JSON.stringify(opts.sourceNoteIds),
+        opts.confidence ?? null,
+        opts.model,
+        opts.createdAt,
+        opts.updatedAt,
+      );
+  }
+
+  listTopics(): TopicRow[] {
+    if (!this.hasTopicsTable()) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT id, topic_text, title, content, source_note_ids,
+                confidence, model, created_at, updated_at
+         FROM topics`,
+      )
+      .all() as Array<{
+      id: string;
+      topic_text: string;
+      title: string;
+      content: string;
+      source_note_ids: string;
+      confidence: number | null;
+      model: string;
+      created_at: string;
+      updated_at: string;
+    }>;
+    return rows.map(mapTopicRow);
+  }
+
+  // Future-proofing for v0.7.3 (topic-aware retrieval). Stored now so topics
+  // are searchable then without a backfill; the retriever does not read these
+  // yet — keeping topics out of `vir query` per the plugin-compat contract.
+  storeTopicEmbedding(id: string, embedding: number[]): void {
+    this.db
+      .prepare("UPDATE topics SET embedding = ? WHERE id = ?")
+      .run(JSON.stringify(embedding), id);
+  }
+
   close(): void {
     this.db.close();
   }
+}
+
+function mapTopicRow(r: {
+  id: string;
+  topic_text: string;
+  title: string;
+  content: string;
+  source_note_ids: string;
+  confidence: number | null;
+  model: string;
+  created_at: string;
+  updated_at: string;
+}): TopicRow {
+  let sourceNoteIds: string[] = [];
+  try {
+    const parsed = JSON.parse(r.source_note_ids) as unknown;
+    if (Array.isArray(parsed)) sourceNoteIds = parsed.map((x) => String(x));
+  } catch {
+    sourceNoteIds = [];
+  }
+  return {
+    id: r.id,
+    topicText: r.topic_text,
+    title: r.title,
+    content: r.content,
+    sourceNoteIds,
+    confidence: r.confidence,
+    model: r.model,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
 }
 
 function deriveSessionId(path: string): string {

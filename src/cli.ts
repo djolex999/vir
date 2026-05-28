@@ -34,7 +34,17 @@ import { parseSession } from "./pipeline/parser.js";
 import { scoreSession } from "./pipeline/filter.js";
 import { scrub } from "./pipeline/scrubber.js";
 import { filterToolCalls } from "./pipeline/toolCallFilter.js";
-import { Distiller } from "./pipeline/distiller.js";
+import {
+  Distiller,
+  normalizeModelName,
+  resolveModelShorthand,
+} from "./pipeline/distiller.js";
+import {
+  composeFromSources,
+  estimateComposeCostTokens,
+  gatherSources,
+} from "./pipeline/composer.js";
+import { computeCost } from "./cost/pricing.js";
 import { summarizeAll, summarizeProject } from "./pipeline/summarizer.js";
 import {
   embeddingForNote,
@@ -785,6 +795,133 @@ program
       db.close();
     }
   });
+
+program
+  .command("compose <topic>")
+  .description("Synthesize a topic page from related vault notes")
+  .option("--limit <n>", "Top N notes to synthesize from (max 50)", "20")
+  .option("--model <model>", "Synthesis model: haiku | sonnet")
+  .option("--dry-run", "Show top sources + estimated cost, exit before LLM")
+  .option("--yes", "Skip the cost confirmation prompt")
+  .action(
+    async (
+      topic: string,
+      opts: {
+        limit?: string;
+        model?: string;
+        dryRun?: boolean;
+        yes?: boolean;
+      },
+    ) => {
+      const cfg = loadConfig();
+      if (opts.model && !["haiku", "sonnet"].includes(opts.model)) {
+        console.error(
+          chalk.red(`--model must be 'haiku' or 'sonnet', got '${opts.model}'`),
+        );
+        exit(1);
+      }
+      const limit = Math.min(
+        50,
+        Math.max(1, Number.parseInt(opts.limit ?? "20", 10) || 20),
+      );
+      const db = new StateDb();
+      try {
+        ui.header("compose");
+        ui.divider();
+        console.log(ui.text(topic));
+        ui.divider();
+        ui.blank();
+
+        const sp = ui.spinner("searching vault for related notes").start();
+        const sources = await gatherSources(cfg, db, topic, limit);
+        sp.stop();
+
+        if (sources.length === 0) {
+          ui.row(
+            ui.warn(ui.WARN_GLYPH),
+            ui.text("no related notes found — nothing to synthesize"),
+          );
+          ui.line(ui.dim("  run `vir run` to distill more sessions first"));
+          return;
+        }
+
+        for (const s of sources.slice(0, 10)) ui.sourceRow(s.title, s.score);
+        ui.divider();
+
+        const model = normalizeModelName(
+          resolveModelShorthand(opts.model ?? cfg.models.distill),
+          cfg.provider,
+        );
+        const { inputTokens, outputTokens } = estimateComposeCostTokens(
+          topic,
+          sources,
+        );
+        const estCost = computeCost(
+          cfg.provider,
+          model,
+          inputTokens,
+          outputTokens,
+          cfg.pricing,
+        );
+
+        ui.summary({
+          sources: { value: sources.length, color: ui.info },
+          model: { value: model, color: ui.accent },
+          "est. cost": { value: ui.formatUsd(estCost), color: ui.warn },
+        });
+        ui.divider();
+
+        if (opts.dryRun) {
+          ui.line(
+            ui.dim("  dry run — no synthesis performed; actuals may vary ±30%"),
+          );
+          return;
+        }
+
+        if (opts.yes !== true) {
+          const proceed = await confirm({
+            message: `synthesize with ${model} (~${ui.formatUsd(estCost)})?`,
+            default: true,
+          });
+          if (!proceed) {
+            ui.line(ui.dim("aborted"));
+            return;
+          }
+        }
+
+        const writer = new VaultWriter(cfg, db);
+        const sp2 = ui.spinner("synthesizing topic page").start();
+        let result;
+        try {
+          result = await composeFromSources(cfg, db, topic, sources, writer, {
+            forceModel: opts.model,
+          });
+          sp2.stop();
+        } catch (err) {
+          sp2.fail(ui.errorColor((err as Error).message));
+          exit(1);
+        }
+
+        ui.row(ui.success(ui.CHECK), ui.text(`wrote ${result.relPath}`));
+        ui.blank();
+
+        // Actual cost from the record callLLM just appended for this compose.
+        const rec = [...readCostLog()]
+          .reverse()
+          .find((r) => r.stage === "compose" && r.session === result.slug);
+        ui.summary({
+          title: { value: result.title, color: ui.text },
+          sources: { value: result.sourceCount, color: ui.info },
+          confidence: { value: result.confidence.toFixed(2), color: ui.info },
+          ...(rec
+            ? { cost: { value: ui.formatUsd(rec.estimated_cost_usd), color: ui.warn } }
+            : {}),
+        });
+      } finally {
+        db.close();
+      }
+    },
+  );
 
 program
   .command("status")

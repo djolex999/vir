@@ -18,7 +18,7 @@ developer-tools, mcp, local-first, cross-platform, llm-wiki
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/v/@djolex999/vir-cli?color=7c6af7&label=npm" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/dw/@djolex999/vir-cli?color=4fd1a0" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee" alt="license"></a>
-  <a href="#project-status"><img src="https://img.shields.io/badge/tests-110%20passing-22c55e" alt="tests"></a>
+  <a href="#project-status"><img src="https://img.shields.io/badge/tests-147%20passing-22c55e" alt="tests"></a>
   <a href="#project-status"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey" alt="platforms"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-c084fc" alt="mcp"></a>
   <a href="#"><img src="https://img.shields.io/badge/local--first-yes-f59e0b" alt="local-first"></a>
@@ -71,8 +71,6 @@ Vir is actively developed. In the next 30–60 days:
 - **Obsidian plugin v1** — sidebar, command palette, canvas integration,
   submitted to the community plugin marketplace
 - **Multi-agent support** — Codex CLI, Cursor, Aider, Cline (one per release)
-- **Topic synthesis** — `vir compose` generates LLM Wiki-style topic pages that
-  merge insights across sessions
 - **PDF/paper ingestion** — broaden beyond developer workflows
 
 Track progress via [GitHub issues](https://github.com/djolex999/vir/issues) or
@@ -104,6 +102,10 @@ results, not better."_ Fair. Vir addresses it in layers:
 - **MMR-diverse retrieval**. Queries return notes covering different aspects of
   the topic, not 5 similar duplicates. The retrieval algorithm balances
   relevance against diversity automatically.
+- **Topic synthesis** via `vir compose "<topic>"`. Embedding-searches the vault
+  for related session notes and articles, then synthesizes them into a single
+  topic page under `topics/`, with each source wikilinked so it backlinks in
+  Obsidian's graph. `--dry-run` previews the sources and cost for free.
 - **Cost transparency.** `vir run --dry-run` estimates per-session cost _before_
   you spend a cent; `vir cost` reports the actuals (total, median, p90, top
   sessions) from a local `~/.vir/cost.log`; and `--force-model haiku|sonnet`
@@ -327,6 +329,8 @@ with your distro, init system, and Node version.
 | `vir cost --by-session`     | free  | Full per-session cost distribution        |
 | `vir query "<question>"`    | cheap | Semantic search your vault                |
 | `vir query … --json`        | cheap | Machine-readable results for tooling       |
+| `vir compose "<topic>"`     | $$    | Synthesize a topic page from related notes |
+| `vir compose … --dry-run`   | free  | Preview sources + cost, exit before LLM   |
 | `vir summarize <project>`   | cheap | Cross-session project synthesis           |
 | `vir summarize --all`       | $$    | Summarize all projects                    |
 | `vir lint`                  | cheap | Find orphans, stale notes, contradictions |
@@ -453,7 +457,7 @@ vault/vir/
 
 |                |                                           |
 | -------------- | ----------------------------------------- |
-| Tests          | 110 passing                               |
+| Tests          | 147 passing                               |
 | Platforms      | macOS (launchd), Linux (systemd/cron)     |
 | Node           | 20+                                       |
 | First-run cost | $1–5 (Kie.ai recommended for 72% savings) |

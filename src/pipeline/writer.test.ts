@@ -10,6 +10,7 @@ function makeCfg(vaultPath: string): Config {
   return {
     vaultPath,
     outputDir: "vir",
+    topicsDir: "topics",
     claudeProjectsDir: "/tmp/claude-projects",
     cadenceHours: 3,
     provider: "anthropic",
