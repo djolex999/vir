@@ -113,6 +113,14 @@ results, not better."_ Fair. Vir addresses it in layers:
   list rates + Kie's discount), so the numbers reflect _your_ bill — not a
   blended guess. Kie rates are approximate; override them in `config.pricing` if
   a report looks off.
+- **Reliable failures (v0.8.0).** Every command now exits non-zero on failure —
+  no more silent successes hiding broken distills. `vir reconcile --dry-run`
+  reports any pre-0.8.0 sessions that landed with empty content (e.g. via the
+  v0.7.1 Kie-200-with-body-error bug); `vir reconcile` retries them, bypassing
+  the SHA-256 processed-cache for just those rows. Retries that fail again
+  leave the row untouched so a second pass can catch them once the underlying
+  cause is fixed. Kie 404s carrying an `api_error` body envelope (transient
+  service hiccups) are now retried alongside 429/5xx.
 
 The bet: with these controls, signal-to-noise stays high enough that the vault
 is a net positive. If your discipline is strong enough to maintain `CLAUDE.md`
@@ -351,6 +359,8 @@ with your distro, init system, and Node version.
 | `vir status`                | free  | Knowledge heatmap + daemon status         |
 | `vir doctor`                | cheap | Diagnose installation issues              |
 | `vir doctor --json`         | cheap | Machine-readable install/health snapshot   |
+| `vir reconcile --dry-run`   | free  | Report sessions that silently failed pre-0.7.2 |
+| `vir reconcile`             | $$    | Retry those sessions — bypasses cache for them only |
 
 Both `vir query` and `vir doctor` accept `--json` for programmatic consumers
 (e.g. the [vir-obsidian](https://github.com/djolex999/vir) plugin). `query --json`

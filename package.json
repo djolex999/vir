@@ -1,6 +1,6 @@
 {
   "name": "@djolex999/vir-cli",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "description": "An LLM Wiki for Claude Code, in your Obsidian vault.",
   "author": "Djordje Marković <djordje@growthq.rs>",
   "license": "MIT",

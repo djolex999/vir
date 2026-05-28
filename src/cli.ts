@@ -5,7 +5,7 @@ import select from "@inquirer/select";
 import chalk from "chalk";
 import { Command } from "commander";
 import { createInterface } from "node:readline/promises";
-import { stdin, stdout, argv, exit } from "node:process";
+import { stdin, stdout, argv } from "node:process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -55,6 +55,8 @@ import { buildQueryResults, errorPayload } from "./output/json.js";
 import { synthesize } from "./search/synthesizer.js";
 import { runMcpServer } from "./mcp/server.js";
 import { runReview } from "./cli/review.js";
+import { runAction } from "./cli/runAction.js";
+import { runReconcile } from "./cli/reconcile.js";
 import {
   installToClaudeCode,
   isClaudeAvailable,
@@ -93,9 +95,11 @@ program
 program
   .command("init")
   .description("Interactive setup")
-  .action(async () => {
-    await cmdInit();
-  });
+  .action(
+    runAction(async () => {
+      await cmdInit();
+    }),
+  );
 
 program
   .command("run")
@@ -117,41 +121,52 @@ program
     "Estimate per-session cost after filtering, then exit before any LLM call",
   )
   .action(
-    async (opts: {
-      full?: boolean;
-      daemon?: boolean;
-      rewriteOnly?: boolean;
-      articlesOnly?: boolean;
-      yes?: boolean;
-      forceModel?: string;
-      dryRun?: boolean;
-    }) => {
-      const cfg = loadConfig();
-      const daemon = opts.daemon === true;
-      const rewriteOnly = opts.rewriteOnly === true;
-      const articlesOnly = opts.articlesOnly === true;
-      const dryRun = opts.dryRun === true;
-      if (opts.forceModel && !["haiku", "sonnet"].includes(opts.forceModel)) {
-        console.error(
-          chalk.red(`--force-model must be 'haiku' or 'sonnet', got '${opts.forceModel}'`),
-        );
-        exit(1);
-      }
-      const skipPrompt =
-        opts.yes === true || daemon || rewriteOnly || articlesOnly || dryRun;
-      await runPipeline(cfg, {
-        full: opts.full,
-        quiet: daemon,
-        logToFile: daemon,
-        rewriteOnly,
-        articlesOnly,
-        forceDistillModel: opts.forceModel,
-        dryRun,
-        onConfirm: skipPrompt
-          ? undefined
-          : async (newCount) => confirmCostIfNeeded(cfg, newCount),
-      });
-    },
+    runAction(
+      async (opts: {
+        full?: boolean;
+        daemon?: boolean;
+        rewriteOnly?: boolean;
+        articlesOnly?: boolean;
+        yes?: boolean;
+        forceModel?: string;
+        dryRun?: boolean;
+      }) => {
+        const cfg = loadConfig();
+        const daemon = opts.daemon === true;
+        const rewriteOnly = opts.rewriteOnly === true;
+        const articlesOnly = opts.articlesOnly === true;
+        const dryRun = opts.dryRun === true;
+        if (opts.forceModel && !["haiku", "sonnet"].includes(opts.forceModel)) {
+          console.error(
+            chalk.red(
+              `--force-model must be 'haiku' or 'sonnet', got '${opts.forceModel}'`,
+            ),
+          );
+          process.exitCode = 1;
+          return;
+        }
+        const skipPrompt =
+          opts.yes === true || daemon || rewriteOnly || articlesOnly || dryRun;
+        const summary = await runPipeline(cfg, {
+          full: opts.full,
+          quiet: daemon,
+          logToFile: daemon,
+          rewriteOnly,
+          articlesOnly,
+          forceDistillModel: opts.forceModel,
+          dryRun,
+          onConfirm: skipPrompt
+            ? undefined
+            : async (newCount) => confirmCostIfNeeded(cfg, newCount),
+        });
+        // Surface per-session distill failures via a non-zero exit so external
+        // callers (and the user) don't get false "success" — the silent-success
+        // bug that hid Kie's 200-with-error responses pre-0.7.2.
+        if (summary.errored > 0 || summary.articlesErrored > 0) {
+          process.exitCode = 1;
+        }
+      },
+    ),
   );
 
 async function confirmCostIfNeeded(
@@ -183,7 +198,7 @@ program
   .option("--by-session", "Show the full per-session distribution")
   .option("--top <n>", "How many top sessions to show (default 5)", "5")
   .action(
-    (opts: { since?: string; bySession?: boolean; top?: string }) => {
+    runAction(async (opts: { since?: string; bySession?: boolean; top?: string }) => {
       ui.header("cost");
       ui.blank();
       const since = opts.since ?? "7d";
@@ -192,7 +207,8 @@ program
         cutoffMs = Date.now() - parseDuration(since);
       } catch {
         console.error(chalk.red(`invalid --since value: ${since}`));
-        exit(1);
+        process.exitCode = 1;
+        return;
       }
       const records = readCostLog(cutoffMs);
       if (records.length === 0) {
@@ -231,7 +247,7 @@ program
           `  ${ui.dim(ui.BULLET)} ${ui.text(label.padEnd(42))} ${ui.dim(`${s.calls}×`)}  ${ui.warn(ui.formatUsd(s.cost))}`,
         );
       }
-    },
+    }),
   );
 
 program
@@ -240,19 +256,22 @@ program
     "Distill ONE session to stdout for A/B model comparison — never writes vault or DB",
   )
   .option("--model <model>", "Distill model: haiku | sonnet", "sonnet")
-  .action(async (sessionId: string, opts: { model?: string }) => {
+  .action(
+    runAction(async (sessionId: string, opts: { model?: string }) => {
     const cfg = loadConfig();
     const model = opts.model ?? "sonnet";
     if (!["haiku", "sonnet"].includes(model)) {
       console.error(chalk.red(`--model must be 'haiku' or 'sonnet', got '${model}'`));
-      exit(1);
+      process.exitCode = 1;
+      return;
     }
     const found = scanSessions(cfg.claudeProjectsDir).find(
       (s) => basename(s.path, ".jsonl") === sessionId,
     );
     if (!found) {
       console.error(chalk.red(`session not found under ${cfg.claudeProjectsDir}: ${sessionId}`));
-      exit(1);
+      process.exitCode = 1;
+      return;
     }
 
     // Same pipeline as production up to (but NOT including) writer.write / db.record.
@@ -291,7 +310,8 @@ program
     } else {
       console.log(`\n## cost\n(no distill cost record found for ${sessionId})`);
     }
-  });
+  }),
+  );
 
 const schedule = program
   .command("schedule")
@@ -299,30 +319,34 @@ const schedule = program
 schedule
   .command("install")
   .description("Install + start the scheduled daemon")
-  .action(async () => {
-    const cfg = loadConfig();
-    await installDaemon(cfg);
-    const ds = await daemonStatus();
-    console.log(
-      chalk.green(
-        `installed via ${ds.method}: ${ds.configPath ?? "(no path)"} (active=${ds.active})`,
-      ),
-    );
-  });
+  .action(
+    runAction(async () => {
+      const cfg = loadConfig();
+      await installDaemon(cfg);
+      const ds = await daemonStatus();
+      console.log(
+        chalk.green(
+          `installed via ${ds.method}: ${ds.configPath ?? "(no path)"} (active=${ds.active})`,
+        ),
+      );
+    }),
+  );
 schedule
   .command("uninstall")
   .description("Stop + remove the scheduled daemon")
-  .action(async () => {
-    const before = await daemonStatus();
-    await uninstallDaemon();
-    if (before.installed) {
-      console.log(
-        chalk.green(`removed ${before.configPath ?? before.method} daemon`),
-      );
-    } else {
-      console.log(chalk.yellow("no vir daemon found"));
-    }
-  });
+  .action(
+    runAction(async () => {
+      const before = await daemonStatus();
+      await uninstallDaemon();
+      if (before.installed) {
+        console.log(
+          chalk.green(`removed ${before.configPath ?? before.method} daemon`),
+        );
+      } else {
+        console.log(chalk.yellow("no vir daemon found"));
+      }
+    }),
+  );
 
 program
   .command("sync-claude [project]")
@@ -331,7 +355,7 @@ program
   .option("--force", "Apply without confirmation")
   .option("--global", "Only update ~/.claude/CLAUDE.md")
   .action(
-    async (
+    runAction(async (
       projectArg: string | undefined,
       opts: { dryRun?: boolean; force?: boolean; global?: boolean },
     ) => {
@@ -389,13 +413,14 @@ program
       } finally {
         db.close();
       }
-    },
+    }),
   );
 
 program
   .command("dedupe")
   .description("Interactive duplicate detection + merge")
-  .action(async () => {
+  .action(
+    runAction(async () => {
     const cfg = loadConfig();
     const db = new StateDb();
     try {
@@ -478,7 +503,8 @@ program
     } finally {
       db.close();
     }
-  });
+  }),
+  );
 
 program
   .command("lint")
@@ -487,7 +513,7 @@ program
   .option("--stale", "Run only the staleness check (free)")
   .option("--contradictions", "Run only the contradiction check (Haiku tokens)")
   .action(
-    async (opts: {
+    runAction(async (opts: {
       orphans?: boolean;
       stale?: boolean;
       contradictions?: boolean;
@@ -583,54 +609,58 @@ program
       } finally {
         db.close();
       }
-    },
+    }),
   );
 
 program
   .command("summarize [project]")
   .description("Generate or regenerate a project knowledge summary")
   .option("--all", "Regenerate summaries for every project with notes")
-  .action(async (project: string | undefined, opts: { all?: boolean }) => {
-    const cfg = loadConfig();
-    const db = new StateDb();
-    try {
-      if (opts.all) {
-        const results = await summarizeAll(cfg, db);
-        if (results.length === 0) {
-          console.log(chalk.yellow("no projects with notes"));
+  .action(
+    runAction(async (project: string | undefined, opts: { all?: boolean }) => {
+      const cfg = loadConfig();
+      const db = new StateDb();
+      try {
+        if (opts.all) {
+          const results = await summarizeAll(cfg, db);
+          if (results.length === 0) {
+            console.log(chalk.yellow("no projects with notes"));
+            return;
+          }
+          for (const r of results) {
+            console.log(
+              chalk.green(`summarized project/${r.slug}`) +
+                ` (${r.counts.total} sessions)`,
+            );
+          }
           return;
         }
-        for (const r of results) {
-          console.log(
-            chalk.green(`summarized project/${r.slug}`) +
-              ` (${r.counts.total} sessions)`,
-          );
+        if (!project) {
+          console.error(chalk.red("usage: vir summarize <project> | --all"));
+          process.exitCode = 1;
+          return;
         }
-        return;
+        const res = await summarizeProject(cfg, project, db);
+        if (!res) {
+          console.log(chalk.yellow(`no distilled notes for project '${project}'`));
+          return;
+        }
+        console.log(
+          chalk.green(`summarized project/${res.slug}`) +
+            ` (${res.counts.total} sessions) → ${res.path}`,
+        );
+      } finally {
+        db.close();
       }
-      if (!project) {
-        console.error(chalk.red("usage: vir summarize <project> | --all"));
-        exit(1);
-      }
-      const res = await summarizeProject(cfg, project, db);
-      if (!res) {
-        console.log(chalk.yellow(`no distilled notes for project '${project}'`));
-        return;
-      }
-      console.log(
-        chalk.green(`summarized project/${res.slug}`) +
-          ` (${res.counts.total} sessions) → ${res.path}`,
-      );
-    } finally {
-      db.close();
-    }
-  });
+    }),
+  );
 
 program
   .command("embed")
   .description("Generate Ollama embeddings for distilled notes")
   .option("--force", "Regenerate even if embedding already exists")
-  .action(async (opts: { force?: boolean }) => {
+  .action(
+    runAction(async (opts: { force?: boolean }) => {
     const cfg = loadConfig();
     ui.header("embed");
     ui.blank();
@@ -639,7 +669,8 @@ program
       ui.line(ui.dim("  brew install ollama"));
       ui.line(ui.dim("  ollama pull nomic-embed-text"));
       ui.line(ui.dim("  ollama serve"));
-      exit(1);
+      process.exitCode = 1;
+      return;
     }
     const db = new StateDb();
     try {
@@ -692,7 +723,8 @@ program
     } finally {
       db.close();
     }
-  });
+  }),
+  );
 
 // JSON path for `vir query --json`: stdout gets a single JSON array on success
 // (`[]` when nothing matched), exit 0. On failure stdout stays EMPTY so the
@@ -739,7 +771,8 @@ program
   .description("Search the vault: embedding/TF-IDF retrieval + Claude synthesis")
   .option("--json", "Emit machine-readable JSON for programmatic consumers")
   .option("--limit <n>", "Number of notes to retrieve", "8")
-  .action(async (question: string, opts: { json?: boolean; limit?: string }) => {
+  .action(
+    runAction(async (question: string, opts: { json?: boolean; limit?: string }) => {
     const limit = Math.max(1, Number.parseInt(opts.limit ?? "8", 10) || 8);
     if (opts.json) {
       await runQueryJson(question, limit);
@@ -794,7 +827,8 @@ program
     } finally {
       db.close();
     }
-  });
+  }),
+  );
 
 program
   .command("compose <topic>")
@@ -804,7 +838,7 @@ program
   .option("--dry-run", "Show top sources + estimated cost, exit before LLM")
   .option("--yes", "Skip the cost confirmation prompt")
   .action(
-    async (
+    runAction(async (
       topic: string,
       opts: {
         limit?: string;
@@ -818,7 +852,8 @@ program
         console.error(
           chalk.red(`--model must be 'haiku' or 'sonnet', got '${opts.model}'`),
         );
-        exit(1);
+        process.exitCode = 1;
+        return;
       }
       const limit = Math.min(
         50,
@@ -891,7 +926,7 @@ program
 
         const writer = new VaultWriter(cfg, db);
         const sp2 = ui.spinner("synthesizing topic page").start();
-        let result;
+        let result: Awaited<ReturnType<typeof composeFromSources>>;
         try {
           result = await composeFromSources(cfg, db, topic, sources, writer, {
             forceModel: opts.model,
@@ -899,7 +934,8 @@ program
           sp2.stop();
         } catch (err) {
           sp2.fail(ui.errorColor((err as Error).message));
-          exit(1);
+          process.exitCode = 1;
+          return;
         }
 
         ui.row(ui.success(ui.CHECK), ui.text(`wrote ${result.relPath}`));
@@ -920,30 +956,49 @@ program
       } finally {
         db.close();
       }
-    },
+    }),
   );
 
 program
   .command("status")
   .description("Show processing status + knowledge base breakdown")
-  .action(async () => {
-    const cfg = configExists() ? loadConfig() : null;
-    if (!cfg) {
-      ui.header("status");
-      ui.row(ui.warn(ui.WARN_GLYPH), ui.text("not configured — run `vir init`"));
-      return;
-    }
-    const db = new StateDb();
-    const knowledge = db.getStats();
-    db.close();
-    const ds = await daemonStatus();
+  .action(
+    runAction(async () => {
+      const cfg = configExists() ? loadConfig() : null;
+      if (!cfg) {
+        ui.header("status");
+        ui.row(ui.warn(ui.WARN_GLYPH), ui.text("not configured — run `vir init`"));
+        return;
+      }
+      const db = new StateDb();
+      const knowledge = db.getStats();
+      db.close();
+      const ds = await daemonStatus();
 
-    ui.header("status");
-    ui.blank();
-    renderKnowledge(knowledge);
-    ui.blank();
-    renderDaemon(ds, cfg.cadenceHours);
-  });
+      ui.header("status");
+      ui.blank();
+      renderKnowledge(knowledge);
+      ui.blank();
+      renderDaemon(ds, cfg.cadenceHours);
+    }),
+  );
+
+program
+  .command("reconcile")
+  .description(
+    "Retry sessions that silently failed pre-0.7.2 (null/empty content despite skipped=0)",
+  )
+  .option(
+    "--dry-run",
+    "Report recoverable count + estimated cost + false-cost collateral; exit before any LLM call",
+  )
+  .option("--yes", "Skip the cost confirmation prompt")
+  .action(
+    runAction(async (opts: { dryRun?: boolean; yes?: boolean }) => {
+      const cfg = loadConfig();
+      await runReconcile(cfg, { dryRun: opts.dryRun, yes: opts.yes });
+    }),
+  );
 
 program
   .command("review")
@@ -951,19 +1006,21 @@ program
   .option("--all", "Review all notes, including verified ones")
   .option("--project <slug>", "Filter by project")
   .option("--limit <n>", "Max notes to review in this session", "50")
-  .action(runReview);
+  .action(runAction(runReview));
 
 program
   .command("doctor")
   .description("Run diagnostic checks on Vir installation")
   .option("--json", "Emit machine-readable JSON for programmatic consumers")
-  .action(async (opts: { json?: boolean }) => {
-    if (opts.json) {
-      await runDoctorJson();
-      return;
-    }
-    await runDoctor();
-  });
+  .action(
+    runAction(async (opts: { json?: boolean }) => {
+      if (opts.json) {
+        await runDoctorJson();
+        return;
+      }
+      await runDoctor();
+    }),
+  );
 
 const mcpCmd = program
   .command("mcp")
@@ -993,27 +1050,32 @@ const runMcp = async (): Promise<void> => {
 mcpCmd
   .command("run")
   .description("Run the MCP server over stdio")
-  .action(runMcp);
+  .action(runAction(runMcp));
 
 mcpCmd
   .command("install")
   .description("Register Vir with Claude Code")
   .option("--scope <scope>", "user or project", "user")
-  .action(async (opts: { scope: string }) => {
-    await installToClaudeCode(opts.scope as "user" | "project");
-  });
+  .action(
+    runAction(async (opts: { scope: string }) => {
+      await installToClaudeCode(opts.scope as "user" | "project");
+    }),
+  );
 
 mcpCmd
   .command("uninstall")
   .description("Unregister Vir from Claude Code")
-  .action(async () => {
-    await uninstallFromClaudeCode();
-  });
+  .action(
+    runAction(async () => {
+      await uninstallFromClaudeCode();
+    }),
+  );
 
 mcpCmd
   .command("status")
   .description("Check Vir MCP registration")
-  .action(async () => {
+  .action(
+    runAction(async () => {
     if (!(await isClaudeAvailable())) {
       ui.row(
         ui.warn(ui.WARN_GLYPH),
@@ -1028,12 +1090,13 @@ mcpCmd
       ui.text(installed ? "registered with Claude Code" : "not registered"),
       installed ? undefined : "run: vir mcp install",
     );
-  });
+  }),
+  );
 
 // Backwards compat: `vir mcp` with no subcommand runs the server. The MCP
 // registration (`claude mcp add vir vir mcp`) invokes exactly this, so it must
 // keep launching the stdio server — don't change it to print help.
-mcpCmd.action(runMcp);
+mcpCmd.action(runAction(runMcp));
 
 function renderKnowledge(k: KnowledgeStats): void {
   if (k.total === 0) {
@@ -1373,7 +1436,8 @@ async function cmdInit(): Promise<void> {
     for (const issue of parsed.error.issues) {
       console.error(`  - ${issue.path.join(".")}: ${issue.message}`);
     }
-    exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   saveConfig(parsed.data);
@@ -1450,7 +1514,11 @@ function safeLoad(): Config | null {
   }
 }
 
+// Safety net for anything that escapes the per-action `runAction` wrapper (e.g.
+// commander-internal rejections before the action handler is reached). Set
+// `process.exitCode` instead of calling `process.exit` so buffered stdout/stderr
+// can drain before the process exits.
 program.parseAsync(argv).catch((err: unknown) => {
   console.error(chalk.red((err as Error).message ?? String(err)));
-  exit(1);
+  process.exitCode = 1;
 });

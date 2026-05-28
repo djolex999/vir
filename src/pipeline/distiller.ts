@@ -13,9 +13,15 @@ const CATEGORIES: Category[] = ["pattern", "gotcha", "decision", "tool"];
 
 export class HttpError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  // The `error.type` field from the upstream JSON body, when present. Used by
+  // isRetryable to distinguish transient API errors (e.g. Kie's 404 with body
+  // `{error: {type: "api_error"}}` — a service hiccup, retryable) from genuine
+  // status-code-only failures (a 404 to a wrong endpoint, NOT retryable).
+  errorType?: string;
+  constructor(status: number, message: string, errorType?: string) {
     super(message);
     this.status = status;
+    this.errorType = errorType;
     this.name = "HttpError";
   }
 }
@@ -128,9 +134,22 @@ async function callKie(opts: {
 
   if (!response.ok) {
     const body = await response.text().catch(() => "");
+    // Parse the body so callers (isRetryable) can tell apart a transient Kie
+    // service hiccup (body carries `{error: {type: "api_error"}}`) from a
+    // genuine misroute (no api_error envelope). JSON.parse failures fall
+    // through harmlessly — `errorType` stays undefined and the existing
+    // status-code-only retry logic applies.
+    let errorType: string | undefined;
+    try {
+      const parsed = JSON.parse(body) as { error?: { type?: string } };
+      if (typeof parsed.error?.type === "string") errorType = parsed.error.type;
+    } catch {
+      // body wasn't JSON
+    }
     throw new HttpError(
       response.status,
       `Kie ${response.status}: ${body.slice(0, 500)}`,
+      errorType,
     );
   }
 
@@ -359,7 +378,14 @@ const KIE_RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
 export function isRetryable(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
-  if (err instanceof HttpError) return KIE_RETRYABLE_STATUS.has(err.status);
+  if (err instanceof HttpError) {
+    if (KIE_RETRYABLE_STATUS.has(err.status)) return true;
+    // Kie occasionally returns 404 with body `{error: {type: "api_error"}}`
+    // during transient service issues — distinct from a genuine 404 (wrong
+    // endpoint, no api_error envelope), which stays a hard failure.
+    if (err.status === 404 && err.errorType === "api_error") return true;
+    return false;
+  }
   if (err instanceof Anthropic.APIError) return err.status === 429;
   const e = err as { status?: number; statusCode?: number };
   return e.status === 429 || e.statusCode === 429;

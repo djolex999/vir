@@ -204,6 +204,23 @@ export class StateDb {
     return row !== undefined && row.hash === hash;
   }
 
+  // Rows the reconcile flow looks for: sessions that the pipeline thought it
+  // had distilled (`skipped = 0`) but that ended up with no content. Two
+  // shapes for the same symptom — pre-0.7.2 silent failures landed as
+  // `content = ''` (the Kie-200 bug yielded an empty distill text), and
+  // anything that errored landed as `content IS NULL`. The selector covers
+  // both. Pure SQL filter for performance + a pure-function counterpart
+  // (`selectReconcileTargets`) for unit tests against fixture rows.
+  listReconcileTargets(): SessionRow[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM sessions
+         WHERE skipped = 0
+           AND (content IS NULL OR content = '')`,
+      )
+      .all() as SessionRow[];
+  }
+
   record(opts: {
     path: string;
     hash: string;
@@ -815,6 +832,10 @@ function deriveSessionId(path: string): string {
   const base = path.split("/").pop() ?? path;
   return base.replace(/\.jsonl$/, "");
 }
+
+// Re-export for callers outside db.ts (reconcile) that need the same path → id
+// mapping cost.log uses, so the collateral-count join lines up.
+export { deriveSessionId };
 
 // Local copy of `kebab()` so db.ts doesn't pull in pipeline/writer.ts (which
 // would create an import cycle once writer.ts depends on db state).
