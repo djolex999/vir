@@ -26,6 +26,23 @@ export class HttpError extends Error {
   }
 }
 
+// Native `fetch` has no default timeout — a stalled Kie connection would hang
+// the daemon indefinitely. callKie wraps every request in an AbortController
+// that fires after this window (distill calls are slow, so it's generous).
+const KIE_TIMEOUT_MS = 120_000;
+
+// Thrown when callKie's AbortController trips. A stalled connection is
+// transient — same family as a 5xx — so isRetryable treats it as retryable
+// and withRateLimitRetry backs off and retries.
+export class KieTimeoutError extends Error {
+  readonly timeoutMs: number;
+  constructor(timeoutMs: number) {
+    super(`Kie request timed out after ${timeoutMs}ms`);
+    this.timeoutMs = timeoutMs;
+    this.name = "KieTimeoutError";
+  }
+}
+
 export function buildAnthropicClient(config: Config): Anthropic {
   return new Anthropic({ apiKey: config.anthropicApiKey ?? "" });
 }
@@ -137,24 +154,45 @@ function usageOf(input: unknown, output: unknown): TokenUsage | null {
     : null;
 }
 
-async function callKie(opts: {
+// `fetchImpl`/`timeoutMs` are injectable for tests only — production callers
+// (callLLM) pass neither and get the global fetch + KIE_TIMEOUT_MS.
+export async function callKie(opts: {
   apiKey: string;
   model: string;
   maxTokens: number;
   prompt: string;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
 }): Promise<LlmResult> {
-  const response = await fetch("https://api.kie.ai/claude/v1/messages", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${opts.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: opts.model,
-      max_tokens: opts.maxTokens,
-      messages: [{ role: "user", content: opts.prompt }],
-    }),
-  });
+  const doFetch = opts.fetchImpl ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? KIE_TIMEOUT_MS;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await doFetch("https://api.kie.ai/claude/v1/messages", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${opts.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: opts.model,
+        max_tokens: opts.maxTokens,
+        messages: [{ role: "user", content: opts.prompt }],
+      }),
+      signal: ac.signal,
+    });
+  } catch (err) {
+    // The AbortController fired — surface a typed, retryable timeout rather
+    // than a raw AbortError, which isRetryable wouldn't recognize. A genuine
+    // network error (signal not aborted) propagates unchanged.
+    if (ac.signal.aborted) throw new KieTimeoutError(timeoutMs);
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!response.ok) {
     const body = await response.text().catch(() => "");
@@ -422,6 +460,8 @@ const KIE_RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
 export function isRetryable(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
+  // A client-side timeout is a transient stall, same family as a 5xx.
+  if (err instanceof KieTimeoutError) return true;
   if (err instanceof HttpError) {
     if (KIE_RETRYABLE_STATUS.has(err.status)) return true;
     // Kie occasionally returns 404 with body `{error: {type: "api_error"}}`

@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
+  callKie,
   HttpError,
   isRetryable,
+  KieTimeoutError,
   kieResponseError,
   selectDistillModel,
 } from "./distiller.js";
@@ -142,5 +144,35 @@ describe("selectDistillModel", () => {
     const models = { distill: "sonnet", distillFast: "haiku", distillThreshold: 10 };
     expect(selectDistillModel(cls("pattern"), 10, models)).toBe("haiku");
     expect(selectDistillModel(cls("pattern"), 11, models)).toBe("sonnet");
+  });
+});
+
+describe("callKie timeout", () => {
+  it("treats a KieTimeoutError as retryable (a stall is transient)", () => {
+    expect(isRetryable(new KieTimeoutError(120_000))).toBe(true);
+  });
+
+  it("aborts and throws KieTimeoutError when the fetch never resolves", async () => {
+    // A fetch that hangs until its AbortSignal fires — mirrors how the real
+    // fetch rejects on abort. The timeout must trip and surface a typed error.
+    const hangingFetch = ((_url: string, init?: { signal?: AbortSignal }) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+        );
+      })) as unknown as typeof fetch;
+
+    const start = Date.now();
+    await expect(
+      callKie({
+        apiKey: "k",
+        model: "m",
+        maxTokens: 10,
+        prompt: "p",
+        timeoutMs: 50,
+        fetchImpl: hangingFetch,
+      }),
+    ).rejects.toBeInstanceOf(KieTimeoutError);
+    expect(Date.now() - start).toBeLessThan(2000);
   });
 });
