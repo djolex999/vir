@@ -1428,7 +1428,20 @@ async function cmdInit(): Promise<void> {
     distillArticles: existing?.distillArticles,
     filterToolCalls: existing?.filterToolCalls,
     retrievalDiversity: existing?.retrievalDiversity,
-    models: { classify: classifyModel, distill: distillModel },
+    models: {
+      classify: classifyModel,
+      distill: distillModel,
+      // New installs get hybrid routing out of the box: route routine sessions
+      // to Haiku, keep the chosen distill model for decision/large ones.
+      distillFast:
+        existing?.models?.distillFast ??
+        (provider === "anthropic"
+          ? "claude-haiku-4-5-20251001"
+          : "claude-haiku-4-5"),
+      ...(existing?.models?.distillThreshold != null
+        ? { distillThreshold: existing.models.distillThreshold }
+        : {}),
+    },
   });
 
   if (!parsed.success) {

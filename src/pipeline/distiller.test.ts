@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { HttpError, isRetryable, kieResponseError } from "./distiller.js";
+import {
+  HttpError,
+  isRetryable,
+  kieResponseError,
+  selectDistillModel,
+} from "./distiller.js";
+import type { Category, Classification } from "./types.js";
 
 describe("isRetryable", () => {
   it("retries on 429", () => {
@@ -74,5 +80,67 @@ describe("kieResponseError", () => {
     const err = kieResponseError({ error: { message: "bad request" } });
     expect(err).toBeInstanceOf(HttpError);
     expect(err?.message).toContain("bad request");
+  });
+});
+
+describe("selectDistillModel", () => {
+  const cls = (category: Category): Classification => ({
+    category,
+    topic: "t",
+    project: "p",
+    confidence: 0.9,
+  });
+
+  it("returns distill for every session when distillFast is unset (hybrid off)", () => {
+    // No surprise quality shift on upgrade — without distillFast, the smart
+    // model is used unconditionally, regardless of category or size.
+    expect(selectDistillModel(cls("pattern"), 5, { distill: "sonnet" })).toBe(
+      "sonnet",
+    );
+    expect(
+      selectDistillModel(cls("decision"), 5_000_000, { distill: "sonnet" }),
+    ).toBe("sonnet");
+  });
+
+  it("routes a decision-category session to distill even when tiny", () => {
+    expect(
+      selectDistillModel(cls("decision"), 1, {
+        distill: "sonnet",
+        distillFast: "haiku",
+      }),
+    ).toBe("sonnet");
+  });
+
+  it("uses distillFast at exactly the threshold (boundary is >, not >=)", () => {
+    expect(
+      selectDistillModel(cls("pattern"), 100_000, {
+        distill: "sonnet",
+        distillFast: "haiku",
+      }),
+    ).toBe("haiku");
+  });
+
+  it("forces distill one token over the threshold", () => {
+    expect(
+      selectDistillModel(cls("pattern"), 100_001, {
+        distill: "sonnet",
+        distillFast: "haiku",
+      }),
+    ).toBe("sonnet");
+  });
+
+  it("routes a routine, small session to distillFast", () => {
+    expect(
+      selectDistillModel(cls("tool"), 500, {
+        distill: "sonnet",
+        distillFast: "haiku",
+      }),
+    ).toBe("haiku");
+  });
+
+  it("respects a custom threshold", () => {
+    const models = { distill: "sonnet", distillFast: "haiku", distillThreshold: 10 };
+    expect(selectDistillModel(cls("pattern"), 10, models)).toBe("haiku");
+    expect(selectDistillModel(cls("pattern"), 11, models)).toBe("sonnet");
   });
 });

@@ -301,9 +301,21 @@ Distill output dominates. A multi-hour Claude Code epic with hundreds of tool ca
 - `vir cost --top 5` shows your most expensive sessions.
 - `vir run --dry-run` previews per-session cost projections before the live run. Estimates are recalibrated from real v0.7.0 token data and run as a rough projection; actual cost varies with session content.
 
-### Reducing cost further
+### Hybrid routing
 
-Set `models.distill` to `claude-haiku-4-5` in `~/.vir/config.json` for ~3× cost reduction. Quality is comparable on routine sessions and tool-heavy work; degrades on decision-heavy and very large sessions (calibration data shows Haiku misses architectural/judgment lessons that Sonnet catches). Hybrid routing (Haiku default + Sonnet on decision category and large sessions) is planned for v0.8.0.
+Haiku is ~3× cheaper than Sonnet and captures equal-or-more concrete detail on routine and tool-heavy sessions. Calibration data shows it only misses higher-order judgment/architectural lessons on **decision-heavy** and **very large** sessions. Hybrid routing exploits that: route routine sessions to Haiku, reserve Sonnet for where it matters.
+
+When `models.distillFast` is set, each session is routed after classification:
+
+- `category === "decision"` → `models.distill` (Sonnet)
+- `inputTokens > models.distillThreshold` (default `100000`) → `models.distill`
+- otherwise → `models.distillFast` (Haiku)
+
+**New installs** (`vir init`) enable hybrid by default — `distillFast` is set to the Haiku model. **Existing installs** are unaffected on upgrade: with `distillFast` unset, `models.distill` is used for every session exactly as before. Opt in by adding `"distillFast": "claude-haiku-4-5"` (Kie) or `"claude-haiku-4-5-20251001"` (Anthropic) to `models` in `~/.vir/config.json`.
+
+`vir run --force-model haiku|sonnet` **bypasses hybrid routing entirely** and forces every session to the named model for that run — useful for A/B comparison. Force-model wins over hybrid.
+
+To go all-cheap instead, set `models.distill` itself to the Haiku model (quality degrades on decision-heavy and very large sessions).
 
 ## Platform support
 
@@ -437,7 +449,9 @@ Located at `~/.vir/config.json`.
 | `filterToolCalls`   | `moderate`                  | Tool-output filtering: `aggressive` \| `moderate` \| `off` |
 | `retrievalDiversity`| `0.3`                       | MMR diversity (0..1): 0.0 = pure relevance, 1.0 = pure diversity |
 | `models.classify`   | `claude-haiku-4-5-20251001` | Classify model                                             |
-| `models.distill`    | `claude-sonnet-4-6`         | Distill model                                              |
+| `models.distill`    | `claude-sonnet-4-6`         | Distill model — the "smart" model for decision/large sessions |
+| `models.distillFast`| _(unset)_                   | Cheap model for routine sessions. Set → hybrid routing on; unset → `distill` used for everything |
+| `models.distillThreshold`| `100000`               | Input-token ceiling above which a session is forced to `distill` |
 | `pricing`           | _(built-in)_                | Optional per-provider `$/1M` overrides (`inputPer1M`/`outputPer1M`). Anthropic defaults track list rates; Kie defaults are approximate — verify on your Kie dashboard |
 
 ## Vault structure

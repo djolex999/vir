@@ -60,6 +60,30 @@ export function resolveModelShorthand(model: string): string {
   return model;
 }
 
+// Default input-token ceiling above which a session is forced to the smart
+// model regardless of category. A routing signal only — uses the chars/4
+// heuristic, not real billing tokens.
+const DEFAULT_DISTILL_THRESHOLD = 100_000;
+
+// Hybrid routing: route routine/tool-heavy sessions to the cheap model
+// (distillFast) and reserve the smart model (distill) for decision-heavy and
+// large sessions, where Day-7 calibration showed Haiku misses higher-order
+// judgment. Hybrid is OFF (returns distill for everything) until distillFast is
+// set — so existing installs see no quality shift on upgrade. `--force-model`
+// bypasses this function entirely (see Distiller.selectModelFor).
+export function selectDistillModel(
+  classification: Classification,
+  inputTokens: number,
+  models: { distill: string; distillFast?: string; distillThreshold?: number },
+): string {
+  if (!models.distillFast) return models.distill;
+  if (classification.category === "decision") return models.distill;
+  if (inputTokens > (models.distillThreshold ?? DEFAULT_DISTILL_THRESHOLD)) {
+    return models.distill;
+  }
+  return models.distillFast;
+}
+
 interface KieResponseBlock {
   type?: string;
   text?: string;
@@ -274,16 +298,32 @@ export class Distiller {
   private cfg: Config;
   private classifyModel: string;
   private distillModel: string;
+  // When set, --force-model wins over hybrid routing — every session uses
+  // distillModel and selectDistillModel is never consulted.
+  private forced: boolean;
 
   constructor(cfg: Config, opts: { forceDistillModel?: string } = {}) {
     this.cfg = cfg;
     this.client = maybeAnthropicClient(cfg);
     this.classifyModel = normalizeModelName(cfg.models.classify, cfg.provider);
     // --force-model overrides only the distill model, for this run only.
+    this.forced = opts.forceDistillModel != null;
     const distill = resolveModelShorthand(
       opts.forceDistillModel ?? cfg.models.distill,
     );
     this.distillModel = normalizeModelName(distill, cfg.provider);
+  }
+
+  // Resolve the distill model for one session. --force-model short-circuits
+  // hybrid routing entirely; otherwise selectDistillModel decides from category
+  // + input size, and the result is normalized for the provider.
+  private modelFor(cls: Classification, inputTokens: number): string {
+    if (this.forced) return this.distillModel;
+    const selected = selectDistillModel(cls, inputTokens, this.cfg.models);
+    return normalizeModelName(
+      resolveModelShorthand(selected),
+      this.cfg.provider,
+    );
   }
 
   async classify(
@@ -323,6 +363,7 @@ ${scrubbedSummary}`;
     session: ParsedSession,
     scrubbedContent: string,
     cls: Classification,
+    model: string = this.distillModel,
   ): Promise<string> {
     const prompt = `Extract durable knowledge from this Claude Code session.
 
@@ -341,7 +382,7 @@ ${scrubbedContent}`;
     const text = await withRateLimitRetry(() =>
       callLLM(this.cfg, this.client, {
         prompt,
-        model: this.distillModel,
+        model,
         maxTokens: 1500,
         cost: {
           session: session.sessionId,
@@ -360,7 +401,10 @@ ${scrubbedContent}`;
   ): Promise<DistilledNote | null> {
     const cls = await this.classify(session, scrubbedSummary);
     if (cls.confidence <= 0.6) return null;
-    const md = await this.distill(session, scrubbedContent, cls);
+    // Hybrid routing decides here, after classify, on the post-filter distill
+    // input. The chosen model flows into callLLM and lands in cost.log.
+    const model = this.modelFor(cls, estimateTokens(scrubbedContent));
+    const md = await this.distill(session, scrubbedContent, cls, model);
     return { classification: cls, markdown: md };
   }
 }

@@ -59,7 +59,15 @@ export const ConfigSchema = z
     models: z
       .object({
         classify: z.string().default("claude-haiku-4-5-20251001"),
+        // The "smart" model — used for decision-heavy / large sessions under
+        // hybrid routing, and for every session when distillFast is unset.
         distill: z.string().default("claude-sonnet-4-6"),
+        // The cheap model for routine sessions. Hybrid routing is OFF until
+        // this is set, so existing installs keep using `distill` unchanged.
+        distillFast: z.string().min(1).optional(),
+        // Input-token ceiling above which a session is forced to `distill`.
+        // Optional — selectDistillModel falls back to 100_000 when unset.
+        distillThreshold: z.number().positive().optional(),
       })
       .default({
         classify: "claude-haiku-4-5-20251001",

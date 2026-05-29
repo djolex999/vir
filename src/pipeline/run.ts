@@ -254,6 +254,17 @@ export async function runPipeline(
     `preflight: found=${discovered.length} cached=${cached} new=${preflightNew}`,
   );
 
+  // Nudge session-only installs toward hybrid routing. interactive is already
+  // false under --quiet/--daemon, so this never prints on the daemon path.
+  if (interactive && !cfg.models.distillFast) {
+    ui.line(
+      ui.dim(
+        "  Tip: set models.distillFast to route routine sessions to Haiku (~50% cheaper).",
+      ),
+    );
+    ui.blank();
+  }
+
   // --dry-run: estimate per-session cost AFTER filtering but BEFORE any LLM
   // call, then exit. Output sizes + the input divisor are calibrated from real
   // cost.log data (output medians ran ~335 classify / ~4500 distill; code/JSON
