@@ -28,6 +28,20 @@ export interface EmbeddingRow {
   embedding: number[];
 }
 
+// A distilled session that still has no embedding — the backfill set for the
+// self-heal sweep (and the "pending embedding" count). Carries just the columns
+// the pure selector `selectEmbeddingTargets` needs to mirror the SQL filter.
+export interface EmbeddingTargetRow {
+  path: string;
+  content: string | null;
+  skipped: number;
+  error: string | null;
+  embedding: string | null;
+  topic: string | null;
+  category: string | null;
+  archived: number | null;
+}
+
 export interface ProjectStats {
   total: number;
   patterns: number;
@@ -219,6 +233,29 @@ export class StateDb {
            AND (content IS NULL OR content = '')`,
       )
       .all() as SessionRow[];
+  }
+
+  // Distilled notes that still have no embedding — the exact complement of
+  // getEmbeddings()'s filter (same gates, but `embedding IS NULL`). A row here,
+  // once embedded, becomes a getEmbeddings() hit. Drives the self-heal sweep and
+  // the "pending embedding" count. Pure-function counterpart
+  // `selectEmbeddingTargets` mirrors this SQL for unit tests against fixtures.
+  // Empty/errored rows are reconcile's domain, not ours — never embed nothing.
+  listEmbeddingTargets(): EmbeddingTargetRow[] {
+    return this.db
+      .prepare(
+        `SELECT path, content, skipped, error, embedding, topic, category, archived
+         FROM sessions
+         WHERE skipped = 0
+           AND error IS NULL
+           AND content IS NOT NULL
+           AND content != ''
+           AND embedding IS NULL
+           AND topic IS NOT NULL
+           AND category IS NOT NULL
+           AND COALESCE(archived, 0) = 0`,
+      )
+      .all() as EmbeddingTargetRow[];
   }
 
   record(opts: {

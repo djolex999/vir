@@ -972,12 +972,20 @@ program
       }
       const db = new StateDb();
       const knowledge = db.getStats();
+      const pendingEmbedding = db.listEmbeddingTargets().length;
       db.close();
       const ds = await daemonStatus();
 
       ui.header("status");
       ui.blank();
       renderKnowledge(knowledge);
+      if (pendingEmbedding > 0) {
+        ui.line(
+          ui.dim(
+            `  ${pendingEmbedding} notes pending embedding — \`vir run\` will backfill (or run \`vir embed\`)`,
+          ),
+        );
+      }
       ui.blank();
       renderDaemon(ds, cfg.cadenceHours);
     }),

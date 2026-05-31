@@ -40,6 +40,11 @@ export class VaultWriter {
   private root: string;
   private db: StateDb | null;
   private topicsDir: string;
+  // Count of notes whose write-time embedding was skipped because Ollama was
+  // down. run.ts reads this to emit one traceable daemon.log line — a silent
+  // no-op is what turned a transient outage into a permanent retrieval blind
+  // spot; the self-heal sweep back-fills them next run.
+  embedSkipped = 0;
 
   constructor(cfg: Config, db: StateDb | null = null) {
     this.root = join(cfg.vaultPath, cfg.outputDir);
@@ -345,7 +350,12 @@ export class VaultWriter {
     if (!this.db) return;
     try {
       const available = await isOllamaAvailableCached();
-      if (!available) return;
+      if (!available) {
+        // Traceable, not loud — run.ts logs the aggregate once after the loop.
+        // The self-heal sweep back-fills this note next run with Ollama up.
+        this.embedSkipped += 1;
+        return;
+      }
       const vec = await embeddingForNote(fileContent);
       if (!vec) return;
       this.db.storeEmbedding(session.sessionId, vec);

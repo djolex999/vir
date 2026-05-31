@@ -1,0 +1,121 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { EmbeddingTargetRow, StateDb } from "../state/db.js";
+import { selectEmbeddingTargets, sweepEmbeddings } from "./embeddingSweep.js";
+
+// Mock the embedder so the sweep never touches Ollama/network. Each test sets
+// the availability + embed behavior it needs.
+vi.mock("../search/embedder.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../search/embedder.js")>();
+  return {
+    ...actual,
+    isOllamaAvailableCached: vi.fn(async () => true),
+    embeddingForNote: vi.fn(async () => [0.1, 0.2, 0.3]),
+  };
+});
+
+import {
+  embeddingForNote,
+  isOllamaAvailableCached,
+} from "../search/embedder.js";
+
+function row(overrides: Partial<EmbeddingTargetRow>): EmbeddingTargetRow {
+  return {
+    path: "/Users/x/.claude/projects/p/aaaaaaaa-0000-0000-0000-000000000000.jsonl",
+    content: "real distilled markdown",
+    skipped: 0,
+    error: null,
+    embedding: null,
+    topic: "some topic",
+    category: "pattern",
+    archived: 0,
+    ...overrides,
+  };
+}
+
+describe("selectEmbeddingTargets", () => {
+  it("includes a distilled note with content but a NULL embedding", () => {
+    const rows = [row({ path: "/a.jsonl" })];
+    expect(selectEmbeddingTargets(rows).map((r) => r.path)).toEqual([
+      "/a.jsonl",
+    ]);
+  });
+
+  it("excludes a note that already has an embedding", () => {
+    const rows = [row({ path: "/b.jsonl", embedding: "[0.1,0.2]" })];
+    expect(selectEmbeddingTargets(rows)).toEqual([]);
+  });
+
+  it("excludes skipped, errored, archived, and empty/null-content rows", () => {
+    const rows = [
+      row({ path: "/skipped.jsonl", skipped: 1 }),
+      row({ path: "/errored.jsonl", error: "boom" }),
+      row({ path: "/archived.jsonl", archived: 1 }),
+      row({ path: "/empty.jsonl", content: "" }),
+      row({ path: "/null.jsonl", content: null }),
+      row({ path: "/no-topic.jsonl", topic: null }),
+      row({ path: "/no-cat.jsonl", category: null }),
+    ];
+    expect(selectEmbeddingTargets(rows)).toEqual([]);
+  });
+
+  it("treats archived=null (legacy rows) as not archived", () => {
+    const rows = [row({ path: "/legacy.jsonl", archived: null })];
+    expect(selectEmbeddingTargets(rows).map((r) => r.path)).toEqual([
+      "/legacy.jsonl",
+    ]);
+  });
+});
+
+function fakeDb(targets: EmbeddingTargetRow[]): {
+  db: StateDb;
+  stored: Array<{ sessionId: string; vec: number[] }>;
+} {
+  const stored: Array<{ sessionId: string; vec: number[] }> = [];
+  const db = {
+    listEmbeddingTargets: () => targets,
+    storeEmbedding: (sessionId: string, vec: number[]) =>
+      stored.push({ sessionId, vec }),
+  } as unknown as StateDb;
+  return { db, stored };
+}
+
+describe("sweepEmbeddings", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it("skips entirely (no-op, no error) when Ollama is down — retries next run", async () => {
+    vi.mocked(isOllamaAvailableCached).mockResolvedValueOnce(false);
+    const { db, stored } = fakeDb([row({ path: "/p1.jsonl" }), row({ path: "/p2.jsonl" })]);
+
+    const res = await sweepEmbeddings(db);
+
+    expect(res).toEqual({ ran: false, embedded: 0, errors: 0, pending: 2 });
+    expect(embeddingForNote).not.toHaveBeenCalled();
+    expect(stored).toEqual([]);
+  });
+
+  it("backfills NULL-embedding notes when Ollama is up", async () => {
+    vi.mocked(isOllamaAvailableCached).mockResolvedValue(true);
+    const { db, stored } = fakeDb([
+      row({
+        path: "/Users/x/.claude/projects/p/11111111-2222-3333-4444-555555555555.jsonl",
+      }),
+    ]);
+
+    const res = await sweepEmbeddings(db);
+
+    expect(res).toEqual({ ran: true, embedded: 1, errors: 0, pending: 0 });
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.sessionId).toBe("11111111-2222-3333-4444-555555555555");
+  });
+
+  it("counts an embedding failure as pending, not stored", async () => {
+    vi.mocked(isOllamaAvailableCached).mockResolvedValue(true);
+    vi.mocked(embeddingForNote).mockResolvedValueOnce(null);
+    const { db, stored } = fakeDb([row({ path: "/fail.jsonl" })]);
+
+    const res = await sweepEmbeddings(db);
+
+    expect(res).toEqual({ ran: true, embedded: 0, errors: 1, pending: 1 });
+    expect(stored).toEqual([]);
+  });
+});

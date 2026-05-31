@@ -19,6 +19,7 @@ import { summarizeProject } from "./summarizer.js";
 import { filterToolCalls } from "./toolCallFilter.js";
 import type { DistilledNote, ParsedSession } from "./types.js";
 import { kebab, VaultWriter } from "./writer.js";
+import { sweepEmbeddings } from "./embeddingSweep.js";
 
 export interface RunOptions {
   full?: boolean;
@@ -242,16 +243,23 @@ export async function runPipeline(
     if (opts.full || !db.isProcessed(found.path, found.hash)) preflightNew += 1;
   }
   const cached = discovered.length - preflightNew;
+  // Notes distilled but never embedded (write-time Ollama outage) — surfaced so
+  // a retrieval blind spot is visible, not silent. The sweep at the end of this
+  // run back-fills them when Ollama is up.
+  const pendingEmbedding = db.listEmbeddingTargets().length;
   if (interactive) {
     ui.line(
       ui.dim(
-        `  ${discovered.length} files found  ·  ${cached} cached  ·  ${preflightNew} new`,
+        `  ${discovered.length} files found  ·  ${cached} cached  ·  ${preflightNew} new` +
+          (pendingEmbedding > 0
+            ? `  ·  ${pendingEmbedding} pending embedding`
+            : ""),
       ),
     );
     ui.blank();
   }
   fileLog(
-    `preflight: found=${discovered.length} cached=${cached} new=${preflightNew}`,
+    `preflight: found=${discovered.length} cached=${cached} new=${preflightNew} pendingEmbedding=${pendingEmbedding}`,
   );
 
   // Nudge session-only installs toward hybrid routing. interactive is already
@@ -481,6 +489,43 @@ export async function runPipeline(
   // (no articlesDir) skips this entirely and behaves exactly as before.
   if (cfg.articlesDir && cfg.distillArticles) {
     await runArticlePhase(cfg, db, writer, summary, fileLog, interactive);
+  }
+
+  // Self-heal: back-fill notes whose write-time embedding silently no-op'd
+  // (Ollama down during distill). Without this a transient outage is permanent
+  // — the note never enters the embedding-search candidate set. Best-effort and
+  // wrapped like the rest of run; a sweep failure must never fail the run. When
+  // Ollama is still down the sweep no-ops and simply retries next pass.
+  try {
+    const sweep = await sweepEmbeddings(db);
+    if (sweep.ran) {
+      if (sweep.embedded > 0 || sweep.errors > 0) {
+        fileLog(
+          `embedding sweep: backfilled ${sweep.embedded}, ${sweep.errors} errors, ${sweep.pending} pending`,
+        );
+        if (interactive && sweep.embedded > 0) {
+          ui.row(
+            ui.success(ui.CHECK),
+            ui.text(`backfilled ${sweep.embedded} note embedding(s)`),
+          );
+        }
+      }
+    } else if (sweep.pending > 0) {
+      // Ollama down: inline maybeEmbed() no-op'd (writer.embedSkipped) and the
+      // sweep couldn't run. One traceable line — it retries next run.
+      fileLog(
+        `embedding skipped, Ollama unavailable — ${sweep.pending} pending (${writer.embedSkipped} this run)`,
+      );
+      if (interactive) {
+        ui.line(
+          ui.dim(
+            `  embedding skipped (Ollama unavailable) — ${sweep.pending} pending`,
+          ),
+        );
+      }
+    }
+  } catch (err) {
+    fileLog(`embedding sweep failed: ${(err as Error).message}`);
   }
 
   fileLog(
