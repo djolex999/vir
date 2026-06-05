@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { LEGACY_STATE_PATH, STATE_PATH } from "../config.js";
 import type { Category } from "../pipeline/types.js";
@@ -40,6 +40,16 @@ export interface EmbeddingTargetRow {
   topic: string | null;
   category: string | null;
   archived: number | null;
+}
+
+// A synthesized topic page (`vir compose`) that still has no embedding — the
+// topics-table counterpart of EmbeddingTargetRow. Topics carry no
+// skipped/error/category gates; a topic just needs content + a NULL embedding to
+// be a backfill target. Pure-function counterpart `selectTopicEmbeddingTargets`.
+export interface TopicEmbeddingTargetRow {
+  id: string;
+  content: string | null;
+  embedding: string | null;
 }
 
 export interface ProjectStats {
@@ -256,6 +266,25 @@ export class StateDb {
            AND COALESCE(archived, 0) = 0`,
       )
       .all() as EmbeddingTargetRow[];
+  }
+
+  // Topic pages still without an embedding — the topics-table complement of
+  // getTopicEmbeddings(). A `vir compose` while Ollama was down leaves the
+  // embedding NULL, which makes the topic invisible to the embedding-search
+  // path; the self-heal sweep back-fills these next run. Mirrors
+  // listEmbeddingTargets; pure counterpart `selectTopicEmbeddingTargets`. Guards
+  // a missing topics table (the read-only MCP path skips migrations).
+  listTopicEmbeddingTargets(): TopicEmbeddingTargetRow[] {
+    if (!this.hasTopicsTable()) return [];
+    return this.db
+      .prepare(
+        `SELECT id, content, embedding
+         FROM topics
+         WHERE embedding IS NULL
+           AND content IS NOT NULL
+           AND content != ''`,
+      )
+      .all() as TopicEmbeddingTargetRow[];
   }
 
   record(opts: {
@@ -710,6 +739,45 @@ export class StateDb {
         category: r.category ?? "",
         project: "",
         filePath: r.note_path,
+        embedding: vec,
+      });
+    }
+    return out;
+  }
+
+  // Topic embeddings, shaped like the session/article EmbeddingRow so the
+  // retriever can concat all three into one candidate pool. Topics store no
+  // note_path, so the file path is derived from the id (slug) + the configured
+  // topics dir — exactly matching writeTopic's join(root, topicsDir, slug.md) so
+  // the retriever reads the right file. category is the fixed "topic" taxonomy;
+  // project is empty. Guards a missing topics table like the article getter.
+  getTopicEmbeddings(vaultRoot: string, topicsDir: string): EmbeddingRow[] {
+    if (!this.hasTopicsTable()) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT id, embedding, title
+         FROM topics
+         WHERE embedding IS NOT NULL`,
+      )
+      .all() as Array<{ id: string; embedding: string; title: string }>;
+
+    const out: EmbeddingRow[] = [];
+    for (const r of rows) {
+      let vec: number[];
+      try {
+        const parsed = JSON.parse(r.embedding) as unknown;
+        if (!Array.isArray(parsed)) continue;
+        vec = parsed.map((x) => Number(x));
+        if (vec.some((n) => !Number.isFinite(n))) continue;
+      } catch {
+        continue;
+      }
+      out.push({
+        sessionId: r.id,
+        topic: r.title,
+        category: "topic",
+        project: "",
+        filePath: join(vaultRoot, topicsDir, `${r.id}.md`),
         embedding: vec,
       });
     }

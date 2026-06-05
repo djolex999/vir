@@ -1,5 +1,21 @@
-import { describe, expect, it } from "vitest";
-import { mmrRerank, type ScoredCandidate } from "./retriever.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { mmrRerank, search, type ScoredCandidate } from "./retriever.js";
+import type { Config } from "../config.js";
+import type { EmbeddingRow, StateDb } from "../state/db.js";
+
+// Keep cosineSimilarity real (mmrRerank + searchByEmbedding need it); only force
+// Ollama "up" and stub the query embedding so the test never touches the network.
+vi.mock("./embedder.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./embedder.js")>();
+  return {
+    ...actual,
+    isOllamaAvailable: vi.fn(async () => true),
+    embed: vi.fn(async () => [1, 0, 0]),
+  };
+});
 
 function cand(docId: string, score: number, embedding: number[]): ScoredCandidate {
   return { docId, score, embedding, content: `content-${docId}` };
@@ -72,5 +88,53 @@ describe("mmrRerank", () => {
 
   it("empty candidate list returns empty", () => {
     expect(mmrRerank([], 5, 0.7)).toEqual([]);
+  });
+});
+
+describe("search — topic embeddings are first-class in the pool", () => {
+  const tmps: string[] = [];
+  afterEach(() => {
+    vi.clearAllMocks();
+    for (const p of tmps) rmSync(p, { recursive: true, force: true });
+    tmps.length = 0;
+  });
+
+  it("surfaces a topic note via the EMBEDDING path (not just TF-IDF)", async () => {
+    // Empty vault dir → TF-IDF finds nothing; the topic note lives OUTSIDE it,
+    // so the ONLY way it can surface is the embedding candidate pool.
+    const vault = mkdtempSync(join(tmpdir(), "vir-vault-"));
+    const noteHome = mkdtempSync(join(tmpdir(), "vir-topic-"));
+    tmps.push(vault, noteHome);
+    const topicPath = join(noteHome, "auth-flow-patterns.md");
+    writeFileSync(
+      topicPath,
+      "---\ntype: topic\ntitle: Auth\nconfidence: 0.9\n---\n# Auth\n\nbody about auth flows",
+    );
+
+    const topicRow: EmbeddingRow = {
+      sessionId: "auth-flow-patterns",
+      topic: "Auth",
+      category: "topic",
+      project: "",
+      filePath: topicPath,
+      embedding: [1, 0, 0], // identical to the stubbed query vec → cosine 1.0
+    };
+    const db = {
+      getEmbeddings: () => [],
+      getArticleEmbeddings: () => [],
+      getTopicEmbeddings: () => [topicRow],
+    } as unknown as StateDb;
+    const cfg = {
+      vaultPath: vault,
+      outputDir: "vir",
+      topicsDir: "topics",
+      retrievalDiversity: 0.3,
+    } as unknown as Config;
+
+    const hits = await search(cfg, db, "auth flow patterns", 5);
+
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.method).toBe("embedding");
+    expect(hits[0]?.filePath).toBe(topicPath);
   });
 });

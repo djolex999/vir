@@ -91,9 +91,14 @@ async function searchByEmbedding(
   }
 
   const root = vaultRoot(cfg);
-  // Sessions and articles are embedded into the same vector space; concat both
-  // so semantic search (and the type filter in vir_query) covers articles too.
-  const rows = [...db.getEmbeddings(root), ...db.getArticleEmbeddings()];
+  // Sessions, articles, and topics are embedded into the same vector space;
+  // concat all three so semantic search covers every layer. Topics get no
+  // ranking boost — they compete on cosine like everything else.
+  const rows = [
+    ...db.getEmbeddings(root),
+    ...db.getArticleEmbeddings(),
+    ...db.getTopicEmbeddings(root, cfg.topicsDir),
+  ];
   if (rows.length === 0) return [];
 
   // Read each candidate's content once, here, so the verified boost can be

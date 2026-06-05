@@ -683,12 +683,21 @@ program
         ? rows
         : rows.filter((r) => !existing.has(r.sessionId));
 
-      if (target.length === 0) {
+      // Topics live in their own table, so backfill them here too — a compose
+      // while Ollama was down heals on a manual `vir embed`, not only the next
+      // `vir run` sweep. --force re-embeds all topics; otherwise just NULL ones.
+      const topicTargets: Array<{ id: string; content: string | null }> =
+        opts.force
+          ? db.listTopics().map((t) => ({ id: t.id, content: t.content }))
+          : db.listTopicEmbeddingTargets();
+
+      const total = target.length + topicTargets.length;
+      if (total === 0) {
         ui.row(ui.success(ui.CHECK), ui.text("all notes already embedded"));
         return;
       }
 
-      const sp = ui.spinner(`embedding notes (0/${target.length})`).start();
+      const sp = ui.spinner(`embedding notes (0/${total})`).start();
       let embedded = 0;
       let skipped = 0;
       let errors = 0;
@@ -706,7 +715,21 @@ program
         }
         db.storeEmbedding(r.sessionId, vec);
         embedded += 1;
-        sp.text = ui.dim(`embedding notes (${embedded}/${target.length})`);
+        sp.text = ui.dim(`embedding notes (${embedded}/${total})`);
+      }
+      for (const t of topicTargets) {
+        if (!t.content || t.content.trim().length === 0) {
+          skipped += 1;
+          continue;
+        }
+        const vec = await embeddingForNote(t.content);
+        if (!vec) {
+          errors += 1;
+          continue;
+        }
+        db.storeTopicEmbedding(t.id, vec);
+        embedded += 1;
+        sp.text = ui.dim(`embedding notes (${embedded}/${total})`);
       }
       sp.succeed(ui.text(`embedded ${embedded} notes`));
       ui.blank();
@@ -754,7 +777,7 @@ async function runQueryJson(question: string, limit: number): Promise<void> {
   const db = new StateDb();
   try {
     const hits = await search(cfg, db, question, limit);
-    const results = buildQueryResults(hits, vaultRoot(cfg));
+    const results = buildQueryResults(hits, vaultRoot(cfg), cfg.topicsDir);
     process.stdout.write(JSON.stringify(results) + "\n");
   } catch (err) {
     process.stderr.write(

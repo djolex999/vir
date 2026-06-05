@@ -100,7 +100,7 @@ describe("buildQueryResults", () => {
     expect(buildQueryResults([], VAULT_ROOT)).toEqual([]);
   });
 
-  it("excludes topic notes from results (vir-obsidian plugin compat)", () => {
+  it("includes topic notes with category 'topic' (plugin parses permissively)", () => {
     const results = buildQueryResults(
       [
         hit({
@@ -115,9 +115,44 @@ describe("buildQueryResults", () => {
       ],
       VAULT_ROOT,
     );
-    expect(results).toHaveLength(1);
-    expect(results[0]!.category).toBe("pattern");
-    expect(results.some((r) => r.path.startsWith("topics/"))).toBe(false);
+    expect(results).toHaveLength(2);
+    const topic = results.find((r) => r.path.startsWith("topics/"));
+    expect(topic).toBeDefined();
+    expect(topic!.category).toBe("topic");
+  });
+
+  it("surfaces a topics/ note with category 'topic' and an excerpt", () => {
+    const [r] = buildQueryResults(
+      [
+        hit({
+          filePath: "/vault/vir/topics/jwt-refresh.md",
+          content:
+            '---\ntype: topic\ntitle: "JWT refresh"\nconfidence: 0.9\n---\n# JWT refresh\n\nRotate refresh tokens on every use.',
+          score: 0.77,
+        }),
+      ],
+      VAULT_ROOT,
+    );
+    expect(r).toEqual({
+      path: "topics/jwt-refresh.md",
+      score: 0.77,
+      category: "topic",
+      confidence: 0.9,
+      preview: "# JWT refresh Rotate refresh tokens on every use.",
+      project: null,
+      date: "",
+    });
+  });
+
+  it("honors a configured topicsDir when classifying by directory", () => {
+    // No `type: topic` frontmatter, so classification falls through to the
+    // directory — which is the renamed topicsDir, not the default "topics".
+    const [r] = buildQueryResults(
+      [hit({ filePath: "/vault/vir/syntheses/jwt.md", content: "---\ntitle: JWT\n---\nBody about jwt." })],
+      VAULT_ROOT,
+      "syntheses",
+    );
+    expect(r!.category).toBe("topic");
   });
 });
 

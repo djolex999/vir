@@ -2,6 +2,7 @@ import {
   deriveSessionId,
   type EmbeddingTargetRow,
   type StateDb,
+  type TopicEmbeddingTargetRow,
 } from "../state/db.js";
 import {
   embeddingForNote,
@@ -27,6 +28,18 @@ export function selectEmbeddingTargets<T extends EmbeddingTargetRow>(
       r.topic !== null &&
       r.category !== null &&
       (r.archived ?? 0) === 0,
+  );
+}
+
+// Topic counterpart of selectEmbeddingTargets, mirroring
+// db.listTopicEmbeddingTargets's SQL filter. Topics have no skipped/error/
+// category gates — a topic page needs an embedding iff it has content and its
+// `embedding` column is still NULL.
+export function selectTopicEmbeddingTargets<T extends TopicEmbeddingTargetRow>(
+  rows: T[],
+): T[] {
+  return rows.filter(
+    (r) => r.embedding === null && r.content !== null && r.content !== "",
   );
 }
 
@@ -56,8 +69,14 @@ export interface EmbedSweepResult {
 // reconcile pass can find it later.
 export async function sweepEmbeddings(db: StateDb): Promise<EmbedSweepResult> {
   const targets = db.listEmbeddingTargets();
+  const topicTargets = db.listTopicEmbeddingTargets();
   if (!(await isOllamaAvailableCached())) {
-    return { ran: false, embedded: 0, errors: 0, pending: targets.length };
+    return {
+      ran: false,
+      embedded: 0,
+      errors: 0,
+      pending: targets.length + topicTargets.length,
+    };
   }
   let embedded = 0;
   let errors = 0;
@@ -69,6 +88,20 @@ export async function sweepEmbeddings(db: StateDb): Promise<EmbedSweepResult> {
       continue;
     }
     db.storeEmbedding(deriveSessionId(t.path), vec);
+    embedded += 1;
+  }
+  // Topics live in a separate table but heal the same way: a `vir compose` while
+  // Ollama was down left `embedding` NULL. Same backfill, keyed by topic id
+  // (slug) via storeTopicEmbedding — otherwise the 0.8.3 topic read path would
+  // re-introduce the exact NULL-embedding blind spot the 0.8.2 sweep closed.
+  for (const t of topicTargets) {
+    if (!t.content || t.content.trim().length === 0) continue;
+    const vec = await embeddingForNote(t.content);
+    if (!vec) {
+      errors += 1;
+      continue;
+    }
+    db.storeTopicEmbedding(t.id, vec);
     embedded += 1;
   }
   return { ran: true, embedded, errors, pending: errors };

@@ -12,7 +12,8 @@ export type VirQueryCategory =
   | "gotcha"
   | "decision"
   | "tool"
-  | "article";
+  | "article"
+  | "topic";
 
 export interface VirQueryResult {
   path: string; // vault-relative path to the .md file
@@ -55,6 +56,7 @@ const CATEGORY_DIRS: Record<string, VirQueryCategory> = {
   decisions: "decision",
   tools: "tool",
   articles: "article",
+  topics: "topic",
 };
 
 const WIRE_CATEGORIES = new Set<string>([
@@ -63,6 +65,7 @@ const WIRE_CATEGORIES = new Set<string>([
   "decision",
   "tool",
   "article",
+  "topic",
 ]);
 
 // Minimal YAML-block parser, kebab-flat. Mirrors mcp/server.ts deliberately —
@@ -98,35 +101,41 @@ function excerpt(content: string): string {
 function categoryOf(
   fm: Record<string, string>,
   relPath: string,
+  topicsDir: string,
 ): VirQueryCategory {
   if (fm.type === "article") return "article";
+  if (fm.type === "topic") return "topic";
   if (fm.category && WIRE_CATEGORIES.has(fm.category)) {
     return fm.category as VirQueryCategory;
   }
+  // The topics dir name is user-configurable (cfg.topicsDir); fold a renamed
+  // dir back onto the canonical "topics" key so it still classifies as a topic.
   const dir = relPath.split("/")[0] ?? "";
-  return CATEGORY_DIRS[dir] ?? "pattern";
+  const key = dir === topicsDir ? "topics" : dir;
+  return CATEGORY_DIRS[key] ?? "pattern";
 }
 
 // Maps retriever SearchHits (already ordered by score desc) onto the wire
 // schema. Pure: derives every field from the hit's path + frontmatter + body.
-// Topic pages (`vir compose`) are filtered out: the plugin's category enum has
-// no `topic` member yet, so surfacing them here would break its rendering until
-// plugin v0.2.0 ships a coordinated enum extension. They still reach the plugin
-// via its independent vault frontmatter scan (Recent tab), which degrades safely.
+// Topic pages (`vir compose`) flow through with category `topic`: the plugin
+// parses categories permissively (raw JSON.parse, no enum validation; an unknown
+// category renders a muted badge and the Recent-tab frontmatter scan skips it),
+// so surfacing them here is safe ahead of the plugin's coordinated `topic`
+// support. `topicsDir` is the configured topics subdir name (cfg.topicsDir).
 export function buildQueryResults(
   hits: SearchHit[],
   vaultRoot: string,
+  topicsDir = "topics",
 ): VirQueryResult[] {
   const out: VirQueryResult[] = [];
   for (const h of hits) {
     const fm = parseFrontmatter(h.content);
     const relPath = relative(vaultRoot, h.filePath);
-    if (fm.type === "topic" || relPath.split("/")[0] === "topics") continue;
     const conf = Number(fm.confidence);
     out.push({
       path: relPath,
       score: h.score,
-      category: categoryOf(fm, relPath),
+      category: categoryOf(fm, relPath, topicsDir),
       confidence: Number.isFinite(conf) ? conf : 0,
       preview: excerpt(h.content),
       project: fm.project && fm.project.length > 0 ? fm.project : null,
