@@ -99,18 +99,34 @@ export async function summarizeAll(
   return results;
 }
 
-function buildPrompt(group: ProjectGroup, counts: ProjectCounts): string {
+// The scope-specific bits of the synthesis prompt. Everything else (the
+// category-grouped note listing, the five output sections) is shared, so a
+// period summary reuses this exact prompt rather than forking a near-duplicate.
+export interface SummaryScope {
+  noun: string; // "project" | "period" — fills the "synthesizing a ___ summary" slots
+  heading: string; // the scope/heading block under the intro line
+  overviewHint: string; // what the Overview section should describe for this scope
+}
+
+// Generalized synthesis prompt: a heading + a set of distilled notes. The
+// project path passes a project-shaped scope (byte-identical to the original
+// prompt); the period path passes a period-shaped one.
+export function buildSummaryPrompt(
+  scope: SummaryScope,
+  rows: DistilledRow[],
+  counts: ProjectCounts,
+): string {
   const byCat: Record<Category, DistilledRow[]> = {
     pattern: [],
     gotcha: [],
     decision: [],
     tool: [],
   };
-  for (const r of group.rows) byCat[r.category].push(r);
+  for (const r of rows) byCat[r.category].push(r);
 
-  const renderList = (rows: DistilledRow[]): string => {
-    if (rows.length === 0) return "(none)";
-    return rows
+  const renderList = (list: DistilledRow[]): string => {
+    if (list.length === 0) return "(none)";
+    return list
       .map((r) => {
         const excerpt = r.content
           .replace(/\s+/g, " ")
@@ -121,10 +137,9 @@ function buildPrompt(group: ProjectGroup, counts: ProjectCounts): string {
       .join("\n");
   };
 
-  return `You are synthesizing a project knowledge summary from distilled Claude Code session notes.
+  return `You are synthesizing a ${scope.noun} knowledge summary from distilled Claude Code session notes.
 
-Project: ${group.slug}
-Total sessions: ${counts.total}
+${scope.heading}
 
 Patterns (${counts.patterns}):
 ${renderList(byCat.pattern)}
@@ -138,9 +153,9 @@ ${renderList(byCat.decision)}
 Tools (${counts.tools}):
 ${renderList(byCat.tool)}
 
-Write a project summary with these exact sections:
+Write a ${scope.noun} summary with these exact sections:
 ## Overview
-2-3 sentences: what this project is, what stack/approach dominates
+2-3 sentences: ${scope.overviewHint}
 
 ## Key Patterns
 Bullet list of the most reusable patterns, 1 sentence each
@@ -155,6 +170,18 @@ Bullet list of significant decisions made, 1 sentence each
 1-2 sentences: what topics appear underrepresented or missing
 
 Be specific and direct. Use the actual topic names.`;
+}
+
+function buildPrompt(group: ProjectGroup, counts: ProjectCounts): string {
+  return buildSummaryPrompt(
+    {
+      noun: "project",
+      heading: `Project: ${group.slug}\nTotal sessions: ${counts.total}`,
+      overviewHint: "what this project is, what stack/approach dominates",
+    },
+    group.rows,
+    counts,
+  );
 }
 
 function writeSummaryFile(

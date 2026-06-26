@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mmrRerank, search, type ScoredCandidate } from "./retriever.js";
+import { loadIndex, mmrRerank, search, type ScoredCandidate } from "./retriever.js";
 import type { Config } from "../config.js";
 import type { EmbeddingRow, StateDb } from "../state/db.js";
 
@@ -88,6 +88,38 @@ describe("mmrRerank", () => {
 
   it("empty candidate list returns empty", () => {
     expect(mmrRerank([], 5, 0.7)).toEqual([]);
+  });
+});
+
+describe("loadIndex — derived summaries never enter the TF-IDF index", () => {
+  const tmps: string[] = [];
+  afterEach(() => {
+    for (const p of tmps) rmSync(p, { recursive: true, force: true });
+    tmps.length = 0;
+  });
+
+  it("walks category notes but excludes the summaries/ directory", () => {
+    const vault = mkdtempSync(join(tmpdir(), "vir-idx-"));
+    tmps.push(vault);
+    mkdirSync(join(vault, "vir", "patterns"), { recursive: true });
+    mkdirSync(join(vault, "vir", "summaries"), { recursive: true });
+    writeFileSync(
+      join(vault, "vir", "patterns", "widget-note.md"),
+      "---\ntopic: widget\ncategory: pattern\n---\nA durable widget pattern.",
+    );
+    // A derived period summary that mentions the same term — it must NOT be
+    // indexed, or it would surface as a "note" in the TF-IDF fallback.
+    writeFileSync(
+      join(vault, "vir", "summaries", "week-2026-W26.md"),
+      "---\ntype: summary\n---\n# 2026-W26\n\nThis week covered the widget pattern.",
+    );
+
+    const cfg = { vaultPath: vault, outputDir: "vir" } as unknown as Config;
+    const docs = loadIndex(cfg);
+    const rels = docs.map((d) => d.relPath);
+
+    expect(rels).toContain("patterns/widget-note.md");
+    expect(rels.some((r) => r.startsWith("summaries/"))).toBe(false);
   });
 });
 

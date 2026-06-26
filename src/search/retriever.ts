@@ -9,6 +9,10 @@ import {
 } from "./embedder.js";
 
 const SKIP_FILES = new Set(["index.md", "log.md"]);
+// Derived artifacts (period summaries) are files-only and must never be queried
+// as notes — exclude the directory from the TF-IDF walk. Embeddings already skip
+// them (they never enter any SQLite table).
+const SKIP_DIRS = new Set(["summaries"]);
 
 export interface IndexedDoc {
   relPath: string;
@@ -298,8 +302,10 @@ function walk(dir: string, acc: string[]): void {
     } catch {
       continue;
     }
-    if (st.isDirectory()) walk(full, acc);
-    else if (st.isFile() && name.endsWith(".md")) acc.push(full);
+    if (st.isDirectory()) {
+      if (SKIP_DIRS.has(name)) continue;
+      walk(full, acc);
+    } else if (st.isFile() && name.endsWith(".md")) acc.push(full);
   }
 }
 
