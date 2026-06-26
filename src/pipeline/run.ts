@@ -62,6 +62,36 @@ export interface RunSummary {
   pdfsErrored: number;
 }
 
+// Per-document distill cost estimate for the article/PDF dry-run paths. Both run
+// a Haiku classify + Sonnet distill with input bounded by the distiller's 24k
+// char cap, so this is an accurate per-item figure (papers/long articles hit the
+// cap). chars/3 matches the calibrated density used elsewhere in dry-run. Pure.
+export function estimatePerDocDistillCost(
+  cfg: Config,
+  classifyModel: string,
+  distillModel: string,
+): number {
+  const CPT = 3;
+  return (
+    computeCost(
+      cfg.provider,
+      classifyModel,
+      Math.ceil(3000 / CPT),
+      200,
+      cfg.pricing,
+      cfg.kieTopUpTier,
+    ) +
+    computeCost(
+      cfg.provider,
+      distillModel,
+      Math.ceil(24_000 / CPT),
+      1500,
+      cfg.pricing,
+      cfg.kieTopUpTier,
+    )
+  );
+}
+
 export async function runPipeline(
   cfg: Config,
   opts: RunOptions = {},
@@ -196,7 +226,13 @@ export async function runPipeline(
       db.close();
       return summary;
     }
+    if (opts.dryRun) {
+      dryRunDocPhase(cfg, db, opts, "article", interactive, fileLog);
+      db.close();
+      return summary;
+    }
     await runArticlePhase(cfg, db, writer, summary, fileLog, interactive);
+    await runEmbeddingSweep(db, writer, fileLog, interactive);
     if (interactive) {
       ui.blank();
       ui.divider();
@@ -228,7 +264,13 @@ export async function runPipeline(
       db.close();
       return summary;
     }
+    if (opts.dryRun) {
+      dryRunDocPhase(cfg, db, opts, "pdf", interactive, fileLog);
+      db.close();
+      return summary;
+    }
     await runPdfPhase(cfg, db, writer, summary, fileLog, interactive);
+    await runEmbeddingSweep(db, writer, fileLog, interactive);
     if (interactive) {
       ui.blank();
       ui.divider();
@@ -410,23 +452,7 @@ export async function runPipeline(
         (f) => opts.full || !db.isPdfProcessed(f.filePath, f.hash),
       ).length;
       if (newPdfs > 0) {
-        const perPdf =
-          computeCost(
-            cfg.provider,
-            classifyModel,
-            Math.ceil(3000 / CHARS_PER_TOKEN),
-            200,
-            cfg.pricing,
-            cfg.kieTopUpTier,
-          ) +
-          computeCost(
-            cfg.provider,
-            distillModel,
-            Math.ceil(24_000 / CHARS_PER_TOKEN),
-            1500,
-            cfg.pricing,
-            cfg.kieTopUpTier,
-          );
+        const perPdf = estimatePerDocDistillCost(cfg, classifyModel, distillModel);
         if (interactive) {
           ui.line(
             ui.dim(
@@ -589,40 +615,8 @@ export async function runPipeline(
 
   // Self-heal: back-fill notes whose write-time embedding silently no-op'd
   // (Ollama down during distill). Without this a transient outage is permanent
-  // — the note never enters the embedding-search candidate set. Best-effort and
-  // wrapped like the rest of run; a sweep failure must never fail the run. When
-  // Ollama is still down the sweep no-ops and simply retries next pass.
-  try {
-    const sweep = await sweepEmbeddings(db);
-    if (sweep.ran) {
-      if (sweep.embedded > 0 || sweep.errors > 0) {
-        fileLog(
-          `embedding sweep: backfilled ${sweep.embedded}, ${sweep.errors} errors, ${sweep.pending} pending`,
-        );
-        if (interactive && sweep.embedded > 0) {
-          ui.row(
-            ui.success(ui.CHECK),
-            ui.text(`backfilled ${sweep.embedded} note embedding(s)`),
-          );
-        }
-      }
-    } else if (sweep.pending > 0) {
-      // Ollama down: inline maybeEmbed() no-op'd (writer.embedSkipped) and the
-      // sweep couldn't run. One traceable line — it retries next run.
-      fileLog(
-        `embedding skipped, Ollama unavailable — ${sweep.pending} pending (${writer.embedSkipped} this run)`,
-      );
-      if (interactive) {
-        ui.line(
-          ui.dim(
-            `  embedding skipped (Ollama unavailable) — ${sweep.pending} pending`,
-          ),
-        );
-      }
-    }
-  } catch (err) {
-    fileLog(`embedding sweep failed: ${(err as Error).message}`);
-  }
+  // — the note never enters the embedding-search candidate set.
+  await runEmbeddingSweep(db, writer, fileLog, interactive);
 
   fileLog(
     `vir run done — scanned=${summary.scanned} new=${summary.scanned - summary.alreadyProcessed} distilled=${summary.distilled} skipped=${summary.skippedByFilter} lowConf=${summary.lowConfidence} errored=${summary.errored} articles=${summary.articlesDistilled} pdfs=${summary.pdfsDistilled}`,
@@ -656,6 +650,102 @@ export async function runPipeline(
 
   db.close();
   return summary;
+}
+
+// Best-effort embedding back-fill, shared by the full run AND the --articles-
+// only / --pdfs-only shortcuts (so an inline-embed miss self-heals in the same
+// invocation rather than waiting for the next full run). A sweep failure must
+// never fail the run; when Ollama is down it no-ops and retries next pass.
+async function runEmbeddingSweep(
+  db: StateDb,
+  writer: VaultWriter,
+  fileLog: (msg: string) => void,
+  interactive: boolean,
+): Promise<void> {
+  try {
+    const sweep = await sweepEmbeddings(db);
+    if (sweep.ran) {
+      if (sweep.embedded > 0 || sweep.errors > 0) {
+        fileLog(
+          `embedding sweep: backfilled ${sweep.embedded}, ${sweep.errors} errors, ${sweep.pending} pending`,
+        );
+        if (interactive && sweep.embedded > 0) {
+          ui.row(
+            ui.success(ui.CHECK),
+            ui.text(`backfilled ${sweep.embedded} note embedding(s)`),
+          );
+        }
+      }
+    } else if (sweep.pending > 0) {
+      fileLog(
+        `embedding skipped, Ollama unavailable — ${sweep.pending} pending (${writer.embedSkipped} this run)`,
+      );
+      if (interactive) {
+        ui.line(
+          ui.dim(
+            `  embedding skipped (Ollama unavailable) — ${sweep.pending} pending`,
+          ),
+        );
+      }
+    }
+  } catch (err) {
+    fileLog(`embedding sweep failed: ${(err as Error).message}`);
+  }
+}
+
+// Dry-run preview for the --articles-only / --pdfs-only shortcuts: count the
+// items that WOULD be distilled and show the per-item + total estimated cost,
+// then exit. Never makes a provider call — the bug this fixes is that these
+// shortcuts used to ignore --dry-run and distill for real.
+function dryRunDocPhase(
+  cfg: Config,
+  db: StateDb,
+  opts: RunOptions,
+  kind: "article" | "pdf",
+  interactive: boolean,
+  fileLog: (msg: string) => void,
+): void {
+  const classifyModel = normalizeModelName(cfg.models.classify, cfg.provider);
+  const distillModel = normalizeModelName(
+    resolveModelShorthand(opts.forceDistillModel ?? cfg.models.distill),
+    cfg.provider,
+  );
+  const per = estimatePerDocDistillCost(cfg, classifyModel, distillModel);
+
+  let count = 0;
+  if (kind === "article" && cfg.articlesDir) {
+    count = scanArticles(cfg.articlesDir).filter(
+      (a) => opts.full || !db.isArticleProcessed(a.filePath, a.hash),
+    ).length;
+  } else if (kind === "pdf" && cfg.pdfsDir) {
+    count = scanPdfs(cfg.pdfsDir).filter(
+      (f) => opts.full || !db.isPdfProcessed(f.filePath, f.hash),
+    ).length;
+  }
+
+  if (interactive) {
+    ui.blank();
+    ui.divider();
+    ui.summary({
+      [kind === "article" ? "articles" : "pdfs"]: {
+        value: count,
+        color: ui.info,
+      },
+      "per item": { value: ui.formatUsd(per), color: ui.warn },
+      "est. total": { value: ui.formatUsd(per * count), color: ui.warn },
+    });
+    ui.divider();
+    ui.line(
+      ui.dim(
+        kind === "pdf"
+          ? "  dry run — no distillation performed (input capped at 24k chars)"
+          : "  dry run — no distillation performed",
+      ),
+    );
+  }
+  fileLog(
+    `dry-run ${kind}s-only: new=${count} perItem=${ui.formatUsd(per)} estTotal=${ui.formatUsd(per * count)}`,
+  );
 }
 
 // Distill web articles from cfg.articlesDir into the vault, parallel to the
