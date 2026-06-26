@@ -691,7 +691,16 @@ program
           ? db.listTopics().map((t) => ({ id: t.id, content: t.content }))
           : db.listTopicEmbeddingTargets();
 
-      const total = target.length + topicTargets.length;
+      // Articles live in their own table too — back-fill them here so a clip
+      // distilled while Ollama was down heals on a manual `vir embed`, not only
+      // the next `vir run` sweep. --force re-embeds all embeddable articles
+      // (keyed by source path); otherwise just the NULL-embedding ones.
+      const articleTargets: Array<{ path: string; content: string | null }> =
+        opts.force
+          ? db.listArticles().map((a) => ({ path: a.path, content: a.content }))
+          : db.listArticleEmbeddingTargets();
+
+      const total = target.length + topicTargets.length + articleTargets.length;
       if (total === 0) {
         ui.row(ui.success(ui.CHECK), ui.text("all notes already embedded"));
         return;
@@ -728,6 +737,20 @@ program
           continue;
         }
         db.storeTopicEmbedding(t.id, vec);
+        embedded += 1;
+        sp.text = ui.dim(`embedding notes (${embedded}/${total})`);
+      }
+      for (const a of articleTargets) {
+        if (!a.content || a.content.trim().length === 0) {
+          skipped += 1;
+          continue;
+        }
+        const vec = await embeddingForNote(a.content);
+        if (!vec) {
+          errors += 1;
+          continue;
+        }
+        db.storeArticleEmbedding(a.path, vec);
         embedded += 1;
         sp.text = ui.dim(`embedding notes (${embedded}/${total})`);
       }
@@ -995,7 +1018,10 @@ program
       }
       const db = new StateDb();
       const knowledge = db.getStats();
-      const pendingEmbedding = db.listEmbeddingTargets().length;
+      const pendingEmbedding =
+        db.listEmbeddingTargets().length +
+        db.listTopicEmbeddingTargets().length +
+        db.listArticleEmbeddingTargets().length;
       db.close();
       const ds = await daemonStatus();
 

@@ -1,5 +1,6 @@
 import {
   deriveSessionId,
+  type ArticleEmbeddingTargetRow,
   type EmbeddingTargetRow,
   type StateDb,
   type TopicEmbeddingTargetRow,
@@ -43,6 +44,24 @@ export function selectTopicEmbeddingTargets<T extends TopicEmbeddingTargetRow>(
   );
 }
 
+// Article counterpart, mirroring db.listArticleEmbeddingTargets's SQL filter —
+// the exact complement of getArticleEmbeddings(). Articles keep skipped/error
+// gates (the read path filters them) but have no archived column; `notePath`
+// must be set so the article is actually retrievable once embedded.
+export function selectArticleEmbeddingTargets<
+  T extends ArticleEmbeddingTargetRow,
+>(rows: T[]): T[] {
+  return rows.filter(
+    (r) =>
+      r.skipped === 0 &&
+      r.error === null &&
+      r.content !== null &&
+      r.content !== "" &&
+      r.embedding === null &&
+      r.notePath !== null,
+  );
+}
+
 export interface EmbedSweepResult {
   // false when the sweep was skipped because Ollama is down — it retries next
   // run rather than erroring now.
@@ -70,12 +89,13 @@ export interface EmbedSweepResult {
 export async function sweepEmbeddings(db: StateDb): Promise<EmbedSweepResult> {
   const targets = db.listEmbeddingTargets();
   const topicTargets = db.listTopicEmbeddingTargets();
+  const articleTargets = db.listArticleEmbeddingTargets();
   if (!(await isOllamaAvailableCached())) {
     return {
       ran: false,
       embedded: 0,
       errors: 0,
-      pending: targets.length + topicTargets.length,
+      pending: targets.length + topicTargets.length + articleTargets.length,
     };
   }
   let embedded = 0;
@@ -102,6 +122,21 @@ export async function sweepEmbeddings(db: StateDb): Promise<EmbedSweepResult> {
       continue;
     }
     db.storeTopicEmbedding(t.id, vec);
+    embedded += 1;
+  }
+  // Articles heal the same way (their own table). A clip distilled while Ollama
+  // was down left `embedding` NULL; back-fill keyed by the article source path
+  // (the PK) via storeArticleEmbedding — otherwise the getArticleEmbeddings read
+  // path (live since 0.6.0) silently misses them, the same blind spot the topic
+  // sweep closed for the topics table.
+  for (const a of articleTargets) {
+    if (!a.content || a.content.trim().length === 0) continue;
+    const vec = await embeddingForNote(a.content);
+    if (!vec) {
+      errors += 1;
+      continue;
+    }
+    db.storeArticleEmbedding(a.path, vec);
     embedded += 1;
   }
   return { ran: true, embedded, errors, pending: errors };

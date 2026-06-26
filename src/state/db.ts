@@ -52,6 +52,23 @@ export interface TopicEmbeddingTargetRow {
   embedding: string | null;
 }
 
+// A distilled article that still has no embedding — the articles-table
+// counterpart of EmbeddingTargetRow, the exact complement of
+// getArticleEmbeddings(): same gates (skipped=0, error null, note_path set),
+// but `embedding IS NULL`. Articles have no `archived` column, so unlike the
+// session row there's no archived gate. `path` (the source PK) keys the
+// storeArticleEmbedding back-fill; `notePath` mirrors getArticleEmbeddings'
+// note_path IS NOT NULL so "pending" means "will become retrievable once
+// embedded". Pure-function counterpart `selectArticleEmbeddingTargets`.
+export interface ArticleEmbeddingTargetRow {
+  path: string;
+  notePath: string | null;
+  content: string | null;
+  skipped: number;
+  error: string | null;
+  embedding: string | null;
+}
+
 export interface ProjectStats {
   total: number;
   patterns: number;
@@ -693,6 +710,30 @@ export class StateDb {
       distilledAt: r.distilled_at,
       content: r.content,
     }));
+  }
+
+  // Articles still without an embedding — the articles-table complement of
+  // getArticleEmbeddings(). A write-time Ollama outage leaves `embedding` NULL,
+  // making the article invisible to the embedding-search path; the self-heal
+  // sweep (and `vir embed`) back-fills these. Mirrors getArticleEmbeddings'
+  // gates exactly (skipped=0, error null, note_path set) so the target set is
+  // precisely the rows that become retrievable once embedded — plus content,
+  // which we need to embed. Pure counterpart `selectArticleEmbeddingTargets`.
+  // Guards a missing articles table (read-only MCP path skips migrations).
+  listArticleEmbeddingTargets(): ArticleEmbeddingTargetRow[] {
+    if (!this.hasArticlesTable()) return [];
+    return this.db
+      .prepare(
+        `SELECT path, note_path AS notePath, content, skipped, error, embedding
+         FROM articles
+         WHERE skipped = 0
+           AND error IS NULL
+           AND content IS NOT NULL
+           AND content != ''
+           AND embedding IS NULL
+           AND note_path IS NOT NULL`,
+      )
+      .all() as ArticleEmbeddingTargetRow[];
   }
 
   storeArticleEmbedding(path: string, embedding: number[]): void {

@@ -244,9 +244,13 @@ export async function runPipeline(
   }
   const cached = discovered.length - preflightNew;
   // Notes distilled but never embedded (write-time Ollama outage) — surfaced so
-  // a retrieval blind spot is visible, not silent. The sweep at the end of this
-  // run back-fills them when Ollama is up.
-  const pendingEmbedding = db.listEmbeddingTargets().length;
+  // a retrieval blind spot is visible, not silent. Counts all three embeddable
+  // layers (sessions + topics + articles) so the preflight matches exactly what
+  // the end-of-run sweep back-fills. The sweep heals them when Ollama is up.
+  const pendingEmbedding =
+    db.listEmbeddingTargets().length +
+    db.listTopicEmbeddingTargets().length +
+    db.listArticleEmbeddingTargets().length;
   if (interactive) {
     ui.line(
       ui.dim(

@@ -28,6 +28,7 @@ import { join } from "node:path";
 import { exit } from "node:process";
 import { z } from "zod";
 import { STATE_PATH, type Config } from "../config.js";
+import { composeSlug, TOPICS_SUBDIR } from "../pipeline/composer.js";
 import type { Category } from "../pipeline/types.js";
 import { kebab, makeSlug } from "../pipeline/writer.js";
 import { search, type SearchHit } from "../search/retriever.js";
@@ -41,7 +42,7 @@ const ARTICLE_CATEGORIES = [
   "reference",
   "opinion",
 ] as const;
-const QUERY_TYPES = ["session", "article", "all"] as const;
+export const QUERY_TYPES = ["session", "article", "topic", "all"] as const;
 
 // Maps the vault subdirectory back to the canonical category, used as a
 // fallback when a hit's frontmatter is missing (e.g. older notes).
@@ -99,11 +100,11 @@ function categoryFromTitle(title: string): string {
   return CATEGORY_DIRS[dir] ?? "";
 }
 
-function hitMeta(hit: SearchHit): {
+export function hitMeta(hit: SearchHit): {
   topic: string;
   category: string;
   project: string;
-  type: "session" | "article";
+  type: "session" | "article" | "topic";
   url?: string;
 } {
   const fm = parseFrontmatter(hit.content);
@@ -117,11 +118,53 @@ function hitMeta(hit: SearchHit): {
       url: fm.source_url,
     };
   }
+  // Topic pages (`vir compose`) carry `type: topic` and a synthesized title but
+  // no category/project — the fixed "topic" taxonomy mirrors buildQueryResults
+  // so the `type: topic` query filter actually matches them.
+  if (fm.type === "topic") {
+    return {
+      topic: fm.title ?? base,
+      category: "topic",
+      project: "",
+      type: "topic",
+    };
+  }
   return {
     topic: fm.topic ?? base,
     category: fm.category ?? categoryFromTitle(hit.title),
     project: fm.project ?? "",
     type: "session",
+  };
+}
+
+// Pure lookup behind vir_compose. Given the topic and a reader that returns the
+// cached topic file's content (or null if absent), produce the MCP payload.
+// Read-only by design: synthesis (an LLM call + vault write + db upsert) only
+// runs via the CLI `vir compose`, so a missing page returns a pointer to that
+// command — mirroring vir_project_summary's cached-or-pointer contract rather
+// than spending tokens or writing from a read-only server. Pure (I/O injected)
+// so both branches are unit-testable without the SDK transport.
+export function composeLookup(
+  topic: string,
+  read: (slug: string) => string | null,
+): Record<string, unknown> {
+  const slug = composeSlug(topic);
+  const content = read(slug);
+  if (content === null) {
+    return {
+      error: `Topic page not yet composed. Run: vir compose "${topic}"`,
+      topic_slug: slug,
+    };
+  }
+  const fm = parseFrontmatter(content);
+  return {
+    topic: slug,
+    title: fm.title ?? slug,
+    content,
+    confidence: fm.confidence ? Number(fm.confidence) : null,
+    model: fm.model ?? null,
+    created: fm.created ?? null,
+    updated: fm.updated ?? null,
   };
 }
 
@@ -181,7 +224,8 @@ export async function runMcpServer(cfg: Config): Promise<void> {
           .optional()
           .describe(
             "Restrict to 'session' notes (Claude Code), 'article' notes " +
-              "(web articles), or 'all' (default).",
+              "(web articles), 'topic' pages (synthesized via `vir compose`), " +
+              "or 'all' (default).",
           ),
         category: z
           .enum(CATEGORIES)
@@ -502,9 +546,44 @@ export async function runMcpServer(cfg: Config): Promise<void> {
     },
   );
 
+  server.registerTool(
+    "vir_compose",
+    {
+      description:
+        "Fetch a synthesized topic page — one reference woven from related " +
+        "session and article notes via `vir compose`. Returns the cached page " +
+        "if it exists; otherwise points to the CLI command that generates it. " +
+        "Synthesis is an LLM call plus a vault write, which this read-only " +
+        "server never performs — so a missing topic is created from the CLI.",
+      inputSchema: {
+        topic: z
+          .string()
+          .describe("The topic to fetch a composed page for"),
+      },
+    },
+    async ({ topic }) => {
+      try {
+        const topicsDir = cfg.topicsDir ?? TOPICS_SUBDIR;
+        return ok(
+          composeLookup(topic, (slug) => {
+            const file = join(
+              cfg.vaultPath,
+              cfg.outputDir,
+              topicsDir,
+              `${slug}.md`,
+            );
+            return existsSync(file) ? readFileSync(file, "utf8") : null;
+          }),
+        );
+      } catch (err) {
+        return fail((err as Error).message);
+      }
+    },
+  );
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  log("vir MCP server ready on stdio (5 tools)");
+  log("vir MCP server ready on stdio (6 tools)");
 
   const shutdown = async (sig: string): Promise<void> => {
     log(`received ${sig}, shutting down`);
