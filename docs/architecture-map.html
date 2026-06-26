@@ -1,0 +1,1524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>vir — Architecture Map</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface-2: #1c1c26;
+    --surface-3: #252533;
+    --border: #2a2a3a;
+    --border-strong: #3a3a4f;
+    --text: #e2e2f0;
+    --text-muted: #8a8aa8;
+    --text-dim: #5a5a78;
+    --accent: #7c6af7;
+    --accent-2: #3ecf8e;
+    --accent-3: #f7a236;
+    --accent-4: #e95f7a;
+    --accent-5: #4ab8d4;
+    --accent-6: #b86af7;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    overflow: hidden;
+  }
+
+  body {
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(124, 106, 247, 0.06) 0%, transparent 40%),
+      radial-gradient(circle at 80% 90%, rgba(62, 207, 142, 0.04) 0%, transparent 40%);
+  }
+
+  /* Header */
+  header {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 56px;
+    background: rgba(10, 10, 15, 0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 24px;
+    z-index: 100;
+  }
+
+  .brand {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.02em;
+  }
+  .brand .dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    margin-right: 8px;
+    vertical-align: middle;
+    box-shadow: 0 0 8px var(--accent);
+  }
+  .meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex;
+    gap: 16px;
+  }
+  .meta span strong { color: var(--text-muted); font-weight: 500; margin-right: 4px; }
+
+  .search-wrap {
+    margin-left: auto;
+    position: relative;
+  }
+  #search {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px 6px 30px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    width: 220px;
+    outline: none;
+    transition: border-color 0.15s, width 0.15s;
+  }
+  #search:focus { border-color: var(--accent); width: 280px; }
+  .search-wrap::before {
+    content: '⌕';
+    position: absolute;
+    left: 10px; top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-dim);
+    font-size: 14px;
+    pointer-events: none;
+  }
+
+  /* Tabs */
+  .tabs {
+    position: fixed;
+    top: 56px; left: 0; right: 0;
+    height: 44px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    padding: 0 16px;
+    z-index: 90;
+  }
+  .tab {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 0 16px;
+    cursor: pointer;
+    position: relative;
+    transition: color 0.15s;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--text); }
+  .tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px; left: 16px; right: 16px;
+    height: 2px;
+    background: var(--accent);
+    border-radius: 2px 2px 0 0;
+  }
+  .tab .count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-left: 6px;
+    padding: 1px 5px;
+    background: var(--surface-2);
+    border-radius: 3px;
+  }
+
+  /* Canvas */
+  #canvas-wrap {
+    position: fixed;
+    top: 100px; left: 0; right: 0; bottom: 0;
+    overflow: hidden;
+    cursor: grab;
+  }
+  #canvas-wrap.dragging { cursor: grabbing; }
+  #canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 4000px;
+    height: 3000px;
+    transform-origin: 0 0;
+    transition: transform 0.0s;
+  }
+  #canvas.animate { transition: transform 0.25s ease; }
+
+  /* Edges SVG */
+  #edges {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 1;
+  }
+  #edges path {
+    fill: none;
+    stroke: var(--border-strong);
+    stroke-width: 1.2;
+    transition: stroke 0.2s, opacity 0.2s;
+  }
+  #edges path.highlight {
+    stroke: var(--accent);
+    stroke-width: 1.8;
+  }
+
+  /* Nodes */
+  .node {
+    position: absolute;
+    min-width: 140px;
+    max-width: 240px;
+    padding: 10px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text);
+    cursor: pointer;
+    user-select: none;
+    z-index: 2;
+    transition: border-color 0.15s, box-shadow 0.15s, opacity 0.2s, transform 0.1s;
+  }
+  .node:hover {
+    border-color: var(--border-strong);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4), 0 0 0 1px var(--border-strong);
+  }
+  .node.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent), 0 4px 24px rgba(124, 106, 247, 0.25);
+  }
+  .node.dim { opacity: 0.25; }
+  .node .label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+    word-break: break-word;
+  }
+  .node .type-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .node .sub {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 4px;
+    font-weight: 400;
+  }
+
+  /* Type colors */
+  .node[data-type="page"]       .type-dot { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .node[data-type="api"]        .type-dot { background: var(--accent-5); box-shadow: 0 0 6px var(--accent-5); }
+  .node[data-type="layout"]     .type-dot { background: var(--accent-6); box-shadow: 0 0 6px var(--accent-6); }
+  .node[data-type="middleware"] .type-dot { background: var(--accent-3); box-shadow: 0 0 6px var(--accent-3); }
+  .node[data-type="module"]     .type-dot { background: var(--accent-5); box-shadow: 0 0 6px var(--accent-5); }
+  .node[data-type="component"]  .type-dot { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .node[data-type="hook"]       .type-dot { background: var(--accent-6); box-shadow: 0 0 6px var(--accent-6); }
+  .node[data-type="util"]       .type-dot { background: var(--text-muted); }
+  .node[data-type="input"]      .type-dot { background: var(--accent-2); box-shadow: 0 0 6px var(--accent-2); }
+  .node[data-type="transform"]  .type-dot { background: var(--accent-5); box-shadow: 0 0 6px var(--accent-5); }
+  .node[data-type="persist"]    .type-dot { background: var(--accent-2); box-shadow: 0 0 6px var(--accent-2); }
+  .node[data-type="output"]     .type-dot { background: var(--accent-3); box-shadow: 0 0 6px var(--accent-3); }
+  .node[data-type="external"]   .type-dot { background: var(--accent-4); box-shadow: 0 0 6px var(--accent-4); }
+  .node[data-type="database"]   .type-dot { background: var(--accent-2); box-shadow: 0 0 6px var(--accent-2); }
+  .node[data-type="auth"]       .type-dot { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .node[data-type="payment"]    .type-dot { background: var(--accent-3); box-shadow: 0 0 6px var(--accent-3); }
+  .node[data-type="email"]      .type-dot { background: var(--accent-5); box-shadow: 0 0 6px var(--accent-5); }
+  .node[data-type="ai"]         .type-dot { background: var(--accent-6); box-shadow: 0 0 6px var(--accent-6); }
+  .node[data-type="storage"]    .type-dot { background: var(--text-muted); }
+  .node[data-type="monitoring"] .type-dot { background: var(--accent-4); box-shadow: 0 0 6px var(--accent-4); }
+  .node[data-type="other"]      .type-dot { background: var(--text-dim); }
+
+  /* Detail panel */
+  #panel {
+    position: fixed;
+    top: 100px; right: -360px;
+    width: 340px;
+    bottom: 0;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    transition: right 0.25s ease;
+    z-index: 80;
+    overflow-y: auto;
+    padding: 24px;
+  }
+  #panel.open { right: 0; }
+  #panel .close {
+    position: absolute;
+    top: 16px; right: 16px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 18px;
+  }
+  #panel .close:hover { color: var(--text); }
+  #panel h2 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+    word-break: break-word;
+    padding-right: 30px;
+  }
+  #panel .badge {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 2px 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  #panel .path {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin-bottom: 16px;
+    word-break: break-all;
+  }
+  #panel .detail {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text);
+    margin-bottom: 20px;
+  }
+  #panel .section-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+    margin-top: 16px;
+  }
+  #panel ul { list-style: none; }
+  #panel li {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text);
+    padding: 6px 8px;
+    margin-bottom: 2px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  #panel li:hover { border-color: var(--accent); }
+  #panel li.empty { color: var(--text-dim); cursor: default; background: none; border: none; padding: 0; font-style: italic; }
+
+  /* Legend */
+  #legend {
+    position: fixed;
+    bottom: 20px; left: 20px;
+    background: rgba(19, 19, 26, 0.92);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    z-index: 70;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    min-width: 140px;
+  }
+  #legend .legend-title {
+    font-size: 9px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    letter-spacing: 0.05em;
+  }
+  #legend .item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; color: var(--text-muted); }
+  #legend .dot { width: 6px; height: 6px; border-radius: 50%; }
+
+  /* Zoom indicator */
+  #zoom-indicator {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    background: rgba(19, 19, 26, 0.92);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    border-radius: 4px;
+    z-index: 70;
+  }
+
+  /* Help hint */
+  #help {
+    position: fixed;
+    top: 116px; left: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    z-index: 70;
+    line-height: 1.6;
+    pointer-events: none;
+  }
+  #help kbd {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 9px;
+    color: var(--text-muted);
+  }
+
+  /* Empty state */
+  .empty-state {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><span class="dot"></span>vir</div>
+  <div class="meta">
+    <span><strong>generated</strong>2026-06-12</span>
+    <span id="meta-stats"></span>
+  </div>
+  <div class="search-wrap">
+    <input id="search" type="text" placeholder="Search nodes..." autocomplete="off">
+  </div>
+</header>
+
+<div class="tabs" id="tabs"></div>
+
+<div id="canvas-wrap">
+  <div id="canvas">
+    <svg id="edges"></svg>
+  </div>
+</div>
+
+<div id="help">
+  <kbd>drag</kbd> pan · <kbd>scroll</kbd> zoom · <kbd>dbl-click</kbd> reset · <kbd>esc</kbd> close panel
+</div>
+
+<aside id="panel">
+  <button class="close" onclick="closePanel()">×</button>
+  <div id="panel-content"></div>
+</aside>
+
+<div id="legend"></div>
+<div id="zoom-indicator">100%</div>
+
+<script>
+  // ============================================================
+  // GRAPH DATA — injected by skill
+  // ============================================================
+  const GRAPH_DATA = {
+  "meta": {
+    "name": "vir",
+    "type": "TypeScript CLI + daemon (npm: @djolex999/vir-cli)",
+    "generated": "2026-06-12",
+    "stats": {
+      "files": 39,
+      "routes": 23,
+      "services": 7
+    }
+  },
+  "layers": {
+    "routes": {
+      "nodes": [
+        {
+          "id": "r0",
+          "label": "vir (cli.ts)",
+          "type": "layout",
+          "path": "src/cli.ts",
+          "detail": "commander entry; every action wrapped in runAction (exit-code chokepoint).",
+          "deps": [
+            "r1",
+            "r2",
+            "r3",
+            "r4",
+            "r5",
+            "r6",
+            "r7",
+            "r8",
+            "r9",
+            "r10",
+            "r11",
+            "r12",
+            "r13",
+            "r14",
+            "r15"
+          ]
+        },
+        {
+          "id": "r1",
+          "label": "vir init",
+          "type": "api",
+          "detail": "@inquirer wizard — provider, models, paths; writes ~/.vir/config.json (0600)."
+        },
+        {
+          "id": "r2",
+          "label": "vir run",
+          "type": "api",
+          "detail": "One pipeline pass: scan → filter → scrub → distill → write. Flags: --full, --dry-run, --articles-only, --force-model."
+        },
+        {
+          "id": "r3",
+          "label": "vir query",
+          "type": "api",
+          "detail": "Embeddings (Ollama) → TF-IDF fallback → Claude synthesis. --json is the plugin wire contract."
+        },
+        {
+          "id": "r4",
+          "label": "vir compose",
+          "type": "api",
+          "detail": "Topic synthesis: embedding-search related notes → Sonnet → topics/<slug>.md."
+        },
+        {
+          "id": "r5",
+          "label": "vir cost",
+          "type": "api",
+          "detail": "Report from ~/.vir/cost.log: total / median / p90 / by-session."
+        },
+        {
+          "id": "r6",
+          "label": "vir schedule",
+          "type": "api",
+          "detail": "Daemon install/uninstall — launchd (macOS), systemd user timer / cron (Linux)."
+        },
+        {
+          "id": "r7",
+          "label": "vir sync-claude",
+          "type": "api",
+          "detail": "Sync vault knowledge into CLAUDE.md files between VIR:START/VIR:END markers."
+        },
+        {
+          "id": "r8",
+          "label": "vir doctor",
+          "type": "api",
+          "detail": "10 install/config checks (config, key probe, vault, sqlite, daemon, Ollama, MCP)."
+        },
+        {
+          "id": "r9",
+          "label": "vir reconcile",
+          "type": "api",
+          "detail": "One-shot recovery: re-distill sessions with null/empty content, bypassing the hash cache."
+        },
+        {
+          "id": "r10",
+          "label": "vir review",
+          "type": "api",
+          "detail": "Approve/edit/reject notes; verdicts live in note frontmatter, not SQLite."
+        },
+        {
+          "id": "r11",
+          "label": "vir embed / status / summarize",
+          "type": "api",
+          "detail": "Embedding backfill; daemon + KB stats; per-project summaries."
+        },
+        {
+          "id": "r12",
+          "label": "vir lint / dedupe",
+          "type": "api",
+          "detail": "Orphans, staleness, contradictions; interactive duplicate merge."
+        },
+        {
+          "id": "r13",
+          "label": "vir mcp",
+          "type": "middleware",
+          "detail": "stdio MCP server (read-only facade) + install/uninstall via claude CLI.",
+          "deps": [
+            "r14",
+            "r15"
+          ]
+        },
+        {
+          "id": "r14",
+          "label": "vir_query / vir_status (MCP)",
+          "type": "page",
+          "detail": "Read-only tools over search + DB stats; logs to stderr only."
+        },
+        {
+          "id": "r15",
+          "label": "vir_recent_notes / _articles / _project_summary (MCP)",
+          "type": "page",
+          "detail": "Listing tools; project_summary never spends tokens — points to CLI."
+        }
+      ],
+      "edges": [
+        {
+          "from": "r0",
+          "to": "r2"
+        },
+        {
+          "from": "r0",
+          "to": "r3"
+        },
+        {
+          "from": "r0",
+          "to": "r4"
+        },
+        {
+          "from": "r0",
+          "to": "r1"
+        },
+        {
+          "from": "r0",
+          "to": "r5"
+        },
+        {
+          "from": "r0",
+          "to": "r6"
+        },
+        {
+          "from": "r0",
+          "to": "r7"
+        },
+        {
+          "from": "r0",
+          "to": "r8"
+        },
+        {
+          "from": "r0",
+          "to": "r9"
+        },
+        {
+          "from": "r0",
+          "to": "r10"
+        },
+        {
+          "from": "r0",
+          "to": "r11"
+        },
+        {
+          "from": "r0",
+          "to": "r12"
+        },
+        {
+          "from": "r0",
+          "to": "r13"
+        },
+        {
+          "from": "r13",
+          "to": "r14"
+        },
+        {
+          "from": "r13",
+          "to": "r15"
+        }
+      ]
+    },
+    "modules": {
+      "nodes": [
+        {
+          "id": "m1",
+          "label": "pipeline/run.ts",
+          "type": "module",
+          "path": "src/pipeline/run.ts",
+          "detail": "Orchestrator: per-session try/catch (daemon never dies on one bad transcript).",
+          "deps": [
+            "m2",
+            "m3",
+            "m4",
+            "m5",
+            "m6",
+            "m7",
+            "m8",
+            "m13"
+          ]
+        },
+        {
+          "id": "m2",
+          "label": "scanner + parser",
+          "type": "module",
+          "path": "src/pipeline/parser.ts",
+          "detail": "Walk ~/.claude/projects, SHA-256 each .jsonl; prose-only assistantText vs transcriptText split."
+        },
+        {
+          "id": "m3",
+          "label": "filter + toolCallFilter",
+          "type": "module",
+          "path": "src/pipeline/toolCallFilter.ts",
+          "detail": "Heuristic scorer; toolCallFilter owns the [tool_use]/[tool_result] grammar — single owner."
+        },
+        {
+          "id": "m4",
+          "label": "scrubber",
+          "type": "util",
+          "path": "src/pipeline/scrubber.ts",
+          "detail": "Strips API keys, bearer tokens, paths, emails BEFORE distill/write/DB."
+        },
+        {
+          "id": "m5",
+          "label": "distiller",
+          "type": "module",
+          "path": "src/pipeline/distiller.ts",
+          "detail": "callLLM chokepoint (cost recording), Haiku classify + Sonnet extract, hybrid routing, retries."
+        },
+        {
+          "id": "m6",
+          "label": "writer",
+          "type": "module",
+          "path": "src/pipeline/writer.ts",
+          "detail": "Frontmatter + wikilinks + index; preserves review verdicts on every write; best-effort embed."
+        },
+        {
+          "id": "m7",
+          "label": "articleReader + articleDistiller",
+          "type": "module",
+          "path": "src/pipeline/articleDistiller.ts",
+          "detail": "Web-article pipeline (own taxonomy, own SQLite table)."
+        },
+        {
+          "id": "m8",
+          "label": "composer",
+          "type": "module",
+          "path": "src/pipeline/composer.ts",
+          "detail": "Topic synthesis: pure builders + orchestrators; topics never source themselves."
+        },
+        {
+          "id": "m9",
+          "label": "search/ (retriever, embedder, synthesizer)",
+          "type": "module",
+          "path": "src/search/retriever.ts",
+          "detail": "Embedding pool = sessions + articles + topics; TF-IDF fallback; +0.2 verified boost."
+        },
+        {
+          "id": "m10",
+          "label": "state/db.ts",
+          "type": "module",
+          "path": "src/state/db.ts",
+          "detail": "better-sqlite3, additive migrations; sessions / articles / topics isolated tables."
+        },
+        {
+          "id": "m11",
+          "label": "cost/",
+          "type": "util",
+          "path": "src/cost/pricing.ts",
+          "detail": "Provider-aware pricing, JSONL cost.log (best-effort — never fails a distill)."
+        },
+        {
+          "id": "m12",
+          "label": "daemon/",
+          "type": "module",
+          "path": "src/daemon/index.ts",
+          "detail": "Platform router: launchd / systemd user / cron fallback. UNTESTED."
+        },
+        {
+          "id": "m13",
+          "label": "embeddingSweep",
+          "type": "module",
+          "path": "src/pipeline/embeddingSweep.ts",
+          "detail": "Self-heal NULL embeddings (sessions + topics; articles still missing)."
+        },
+        {
+          "id": "m14",
+          "label": "mcp/server.ts",
+          "type": "module",
+          "path": "src/mcp/server.ts",
+          "detail": "Read-only stdio facade over search + db; stderr-only logging. UNTESTED."
+        },
+        {
+          "id": "m15",
+          "label": "claude/updater.ts",
+          "type": "module",
+          "path": "src/claude/updater.ts",
+          "detail": "VIR:START/END block mutation in user CLAUDE.md files. UNTESTED — highest-risk gap."
+        },
+        {
+          "id": "m16",
+          "label": "ui/display.ts",
+          "type": "component",
+          "path": "src/ui/display.ts",
+          "detail": "The ONE place console.log should live (audit found ~30 strays in cli.ts)."
+        },
+        {
+          "id": "m17",
+          "label": "output/json.ts",
+          "type": "util",
+          "path": "src/output/json.ts",
+          "detail": "Pure wire-contract builders for --json (CLI ↔ Obsidian plugin)."
+        },
+        {
+          "id": "m18",
+          "label": "lint + dedupe + summarizer + doctor",
+          "type": "module",
+          "path": "src/lint/linter.ts",
+          "detail": "Vault hygiene + diagnostics; mostly untested side-effectful code."
+        }
+      ],
+      "edges": [
+        {
+          "from": "m1",
+          "to": "m2"
+        },
+        {
+          "from": "m1",
+          "to": "m3"
+        },
+        {
+          "from": "m1",
+          "to": "m4"
+        },
+        {
+          "from": "m1",
+          "to": "m5"
+        },
+        {
+          "from": "m1",
+          "to": "m6"
+        },
+        {
+          "from": "m1",
+          "to": "m7"
+        },
+        {
+          "from": "m1",
+          "to": "m13"
+        },
+        {
+          "from": "m5",
+          "to": "m11",
+          "label": "cost record"
+        },
+        {
+          "from": "m6",
+          "to": "m10"
+        },
+        {
+          "from": "m6",
+          "to": "m9",
+          "label": "maybeEmbed"
+        },
+        {
+          "from": "m8",
+          "to": "m9"
+        },
+        {
+          "from": "m8",
+          "to": "m5",
+          "label": "callLLM"
+        },
+        {
+          "from": "m9",
+          "to": "m10"
+        },
+        {
+          "from": "m13",
+          "to": "m10"
+        },
+        {
+          "from": "m14",
+          "to": "m9"
+        },
+        {
+          "from": "m14",
+          "to": "m10",
+          "label": "readonly"
+        },
+        {
+          "from": "m17",
+          "to": "m9"
+        },
+        {
+          "from": "m12",
+          "to": "m1",
+          "label": "schedules"
+        },
+        {
+          "from": "m15",
+          "to": "m10"
+        }
+      ]
+    },
+    "dataflow": {
+      "nodes": [
+        {
+          "id": "d1",
+          "label": "~/.claude/projects/**/*.jsonl",
+          "type": "input",
+          "detail": "Claude Code session transcripts (raw source)."
+        },
+        {
+          "id": "d2",
+          "label": "scan + hash",
+          "type": "transform",
+          "detail": "SHA-256 per file; skip if already processed (idempotent)."
+        },
+        {
+          "id": "d3",
+          "label": "parse + heuristic filter",
+          "type": "transform",
+          "detail": "Prose split; cheap scorer drops ~50% before any LLM call."
+        },
+        {
+          "id": "d4",
+          "label": "tool-call filter + scrub",
+          "type": "transform",
+          "detail": "Strip big tool outputs (217k→95k tokens); remove secrets/paths/emails."
+        },
+        {
+          "id": "d5",
+          "label": "Haiku classify",
+          "type": "external",
+          "detail": "Category + confidence; routes to distill model (hybrid)."
+        },
+        {
+          "id": "d6",
+          "label": "Sonnet/Haiku distill",
+          "type": "external",
+          "detail": "Durable knowledge extraction; cost recorded once on success."
+        },
+        {
+          "id": "d7",
+          "label": "vault write",
+          "type": "persist",
+          "detail": "Typed note + wikilinks + index.md; verdicts preserved; embed best-effort."
+        },
+        {
+          "id": "d8",
+          "label": "SQLite record",
+          "type": "persist",
+          "detail": "Path + hash + content + embedding — source of truth for idempotency."
+        },
+        {
+          "id": "d9",
+          "label": "embedding sweep",
+          "type": "transform",
+          "detail": "Backfills NULL embeddings next run when Ollama is up (self-heal)."
+        },
+        {
+          "id": "d10",
+          "label": "vir query / MCP",
+          "type": "input",
+          "detail": "Question from CLI, plugin (--json), or Claude Code (MCP)."
+        },
+        {
+          "id": "d11",
+          "label": "retrieve (embeddings → TF-IDF)",
+          "type": "transform",
+          "detail": "Cosine over sessions+articles+topics; +0.2 verified boost; MMR diversity."
+        },
+        {
+          "id": "d12",
+          "label": "Claude synthesis",
+          "type": "external",
+          "detail": "Answer composed from top notes (skipped in --json mode)."
+        },
+        {
+          "id": "d13",
+          "label": "answer / JSON / Obsidian render",
+          "type": "output",
+          "detail": "Terminal answer, plugin sidebar, or MCP tool result."
+        },
+        {
+          "id": "d14",
+          "label": "sync-claude",
+          "type": "output",
+          "detail": "Knowledge flows back into CLAUDE.md between VIR markers."
+        }
+      ],
+      "edges": [
+        {
+          "from": "d1",
+          "to": "d2"
+        },
+        {
+          "from": "d2",
+          "to": "d3"
+        },
+        {
+          "from": "d3",
+          "to": "d4"
+        },
+        {
+          "from": "d4",
+          "to": "d5"
+        },
+        {
+          "from": "d5",
+          "to": "d6"
+        },
+        {
+          "from": "d6",
+          "to": "d7"
+        },
+        {
+          "from": "d6",
+          "to": "d8"
+        },
+        {
+          "from": "d8",
+          "to": "d9"
+        },
+        {
+          "from": "d9",
+          "to": "d8"
+        },
+        {
+          "from": "d10",
+          "to": "d11"
+        },
+        {
+          "from": "d11",
+          "to": "d12"
+        },
+        {
+          "from": "d12",
+          "to": "d13"
+        },
+        {
+          "from": "d11",
+          "to": "d13",
+          "label": "--json"
+        },
+        {
+          "from": "d7",
+          "to": "d11",
+          "label": "TF-IDF walk"
+        },
+        {
+          "from": "d8",
+          "to": "d11",
+          "label": "embeddings"
+        },
+        {
+          "from": "d7",
+          "to": "d14"
+        }
+      ]
+    },
+    "services": {
+      "nodes": [
+        {
+          "id": "s1",
+          "label": "Anthropic API",
+          "type": "ai",
+          "detail": "Haiku classify + Sonnet distill via @anthropic-ai/sdk. Critical — pipeline stops without an LLM provider."
+        },
+        {
+          "id": "s2",
+          "label": "Kie.ai",
+          "type": "ai",
+          "detail": "Alternate provider (~28% cost). Native fetch + Bearer; errors tunnel through HTTP 200 bodies; 120s AbortController timeout."
+        },
+        {
+          "id": "s3",
+          "label": "Ollama (local)",
+          "type": "ai",
+          "detail": "nomic-embed-text embeddings. Best-effort: down → TF-IDF fallback + self-heal sweep later. Low risk."
+        },
+        {
+          "id": "s4",
+          "label": "SQLite (~/.vir/vir.db)",
+          "type": "database",
+          "detail": "better-sqlite3, WAL, additive migrations. High — state/idempotency source of truth."
+        },
+        {
+          "id": "s5",
+          "label": "Obsidian vault",
+          "type": "storage",
+          "detail": "The product output: typed markdown notes, index, topics. High — but plain files, recoverable."
+        },
+        {
+          "id": "s6",
+          "label": "launchd / systemd / cron",
+          "type": "other",
+          "detail": "4h daemon cadence. macOS primary; Linux experimental/untested."
+        },
+        {
+          "id": "s7",
+          "label": "Claude Code (MCP host)",
+          "type": "other",
+          "detail": "Registers via claude mcp add; consumes the read-only stdio server. vir-obsidian plugin is a second consumer via --json."
+        }
+      ],
+      "edges": [
+        {
+          "from": "s6",
+          "to": "s1",
+          "label": "distill"
+        },
+        {
+          "from": "s6",
+          "to": "s2",
+          "label": "or kie"
+        },
+        {
+          "from": "s6",
+          "to": "s3",
+          "label": "embed"
+        },
+        {
+          "from": "s6",
+          "to": "s4"
+        },
+        {
+          "from": "s6",
+          "to": "s5"
+        },
+        {
+          "from": "s7",
+          "to": "s4",
+          "label": "readonly"
+        },
+        {
+          "from": "s7",
+          "to": "s5",
+          "label": "query"
+        }
+      ]
+    }
+  }
+};
+
+  // ============================================================
+  // STATE
+  // ============================================================
+  let activeLayer = null;
+  let selectedNode = null;
+  let panX = 0, panY = 0, scale = 1;
+  let isDragging = false, dragStart = null;
+
+  const TYPE_LABELS = {
+    page: 'Page', api: 'API', layout: 'Layout', middleware: 'Middleware',
+    module: 'Module', component: 'Component', hook: 'Hook', util: 'Util',
+    input: 'Input', transform: 'Transform', persist: 'Persist', output: 'Output', external: 'External',
+    database: 'Database', auth: 'Auth', payment: 'Payment', email: 'Email',
+    ai: 'AI', storage: 'Storage', monitoring: 'Monitoring', other: 'Other'
+  };
+
+  // ============================================================
+  // INIT
+  // ============================================================
+  function init() {
+    renderMeta();
+    renderTabs();
+    const firstLayer = Object.keys(GRAPH_DATA.layers).find(k => GRAPH_DATA.layers[k].nodes.length > 0);
+    if (firstLayer) setActiveLayer(firstLayer);
+    setupInteraction();
+    setupSearch();
+  }
+
+  function renderMeta() {
+    const m = GRAPH_DATA.meta || {};
+    const stats = m.stats || {};
+    const parts = [];
+    if (m.type) parts.push(`<span><strong>type</strong>${escapeHtml(m.type)}</span>`);
+    if (stats.files) parts.push(`<span><strong>files</strong>${stats.files}</span>`);
+    if (stats.routes) parts.push(`<span><strong>routes</strong>${stats.routes}</span>`);
+    if (stats.services) parts.push(`<span><strong>services</strong>${stats.services}</span>`);
+    document.getElementById('meta-stats').innerHTML = parts.join('');
+  }
+
+  function renderTabs() {
+    const tabs = document.getElementById('tabs');
+    const order = ['routes', 'modules', 'dataflow', 'services'];
+    const labels = { routes: 'Routes', modules: 'Modules', dataflow: 'Data Flow', services: 'Services' };
+    tabs.innerHTML = order
+      .filter(k => GRAPH_DATA.layers[k])
+      .map(k => {
+        const n = GRAPH_DATA.layers[k].nodes.length;
+        return `<button class="tab" data-layer="${k}">${labels[k]}<span class="count">${n}</span></button>`;
+      }).join('');
+    tabs.querySelectorAll('.tab').forEach(t => {
+      t.addEventListener('click', () => setActiveLayer(t.dataset.layer));
+    });
+  }
+
+  // ============================================================
+  // LAYER RENDERING
+  // ============================================================
+  function setActiveLayer(layerName) {
+    if (activeLayer === layerName) return;
+    activeLayer = layerName;
+    document.querySelectorAll('.tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.layer === layerName);
+    });
+    closePanel();
+    renderLayer();
+    renderLegend();
+    resetView(true);
+  }
+
+  function renderLayer() {
+    const canvas = document.getElementById('canvas');
+    // Clear all nodes (keep SVG)
+    canvas.querySelectorAll('.node, .empty-state').forEach(el => el.remove());
+    const svg = document.getElementById('edges');
+    svg.innerHTML = '';
+
+    const layer = GRAPH_DATA.layers[activeLayer];
+    if (!layer || layer.nodes.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.textContent = `No data for ${activeLayer}`;
+      canvas.appendChild(empty);
+      return;
+    }
+
+    const positioned = computeLayout(layer.nodes, layer.edges || []);
+
+    // Render edges first (under nodes)
+    const edges = layer.edges || [];
+    edges.forEach(e => {
+      const from = positioned.find(n => n.id === e.from);
+      const to = positioned.find(n => n.id === e.to);
+      if (!from || !to) return;
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      const x1 = from.x + 80, y1 = from.y + 20;
+      const x2 = to.x + 80, y2 = to.y + 20;
+      const midX = (x1 + x2) / 2;
+      path.setAttribute('d', `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`);
+      path.dataset.from = e.from;
+      path.dataset.to = e.to;
+      svg.appendChild(path);
+    });
+
+    // Set SVG viewport to canvas size
+    svg.setAttribute('viewBox', '0 0 4000 3000');
+    svg.setAttribute('width', '4000');
+    svg.setAttribute('height', '3000');
+
+    // Render nodes
+    positioned.forEach(n => {
+      const el = document.createElement('div');
+      el.className = 'node';
+      el.dataset.id = n.id;
+      el.dataset.type = n.type || 'other';
+      el.style.left = n.x + 'px';
+      el.style.top = n.y + 'px';
+      const sub = n.path ? `<div class="sub">${escapeHtml(truncate(n.path, 36))}</div>` : '';
+      el.innerHTML = `
+        <div class="label"><span class="type-dot"></span>${escapeHtml(n.label)}</div>
+        ${sub}
+      `;
+      el.addEventListener('click', (ev) => { ev.stopPropagation(); selectNode(n.id); });
+      el.addEventListener('mouseenter', () => highlightConnections(n.id));
+      el.addEventListener('mouseleave', () => clearHighlights());
+      canvas.appendChild(el);
+    });
+  }
+
+  // ============================================================
+  // LAYOUT
+  // ============================================================
+  function computeLayout(nodes, edges) {
+    const count = nodes.length;
+    // Hierarchical layered layout for clarity
+    // Group by "depth" using BFS from nodes with no incoming edges
+    const incoming = {};
+    nodes.forEach(n => incoming[n.id] = 0);
+    edges.forEach(e => { if (incoming[e.to] !== undefined) incoming[e.to]++; });
+    const roots = nodes.filter(n => incoming[n.id] === 0).map(n => n.id);
+    const depth = {};
+    nodes.forEach(n => depth[n.id] = 0);
+    const queue = roots.map(id => ({ id, d: 0 }));
+    const visited = new Set();
+    while (queue.length) {
+      const { id, d } = queue.shift();
+      if (visited.has(id)) continue;
+      visited.add(id);
+      depth[id] = Math.max(depth[id] || 0, d);
+      edges.filter(e => e.from === id).forEach(e => {
+        if (!visited.has(e.to)) queue.push({ id: e.to, d: d + 1 });
+      });
+    }
+    // Nodes with no edges go in their own "isolated" depth
+    const maxDepth = Math.max(...Object.values(depth), 0);
+    const byDepth = {};
+    nodes.forEach(n => {
+      const d = depth[n.id] || 0;
+      (byDepth[d] = byDepth[d] || []).push(n);
+    });
+
+    const colWidth = 280;
+    const rowHeight = 90;
+    const startX = 100;
+    const startY = 80;
+    const positioned = [];
+
+    Object.keys(byDepth).sort((a,b)=>+a-+b).forEach(d => {
+      const col = byDepth[d];
+      col.forEach((n, i) => {
+        positioned.push({
+          ...n,
+          x: startX + (+d) * colWidth,
+          y: startY + i * rowHeight
+        });
+      });
+    });
+
+    return positioned;
+  }
+
+  // ============================================================
+  // PANEL
+  // ============================================================
+  function selectNode(id) {
+    const layer = GRAPH_DATA.layers[activeLayer];
+    const node = layer.nodes.find(n => n.id === id);
+    if (!node) return;
+    selectedNode = id;
+    document.querySelectorAll('.node').forEach(el => {
+      el.classList.toggle('selected', el.dataset.id === id);
+    });
+
+    const dependsOn = (node.deps || []).map(depId => {
+      const dep = layer.nodes.find(n => n.id === depId);
+      return dep ? dep.label : depId;
+    });
+    const dependents = layer.nodes
+      .filter(n => (n.deps || []).includes(id))
+      .map(n => n.label);
+
+    const html = `
+      <h2>${escapeHtml(node.label)}</h2>
+      <span class="badge">${TYPE_LABELS[node.type] || node.type || 'node'}</span>
+      ${node.path ? `<div class="path">${escapeHtml(node.path)}</div>` : ''}
+      <div class="detail">${escapeHtml(node.detail || 'No description available.')}</div>
+      <div class="section-title">Depends on (${dependsOn.length})</div>
+      <ul>${dependsOn.length
+        ? dependsOn.map(d => `<li>${escapeHtml(d)}</li>`).join('')
+        : '<li class="empty">no dependencies</li>'}</ul>
+      <div class="section-title">Used by (${dependents.length})</div>
+      <ul>${dependents.length
+        ? dependents.map(d => `<li>${escapeHtml(d)}</li>`).join('')
+        : '<li class="empty">no consumers</li>'}</ul>
+    `;
+    document.getElementById('panel-content').innerHTML = html;
+    document.getElementById('panel').classList.add('open');
+  }
+
+  function closePanel() {
+    document.getElementById('panel').classList.remove('open');
+    selectedNode = null;
+    document.querySelectorAll('.node.selected').forEach(el => el.classList.remove('selected'));
+  }
+
+  // ============================================================
+  // HIGHLIGHTS
+  // ============================================================
+  function highlightConnections(id) {
+    const connected = new Set([id]);
+    const layer = GRAPH_DATA.layers[activeLayer];
+    (layer.edges || []).forEach(e => {
+      if (e.from === id) connected.add(e.to);
+      if (e.to === id) connected.add(e.from);
+    });
+    document.querySelectorAll('.node').forEach(el => {
+      el.classList.toggle('dim', !connected.has(el.dataset.id));
+    });
+    document.querySelectorAll('#edges path').forEach(p => {
+      const touches = p.dataset.from === id || p.dataset.to === id;
+      p.classList.toggle('highlight', touches);
+      p.style.opacity = touches ? '1' : '0.2';
+    });
+  }
+
+  function clearHighlights() {
+    document.querySelectorAll('.node').forEach(el => el.classList.remove('dim'));
+    document.querySelectorAll('#edges path').forEach(p => {
+      p.classList.remove('highlight');
+      p.style.opacity = '';
+    });
+  }
+
+  // ============================================================
+  // LEGEND
+  // ============================================================
+  function renderLegend() {
+    const layer = GRAPH_DATA.layers[activeLayer];
+    if (!layer) return;
+    const types = [...new Set(layer.nodes.map(n => n.type).filter(Boolean))];
+    const legend = document.getElementById('legend');
+    if (types.length === 0) { legend.style.display = 'none'; return; }
+    legend.style.display = 'block';
+    legend.innerHTML = `
+      <div class="legend-title">Legend</div>
+      ${types.map(t => `
+        <div class="item">
+          <span class="dot" style="background: var(${typeToVar(t)})"></span>
+          ${TYPE_LABELS[t] || t}
+        </div>
+      `).join('')}
+    `;
+  }
+
+  function typeToVar(t) {
+    const map = {
+      page: '--accent', api: '--accent-5', layout: '--accent-6', middleware: '--accent-3',
+      module: '--accent-5', component: '--accent', hook: '--accent-6', util: '--text-muted',
+      input: '--accent-2', transform: '--accent-5', persist: '--accent-2',
+      output: '--accent-3', external: '--accent-4',
+      database: '--accent-2', auth: '--accent', payment: '--accent-3', email: '--accent-5',
+      ai: '--accent-6', storage: '--text-muted', monitoring: '--accent-4', other: '--text-dim'
+    };
+    return map[t] || '--text-dim';
+  }
+
+  // ============================================================
+  // PAN / ZOOM
+  // ============================================================
+  function setupInteraction() {
+    const wrap = document.getElementById('canvas-wrap');
+    const canvas = document.getElementById('canvas');
+
+    wrap.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.node')) return;
+      isDragging = true;
+      wrap.classList.add('dragging');
+      dragStart = { x: e.clientX - panX, y: e.clientY - panY };
+      canvas.classList.remove('animate');
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      panX = e.clientX - dragStart.x;
+      panY = e.clientY - dragStart.y;
+      applyTransform();
+    });
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+      document.getElementById('canvas-wrap').classList.remove('dragging');
+    });
+
+    wrap.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const delta = -e.deltaY * 0.001;
+      const newScale = Math.max(0.2, Math.min(2.5, scale + delta));
+      // Zoom toward cursor
+      const rect = wrap.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      panX = mx - (mx - panX) * (newScale / scale);
+      panY = my - (my - panY) * (newScale / scale);
+      scale = newScale;
+      applyTransform();
+    }, { passive: false });
+
+    wrap.addEventListener('dblclick', (e) => {
+      if (e.target.closest('.node')) return;
+      resetView(true);
+    });
+
+    wrap.addEventListener('click', (e) => {
+      if (!e.target.closest('.node') && !e.target.closest('#panel')) {
+        closePanel();
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closePanel();
+    });
+  }
+
+  function applyTransform() {
+    const canvas = document.getElementById('canvas');
+    canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+    document.getElementById('zoom-indicator').textContent = Math.round(scale * 100) + '%';
+  }
+
+  function resetView(animate) {
+    const canvas = document.getElementById('canvas');
+    // Find bounds of nodes
+    const nodes = canvas.querySelectorAll('.node');
+    if (nodes.length === 0) { panX = 0; panY = 0; scale = 1; applyTransform(); return; }
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    nodes.forEach(n => {
+      const x = parseInt(n.style.left), y = parseInt(n.style.top);
+      const w = n.offsetWidth, h = n.offsetHeight;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x + w);
+      maxY = Math.max(maxY, y + h);
+    });
+    const wrap = document.getElementById('canvas-wrap');
+    const ww = wrap.offsetWidth, wh = wrap.offsetHeight;
+    const cw = maxX - minX + 200, ch = maxY - minY + 200;
+    scale = Math.min(ww / cw, wh / ch, 1);
+    panX = (ww - (maxX - minX) * scale) / 2 - minX * scale;
+    panY = (wh - (maxY - minY) * scale) / 2 - minY * scale;
+    if (animate) canvas.classList.add('animate');
+    applyTransform();
+    setTimeout(() => canvas.classList.remove('animate'), 300);
+  }
+
+  // ============================================================
+  // SEARCH
+  // ============================================================
+  function setupSearch() {
+    const input = document.getElementById('search');
+    input.addEventListener('input', () => {
+      const q = input.value.trim().toLowerCase();
+      document.querySelectorAll('.node').forEach(el => {
+        if (!q) { el.classList.remove('dim'); return; }
+        const text = el.textContent.toLowerCase();
+        el.classList.toggle('dim', !text.includes(q));
+      });
+    });
+  }
+
+  // ============================================================
+  // UTILS
+  // ============================================================
+  function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+  function truncate(s, n) {
+    if (!s) return '';
+    return s.length > n ? '…' + s.slice(-n + 1) : s;
+  }
+
+  // Boot
+  init();
+</script>
+
+</body>
+</html>
