@@ -37,6 +37,10 @@ export interface Classification {
   topic: string;
   project: string;
   confidence: number;
+  // Distinct topics/threads the model found in the session. A diagnostic signal
+  // surfacing multi-theme dilution (a grab-bag session names only one in `topic`)
+  // — written to note frontmatter, not used by retrieval. Empty when none.
+  themes: string[];
 }
 
 export interface DistilledNote {

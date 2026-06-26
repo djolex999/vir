@@ -73,6 +73,14 @@ export class VaultWriter {
     const relPath = join(subDir, `${slug}.md`);
     const fullPath = join(this.root, relPath);
 
+    // themes is a fresh classify signal but isn't a DB column, so a rewrite-only
+    // pass carries none — fall back to the existing note's themes block then,
+    // exactly like the review fields. A fresh distill (or --full) re-emits them.
+    const themesLines =
+      classification.themes.length > 0
+        ? renderThemesLines(classification.themes)
+        : this.preservedThemesBlock(fullPath);
+
     const frontmatter = [
       "---",
       `topic: "${classification.topic.replace(/"/g, '\\"')}"`,
@@ -81,6 +89,7 @@ export class VaultWriter {
       `session_id: ${session.sessionId}`,
       `date: ${session.startedAt ?? new Date().toISOString()}`,
       `confidence: ${classification.confidence}`,
+      ...themesLines,
       // A user's review verdict (set by `vir review`) lives in frontmatter, not
       // SQLite — so any rewrite of the file (rewrite-only OR a --full re-distill
       // that re-emits an existing note) would clobber it. Carry it over verbatim.
@@ -339,6 +348,39 @@ export class VaultWriter {
     return keep.filter((k) => found.has(k)).map((k) => found.get(k)!);
   }
 
+  // Read back the multi-line `themes:` block from an existing note so a
+  // rewrite-only pass (which has no themes — it's not a DB column) preserves it
+  // instead of dropping it. Returns the `themes:` line plus its indented `- `
+  // items in order; [] when the note has no themes block. The single-line
+  // preservedReviewFields can't handle a YAML list, hence the separate walker.
+  private preservedThemesBlock(fullPath: string): string[] {
+    if (!existsSync(fullPath)) return [];
+    let content: string;
+    try {
+      content = readFileSync(fullPath, "utf8");
+    } catch {
+      return [];
+    }
+    const m = content.match(/^---\n([\s\S]*?)\n---/);
+    if (!m?.[1]) return [];
+    const out: string[] = [];
+    let inThemes = false;
+    for (const line of m[1].split("\n")) {
+      if (!inThemes) {
+        if (/^themes:\s*$/.test(line)) {
+          inThemes = true;
+          out.push("themes:");
+        }
+        continue;
+      }
+      // Collect indented list items; the first non-item line ends the block.
+      if (/^\s+-\s/.test(line)) out.push(line);
+      else break;
+    }
+    // A bare `themes:` with no items isn't worth re-emitting.
+    return out.length > 1 ? out : [];
+  }
+
   // Best-effort: embed the freshly-written note via Ollama and store the
   // vector. Any failure (Ollama down, timeout, model missing) is swallowed —
   // an embedding miss must never fail a write.
@@ -448,6 +490,17 @@ export function kebab(s: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+// Render a non-empty themes list as YAML frontmatter lines: a `themes:` key
+// then one quoted `- ` item per theme (quoted + escaped like topic/project, so
+// a colon or quote in a theme label can't corrupt the block). Caller guarantees
+// non-empty; an empty list omits the key entirely.
+export function renderThemesLines(themes: string[]): string[] {
+  return [
+    "themes:",
+    ...themes.map((t) => `  - "${t.replace(/"/g, '\\"')}"`),
+  ];
 }
 
 // Rewrites the bullet list under a `## Related` heading so each item

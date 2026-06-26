@@ -688,6 +688,10 @@ async function rewriteOne(
       topic: row.topic,
       project: row.project,
       confidence: row.confidence,
+      // themes isn't a DB column — a rewrite-only pass carries none, so the
+      // writer preserves the existing note's themes block from its frontmatter
+      // (like the review fields). A --full re-distill re-emits fresh themes.
+      themes: [],
     },
     markdown: row.content,
   };

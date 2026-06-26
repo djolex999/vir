@@ -370,7 +370,10 @@ export class Distiller {
   ): Promise<Classification> {
     const prompt = `Given this Claude Code session summary, output JSON only:
 { "category": "pattern" | "gotcha" | "decision" | "tool",
-  "topic": string (2-4 words, kebab-friendly),
+  "topic": string (2-5 words, kebab-friendly: name the SINGLE most durable or
+    surprising lesson, NOT a summary of everything the session touched),
+  "themes": string[] (the distinct topics/threads the session covered, as short
+    labels; [] when it is genuinely single-theme),
   "project": string,
   "confidence": number (0..1) }
 
@@ -504,7 +507,18 @@ export async function withRateLimitRetry<T>(fn: () => Promise<T>): Promise<T> {
   return await fn();
 }
 
-function parseClassification(
+// Coerce the raw `themes` field into a clean string[]: keep only strings, trim,
+// drop empties. Anything non-array (absent, string, object) yields [] — themes
+// is a best-effort diagnostic signal, never worth failing a parse over.
+function parseThemes(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((t): t is string => typeof t === "string")
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+}
+
+export function parseClassification(
   text: string,
   fallbackProject: string,
 ): Classification {
@@ -515,6 +529,7 @@ function parseClassification(
       topic: "unknown",
       project: fallbackProject,
       confidence: 0,
+      themes: [],
     };
   }
   let obj: Record<string, unknown>;
@@ -526,6 +541,7 @@ function parseClassification(
       topic: "unknown",
       project: fallbackProject,
       confidence: 0,
+      themes: [],
     };
   }
   const rawCat = typeof obj.category === "string" ? obj.category : "pattern";
@@ -547,5 +563,5 @@ function parseClassification(
   const confidence = Number.isFinite(confidenceRaw)
     ? Math.max(0, Math.min(1, confidenceRaw))
     : 0;
-  return { category, topic, project, confidence };
+  return { category, topic, project, confidence, themes: parseThemes(obj.themes) };
 }

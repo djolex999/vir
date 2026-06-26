@@ -44,13 +44,14 @@ function makeSession(): ParsedSession {
   };
 }
 
-function makeNote(): DistilledNote {
+function makeNote(themes: string[] = []): DistilledNote {
   return {
     classification: {
       category: "pattern",
       topic: "test topic",
       project: "demo",
       confidence: 0.9,
+      themes,
     },
     markdown: "## Summary\n\nbody text",
   };
@@ -100,6 +101,37 @@ describe("VaultWriter write modes", () => {
 
     const index = readFileSync(join(vault, "vir", "index.md"), "utf8");
     expect(index).toContain("test topic");
+  });
+
+  it("writes a themes: YAML list when the note carries themes", async () => {
+    const writer = new VaultWriter(makeCfg(vault), null);
+    const [notePath] = await writer.write(
+      makeSession(),
+      makeNote(["kie error handling", "retry safety"]),
+    );
+    const content = readFileSync(notePath!, "utf8");
+    expect(content).toContain(
+      'themes:\n  - "kie error handling"\n  - "retry safety"',
+    );
+  });
+
+  it("omits the themes key entirely when there are no themes", async () => {
+    const writer = new VaultWriter(makeCfg(vault), null);
+    const [notePath] = await writer.write(makeSession(), makeNote());
+    expect(readFileSync(notePath!, "utf8")).not.toContain("themes:");
+  });
+
+  it("preserves the existing themes block on a rewrite that carries none", async () => {
+    const writer = new VaultWriter(makeCfg(vault), null);
+    const [notePath] = await writer.write(
+      makeSession(),
+      makeNote(["alpha", "beta"]),
+    );
+    // A --rewrite-only pass reconstructs the classification from DB columns with
+    // no themes — the themes block must survive, exactly like the review fields.
+    await writer.write(makeSession(), makeNote(), "rewrite");
+    const after = readFileSync(notePath!, "utf8");
+    expect(after).toContain('themes:\n  - "alpha"\n  - "beta"');
   });
 
   it("preserves a reviewer's verified/reviewed_at fields on rewrite", async () => {

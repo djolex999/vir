@@ -5,6 +5,7 @@ import {
   isRetryable,
   KieTimeoutError,
   kieResponseError,
+  parseClassification,
   selectDistillModel,
 } from "./distiller.js";
 import type { Category, Classification } from "./types.js";
@@ -91,6 +92,7 @@ describe("selectDistillModel", () => {
     topic: "t",
     project: "p",
     confidence: 0.9,
+    themes: [],
   });
 
   it("returns distill for every session when distillFast is unset (hybrid off)", () => {
@@ -144,6 +146,45 @@ describe("selectDistillModel", () => {
     const models = { distill: "sonnet", distillFast: "haiku", distillThreshold: 10 };
     expect(selectDistillModel(cls("pattern"), 10, models)).toBe("haiku");
     expect(selectDistillModel(cls("pattern"), 11, models)).toBe("sonnet");
+  });
+});
+
+describe("parseClassification themes", () => {
+  it("parses a themes array, trimming and dropping empty entries", () => {
+    const c = parseClassification(
+      '{"category":"gotcha","topic":"kie 200 body error","themes":[" kie error handling ","retry safety",""]}',
+      "vir",
+    );
+    expect(c.themes).toEqual(["kie error handling", "retry safety"]);
+  });
+
+  it("defaults themes to [] when the field is absent", () => {
+    const c = parseClassification('{"category":"pattern","topic":"x"}', "vir");
+    expect(c.themes).toEqual([]);
+  });
+
+  it("defaults themes to [] when themes is malformed (not an array)", () => {
+    const c = parseClassification(
+      '{"category":"pattern","topic":"x","themes":"not-an-array"}',
+      "vir",
+    );
+    expect(c.themes).toEqual([]);
+  });
+
+  it("drops non-string entries from a mixed themes array", () => {
+    const c = parseClassification(
+      '{"category":"tool","topic":"x","themes":["valid",3,null,"also valid"]}',
+      "vir",
+    );
+    expect(c.themes).toEqual(["valid", "also valid"]);
+  });
+
+  it("handles a single theme", () => {
+    const c = parseClassification(
+      '{"category":"decision","topic":"x","themes":["only one"]}',
+      "vir",
+    );
+    expect(c.themes).toEqual(["only one"]);
   });
 });
 
