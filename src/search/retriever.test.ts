@@ -155,6 +155,7 @@ describe("search — topic embeddings are first-class in the pool", () => {
       getEmbeddings: () => [],
       getArticleEmbeddings: () => [],
       getTopicEmbeddings: () => [topicRow],
+      getPdfEmbeddings: () => [],
     } as unknown as StateDb;
     const cfg = {
       vaultPath: vault,
@@ -168,5 +169,43 @@ describe("search — topic embeddings are first-class in the pool", () => {
     expect(hits).toHaveLength(1);
     expect(hits[0]?.method).toBe("embedding");
     expect(hits[0]?.filePath).toBe(topicPath);
+  });
+
+  it("surfaces a pdf note via the EMBEDDING path (concatenated into the pool)", async () => {
+    const vault = mkdtempSync(join(tmpdir(), "vir-vault-"));
+    const noteHome = mkdtempSync(join(tmpdir(), "vir-pdf-"));
+    tmps.push(vault, noteHome);
+    const pdfPath = join(noteHome, "attention-is-all-you-need-abc12345.md");
+    writeFileSync(
+      pdfPath,
+      "---\ntype: pdf\ncategory: paper\nsource_title: Attention\nconfidence: 0.9\n---\n# Attention\n\nbody about self-attention",
+    );
+
+    const pdfRow: EmbeddingRow = {
+      sessionId: "attention-is-all-you-need-abc12345",
+      topic: "Attention",
+      category: "paper",
+      project: "",
+      filePath: pdfPath,
+      embedding: [1, 0, 0], // identical to the stubbed query vec → cosine 1.0
+    };
+    const db = {
+      getEmbeddings: () => [],
+      getArticleEmbeddings: () => [],
+      getTopicEmbeddings: () => [],
+      getPdfEmbeddings: () => [pdfRow],
+    } as unknown as StateDb;
+    const cfg = {
+      vaultPath: vault,
+      outputDir: "vir",
+      topicsDir: "topics",
+      retrievalDiversity: 0.3,
+    } as unknown as Config;
+
+    const hits = await search(cfg, db, "self attention", 5);
+
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.method).toBe("embedding");
+    expect(hits[0]?.filePath).toBe(pdfPath);
   });
 });

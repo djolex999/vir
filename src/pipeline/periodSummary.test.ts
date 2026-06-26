@@ -279,6 +279,7 @@ describe("summarizePeriod (end-to-end, LLM mocked)", () => {
       kieTopUpTier: "standard",
       filterThreshold: 0.4,
       distillArticles: true,
+      distillPdfs: true,
       filterToolCalls: "moderate",
       retrievalDiversity: 0.3,
       models: {

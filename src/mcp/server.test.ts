@@ -34,9 +34,24 @@ project: vir
 ---
 body`;
 
+const PDF_NOTE = `---
+type: pdf
+category: paper
+source_path: /papers/attention.pdf
+source_title: "Attention Is All You Need"
+pages: 11
+---
+body about self-attention`;
+
 describe("QUERY_TYPES", () => {
-  it("includes topic alongside session, article, and all", () => {
-    expect([...QUERY_TYPES]).toEqual(["session", "article", "topic", "all"]);
+  it("includes pdf alongside session, article, topic, and all", () => {
+    expect([...QUERY_TYPES]).toEqual([
+      "session",
+      "article",
+      "topic",
+      "pdf",
+      "all",
+    ]);
   });
 });
 
@@ -58,6 +73,14 @@ describe("hitMeta", () => {
     const meta = hitMeta(hit(SESSION_NOTE, "gotchas/a-session-lesson"));
     expect(meta.type).toBe("session");
     expect(meta.category).toBe("gotcha");
+  });
+
+  it("classifies a pdf note as type 'pdf' with its source_title and pdf sub-category", () => {
+    const meta = hitMeta(hit(PDF_NOTE, "pdfs/attention-is-all-you-need-abc12345"));
+    expect(meta.type).toBe("pdf");
+    expect(meta.category).toBe("paper");
+    expect(meta.topic).toBe("Attention Is All You Need");
+    expect(meta.project).toBe("");
   });
 });
 

@@ -144,6 +144,23 @@ describe("buildQueryResults", () => {
     });
   });
 
+  it("surfaces a pdfs/ note with category 'pdf' (sub-taxonomy collapses to the wire bucket)", () => {
+    const [r] = buildQueryResults(
+      [
+        hit({
+          filePath: "/vault/vir/pdfs/attention-abc12345.md",
+          content:
+            '---\ntype: pdf\ncategory: paper\nsource_title: "Attention"\nconfidence: 0.92\n---\nBody about self-attention.',
+          score: 0.81,
+        }),
+      ],
+      VAULT_ROOT,
+    );
+    expect(r!.path).toBe("pdfs/attention-abc12345.md");
+    expect(r!.category).toBe("pdf");
+    expect(r!.confidence).toBe(0.92);
+  });
+
   it("honors a configured topicsDir when classifying by directory", () => {
     // No `type: topic` frontmatter, so classification falls through to the
     // directory — which is the renamed topicsDir, not the default "topics".

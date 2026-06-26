@@ -2,6 +2,7 @@ import {
   deriveSessionId,
   type ArticleEmbeddingTargetRow,
   type EmbeddingTargetRow,
+  type PdfEmbeddingTargetRow,
   type StateDb,
   type TopicEmbeddingTargetRow,
 } from "../state/db.js";
@@ -62,6 +63,23 @@ export function selectArticleEmbeddingTargets<
   );
 }
 
+// PDF counterpart, mirroring db.listPdfEmbeddingTargets's SQL filter — the exact
+// complement of getPdfEmbeddings(). Same gates as articles (skipped/error,
+// content present, note_path set, NULL embedding); PDFs have no archived column.
+export function selectPdfEmbeddingTargets<T extends PdfEmbeddingTargetRow>(
+  rows: T[],
+): T[] {
+  return rows.filter(
+    (r) =>
+      r.skipped === 0 &&
+      r.error === null &&
+      r.content !== null &&
+      r.content !== "" &&
+      r.embedding === null &&
+      r.notePath !== null,
+  );
+}
+
 export interface EmbedSweepResult {
   // false when the sweep was skipped because Ollama is down — it retries next
   // run rather than erroring now.
@@ -90,12 +108,17 @@ export async function sweepEmbeddings(db: StateDb): Promise<EmbedSweepResult> {
   const targets = db.listEmbeddingTargets();
   const topicTargets = db.listTopicEmbeddingTargets();
   const articleTargets = db.listArticleEmbeddingTargets();
+  const pdfTargets = db.listPdfEmbeddingTargets();
   if (!(await isOllamaAvailableCached())) {
     return {
       ran: false,
       embedded: 0,
       errors: 0,
-      pending: targets.length + topicTargets.length + articleTargets.length,
+      pending:
+        targets.length +
+        topicTargets.length +
+        articleTargets.length +
+        pdfTargets.length,
     };
   }
   let embedded = 0;
@@ -137,6 +160,20 @@ export async function sweepEmbeddings(db: StateDb): Promise<EmbedSweepResult> {
       continue;
     }
     db.storeArticleEmbedding(a.path, vec);
+    embedded += 1;
+  }
+  // PDFs heal the same way (their own table). A paper distilled while Ollama was
+  // down left `embedding` NULL; back-fill keyed by the source path (the PK) via
+  // storePdfEmbedding — shipped WITH the getPdfEmbeddings read path so the new
+  // pdfs table can't reopen the NULL-embedding blind spot (the 0.8.2/0.8.3 trap).
+  for (const p of pdfTargets) {
+    if (!p.content || p.content.trim().length === 0) continue;
+    const vec = await embeddingForNote(p.content);
+    if (!vec) {
+      errors += 1;
+      continue;
+    }
+    db.storePdfEmbedding(p.path, vec);
     embedded += 1;
   }
   return { ran: true, embedded, errors, pending: errors };

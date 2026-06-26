@@ -95,13 +95,14 @@ async function searchByEmbedding(
   }
 
   const root = vaultRoot(cfg);
-  // Sessions, articles, and topics are embedded into the same vector space;
-  // concat all three so semantic search covers every layer. Topics get no
-  // ranking boost — they compete on cosine like everything else.
+  // Sessions, articles, topics, and PDFs are embedded into the same vector
+  // space; concat all four so semantic search covers every layer. No layer gets
+  // a ranking boost — they compete on cosine like everything else.
   const rows = [
     ...db.getEmbeddings(root),
     ...db.getArticleEmbeddings(),
     ...db.getTopicEmbeddings(root, cfg.topicsDir),
+    ...db.getPdfEmbeddings(),
   ];
   if (rows.length === 0) return [];
 

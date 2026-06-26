@@ -46,6 +46,22 @@ export const ConfigSchema = z
       .describe(
         "Whether to distill articles in addition to Claude Code sessions.",
       ),
+    // Path to a directory of PDFs / papers to ingest. Optional — when unset, PDF
+    // ingestion is skipped entirely and existing configs keep working unchanged
+    // (the third input source, mirroring articlesDir).
+    pdfsDir: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Path to a directory of PDFs/papers. Optional. If unset, PDF ingestion is disabled.",
+      ),
+    // Whether to distill PDFs alongside sessions/articles. Only takes effect
+    // when pdfsDir is set.
+    distillPdfs: z
+      .boolean()
+      .default(true)
+      .describe("Whether to distill PDFs in addition to sessions and articles."),
     // How aggressively large tool outputs are stripped before distillation.
     // Existing configs without this field get 'moderate' via the default.
     filterToolCalls: z
@@ -175,6 +191,7 @@ export function loadConfig(): Config {
     ...(parsed.articlesDir
       ? { articlesDir: expandHome(parsed.articlesDir) }
       : {}),
+    ...(parsed.pdfsDir ? { pdfsDir: expandHome(parsed.pdfsDir) } : {}),
   };
 }
 

@@ -14,6 +14,8 @@ import { parseSession } from "./parser.js";
 import { scanSessions } from "./scanner.js";
 import { scanArticles } from "./articleReader.js";
 import { distillArticle } from "./articleDistiller.js";
+import { parsePdf, scanPdfs } from "./pdfReader.js";
+import { distillPdf } from "./pdfDistiller.js";
 import { scrub } from "./scrubber.js";
 import { summarizeProject } from "./summarizer.js";
 import { filterToolCalls } from "./toolCallFilter.js";
@@ -28,6 +30,8 @@ export interface RunOptions {
   rewriteOnly?: boolean;
   // Distill only web articles, skipping the Claude Code session pipeline.
   articlesOnly?: boolean;
+  // Distill only PDFs, skipping the session and article pipelines.
+  pdfsOnly?: boolean;
   // Override models.distill for this run only (full id or "haiku"/"sonnet").
   forceDistillModel?: string;
   // Estimate per-session cost after filtering, print a table, and exit before
@@ -52,6 +56,10 @@ export interface RunSummary {
   articlesDistilled: number;
   articlesSkipped: number;
   articlesErrored: number;
+  pdfsScanned: number;
+  pdfsDistilled: number;
+  pdfsSkipped: number;
+  pdfsErrored: number;
 }
 
 export async function runPipeline(
@@ -75,6 +83,10 @@ export async function runPipeline(
     articlesDistilled: 0,
     articlesSkipped: 0,
     articlesErrored: 0,
+    pdfsScanned: 0,
+    pdfsDistilled: 0,
+    pdfsSkipped: 0,
+    pdfsErrored: 0,
   };
 
   const interactive = !opts.quiet;
@@ -100,9 +112,11 @@ export async function runPipeline(
           ? "run  --rewrite-only"
           : opts.articlesOnly
             ? "run  --articles-only"
-            : opts.full
-              ? "run  --full"
-              : "run",
+            : opts.pdfsOnly
+              ? "run  --pdfs-only"
+              : opts.full
+                ? "run  --full"
+                : "run",
     );
     ui.blank();
   }
@@ -201,6 +215,38 @@ export async function runPipeline(
     return summary;
   }
 
+  // --pdfs-only: skip the session AND article pipelines.
+  if (opts.pdfsOnly) {
+    if (!cfg.pdfsDir) {
+      if (interactive) {
+        ui.row(
+          ui.warn(ui.WARN_GLYPH),
+          ui.text("pdfsDir is not set — nothing to distill"),
+        );
+      }
+      fileLog("pdfs-only run but pdfsDir is unset");
+      db.close();
+      return summary;
+    }
+    await runPdfPhase(cfg, db, writer, summary, fileLog, interactive);
+    if (interactive) {
+      ui.blank();
+      ui.divider();
+      ui.summary({
+        pdfs: { value: summary.pdfsScanned, color: ui.info },
+        distilled: { value: summary.pdfsDistilled, color: ui.success },
+        skipped: { value: summary.pdfsSkipped, color: ui.warn },
+        errored: {
+          value: summary.pdfsErrored,
+          color: summary.pdfsErrored > 0 ? ui.errorColor : ui.dim,
+        },
+      });
+      ui.divider();
+    }
+    db.close();
+    return summary;
+  }
+
   const distiller = new Distiller(cfg, {
     forceDistillModel: opts.forceDistillModel,
   });
@@ -250,7 +296,8 @@ export async function runPipeline(
   const pendingEmbedding =
     db.listEmbeddingTargets().length +
     db.listTopicEmbeddingTargets().length +
-    db.listArticleEmbeddingTargets().length;
+    db.listArticleEmbeddingTargets().length +
+    db.listPdfEmbeddingTargets().length;
   if (interactive) {
     ui.line(
       ui.dim(
@@ -354,6 +401,43 @@ export async function runPipeline(
           "  estimates assume typical output sizes; actuals may vary ±30%",
         ),
       );
+    }
+    // PDFs are estimated separately: papers exceed the 24k-char distill cap, so
+    // the per-PDF input is the cap (an accurate figure, not just an upper bound).
+    // No text extraction here — only count new PDFs by their cheap byte hash.
+    if (cfg.pdfsDir && cfg.distillPdfs) {
+      const newPdfs = scanPdfs(cfg.pdfsDir).filter(
+        (f) => opts.full || !db.isPdfProcessed(f.filePath, f.hash),
+      ).length;
+      if (newPdfs > 0) {
+        const perPdf =
+          computeCost(
+            cfg.provider,
+            classifyModel,
+            Math.ceil(3000 / CHARS_PER_TOKEN),
+            200,
+            cfg.pricing,
+            cfg.kieTopUpTier,
+          ) +
+          computeCost(
+            cfg.provider,
+            distillModel,
+            Math.ceil(24_000 / CHARS_PER_TOKEN),
+            1500,
+            cfg.pricing,
+            cfg.kieTopUpTier,
+          );
+        if (interactive) {
+          ui.line(
+            ui.dim(
+              `  ${newPdfs} new PDF(s): ~${ui.formatUsd(perPdf)} each (input capped at 24k chars) → ~${ui.formatUsd(perPdf * newPdfs)}`,
+            ),
+          );
+        }
+        fileLog(
+          `dry-run: newPdfs=${newPdfs} perPdf=${ui.formatUsd(perPdf)} estTotal=${ui.formatUsd(perPdf * newPdfs)}`,
+        );
+      }
     }
     fileLog(
       `dry-run: sessions=${estimated} filtered=${filteredOut} estTotal=${ui.formatUsd(totalCost)}`,
@@ -497,6 +581,12 @@ export async function runPipeline(
     await runArticlePhase(cfg, db, writer, summary, fileLog, interactive);
   }
 
+  // Third input source: PDFs / papers. Gated identically; an install without
+  // pdfsDir skips this entirely (the article pattern, cloned).
+  if (cfg.pdfsDir && cfg.distillPdfs) {
+    await runPdfPhase(cfg, db, writer, summary, fileLog, interactive);
+  }
+
   // Self-heal: back-fill notes whose write-time embedding silently no-op'd
   // (Ollama down during distill). Without this a transient outage is permanent
   // — the note never enters the embedding-search candidate set. Best-effort and
@@ -535,7 +625,7 @@ export async function runPipeline(
   }
 
   fileLog(
-    `vir run done — scanned=${summary.scanned} new=${summary.scanned - summary.alreadyProcessed} distilled=${summary.distilled} skipped=${summary.skippedByFilter} lowConf=${summary.lowConfidence} errored=${summary.errored} articles=${summary.articlesDistilled}`,
+    `vir run done — scanned=${summary.scanned} new=${summary.scanned - summary.alreadyProcessed} distilled=${summary.distilled} skipped=${summary.skippedByFilter} lowConf=${summary.lowConfidence} errored=${summary.errored} articles=${summary.articlesDistilled} pdfs=${summary.pdfsDistilled}`,
   );
 
   if (interactive) {
@@ -556,6 +646,9 @@ export async function runPipeline(
     };
     if (cfg.articlesDir && cfg.distillArticles) {
       stats.articles = { value: summary.articlesDistilled, color: ui.success };
+    }
+    if (cfg.pdfsDir && cfg.distillPdfs) {
+      stats.pdfs = { value: summary.pdfsDistilled, color: ui.success };
     }
     ui.summary(stats);
     ui.divider();
@@ -655,6 +748,103 @@ async function runArticlePhase(
         db.recordArticle({
           path: article.filePath,
           hash: article.hash,
+          skipped: false,
+          error: msg,
+        });
+      } catch {
+        // ignore record errors
+      }
+    }
+  }
+}
+
+// Third input source: PDFs / papers. Mirrors runArticlePhase, but scanPdfs
+// returns cheap {path, hash} entries (PDF text extraction is expensive via
+// pdf.js) and only files that aren't already processed get parsed — instead of
+// extracting the whole directory up front. Each PDF is hashed for idempotency
+// and wrapped in its own try/catch so one bad file never aborts the run.
+async function runPdfPhase(
+  cfg: Config,
+  db: StateDb,
+  writer: VaultWriter,
+  summary: RunSummary,
+  fileLog: (msg: string) => void,
+  interactive: boolean,
+): Promise<void> {
+  if (!cfg.pdfsDir) return;
+
+  const scanSpinner = interactive ? ui.spinner("scanning pdfs").start() : null;
+  let sources;
+  try {
+    sources = scanPdfs(cfg.pdfsDir);
+  } catch (err) {
+    if (scanSpinner) scanSpinner.fail(ui.errorColor("pdf scan failed"));
+    fileLog(`pdf scan failed: ${(err as Error).message}`);
+    return;
+  }
+  summary.pdfsScanned = sources.length;
+  if (scanSpinner) {
+    scanSpinner.succeed(
+      ui.text(`scanned ${ui.info(String(sources.length))} ${ui.dim("pdfs")}`),
+    );
+  }
+  fileLog(`scanned ${sources.length} pdfs`);
+
+  for (const src of sources) {
+    try {
+      if (db.isPdfProcessed(src.filePath, src.hash)) continue;
+
+      // Extraction is heavy and only happens for new files (gated above).
+      const parsed = await parsePdf(src.filePath);
+      const distilled = await distillPdf(parsed, cfg);
+      if (!distilled) {
+        summary.pdfsSkipped += 1;
+        db.recordPdf({
+          path: parsed.filePath,
+          hash: parsed.hash,
+          skipped: true,
+        });
+        continue;
+      }
+
+      const notePath = await writer.writePdf(parsed, distilled);
+      summary.pdfsDistilled += 1;
+      summary.notesWritten.push(notePath);
+      db.recordPdf({
+        path: parsed.filePath,
+        hash: parsed.hash,
+        skipped: false,
+        notePath,
+        content: distilled.markdown,
+        category: distilled.classification.category,
+        title: parsed.title,
+        pages: parsed.pageCount,
+        confidence: distilled.classification.confidence,
+        distilledAt: new Date().toISOString(),
+      });
+      if (interactive) {
+        ui.categoryRow(distilled.classification.category, parsed.title);
+      }
+      fileLog(
+        `distilled pdf → ${distilled.classification.category}/${parsed.title}`,
+      );
+      if (distilled.classification.confidence >= 0.8) {
+        notify(`Vir — new ${distilled.classification.category}`, parsed.title);
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    } catch (err) {
+      summary.pdfsErrored += 1;
+      const msg = (err as Error).message ?? String(err);
+      if (interactive) {
+        ui.row(ui.errorColor(ui.CROSS), ui.text(`pdf error: ${msg}`));
+      }
+      fileLog(`error on pdf ${src.filePath}: ${msg}`);
+      try {
+        // Record with the source hash so a corrupt PDF isn't retried every run
+        // (same idempotency contract as articles).
+        db.recordPdf({
+          path: src.filePath,
+          hash: src.hash,
           skipped: false,
           error: msg,
         });

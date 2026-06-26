@@ -42,7 +42,13 @@ const ARTICLE_CATEGORIES = [
   "reference",
   "opinion",
 ] as const;
-export const QUERY_TYPES = ["session", "article", "topic", "all"] as const;
+export const QUERY_TYPES = [
+  "session",
+  "article",
+  "topic",
+  "pdf",
+  "all",
+] as const;
 
 // Maps the vault subdirectory back to the canonical category, used as a
 // fallback when a hit's frontmatter is missing (e.g. older notes).
@@ -104,7 +110,7 @@ export function hitMeta(hit: SearchHit): {
   topic: string;
   category: string;
   project: string;
-  type: "session" | "article" | "topic";
+  type: "session" | "article" | "topic" | "pdf";
   url?: string;
 } {
   const fm = parseFrontmatter(hit.content);
@@ -116,6 +122,16 @@ export function hitMeta(hit: SearchHit): {
       project: fm.source_author ?? "",
       type: "article",
       url: fm.source_url,
+    };
+  }
+  // PDFs carry `type: pdf` + `source_title` + the pdf sub-taxonomy in `category`
+  // (paper/reference/notes/other); project is empty (a PDF has no project).
+  if (fm.type === "pdf") {
+    return {
+      topic: fm.source_title ?? base,
+      category: fm.category ?? "",
+      project: "",
+      type: "pdf",
     };
   }
   // Topic pages (`vir compose`) carry `type: topic` and a synthesized title but
@@ -205,8 +221,9 @@ export async function runMcpServer(cfg: Config): Promise<void> {
     {
       description:
         "Search the knowledge vault for patterns, gotchas, decisions, and " +
-        "tool insights from past Claude Code sessions, plus concepts, " +
-        "techniques, references, and opinions distilled from web articles. " +
+        "tool insights from past Claude Code sessions, concepts, techniques, " +
+        "references, and opinions distilled from web articles, and notes " +
+        "distilled from PDFs/papers. " +
         "Use this before working on a task to consult prior learnings. " +
         "Human-verified notes (approved via `vir review`) are ranked above " +
         "unverified ones.",
@@ -225,7 +242,7 @@ export async function runMcpServer(cfg: Config): Promise<void> {
           .describe(
             "Restrict to 'session' notes (Claude Code), 'article' notes " +
               "(web articles), 'topic' pages (synthesized via `vir compose`), " +
-              "or 'all' (default).",
+              "'pdf' notes (distilled papers/PDFs), or 'all' (default).",
           ),
         category: z
           .enum(CATEGORIES)

@@ -2,12 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   ArticleEmbeddingTargetRow,
   EmbeddingTargetRow,
+  PdfEmbeddingTargetRow,
   StateDb,
   TopicEmbeddingTargetRow,
 } from "../state/db.js";
 import {
   selectArticleEmbeddingTargets,
   selectEmbeddingTargets,
+  selectPdfEmbeddingTargets,
   selectTopicEmbeddingTargets,
   sweepEmbeddings,
 } from "./embeddingSweep.js";
@@ -60,6 +62,20 @@ function arow(
     path: "/Users/x/vault/raw/some-article.md",
     notePath: "/Users/x/vault/vir/articles/some-article.md",
     content: "distilled article body",
+    skipped: 0,
+    error: null,
+    embedding: null,
+    ...overrides,
+  };
+}
+
+function prow(
+  overrides: Partial<PdfEmbeddingTargetRow>,
+): PdfEmbeddingTargetRow {
+  return {
+    path: "/Users/x/papers/attention.pdf",
+    notePath: "/Users/x/vault/vir/pdfs/attention-is-all-you-need-abc12345.md",
+    content: "distilled pdf body",
     skipped: 0,
     error: null,
     embedding: null,
@@ -150,31 +166,63 @@ describe("selectArticleEmbeddingTargets", () => {
   });
 });
 
+describe("selectPdfEmbeddingTargets", () => {
+  it("includes a pdf with content but a NULL embedding", () => {
+    expect(
+      selectPdfEmbeddingTargets([prow({ path: "/a.pdf" })]).map((r) => r.path),
+    ).toEqual(["/a.pdf"]);
+  });
+
+  it("excludes a pdf that already has an embedding", () => {
+    expect(
+      selectPdfEmbeddingTargets([prow({ path: "/b.pdf", embedding: "[0.1,0.2]" })]),
+    ).toEqual([]);
+  });
+
+  it("excludes skipped, errored, empty/null-content, and unwritten (null note_path) pdfs", () => {
+    expect(
+      selectPdfEmbeddingTargets([
+        prow({ path: "/skipped.pdf", skipped: 1 }),
+        prow({ path: "/errored.pdf", error: "boom" }),
+        prow({ path: "/empty.pdf", content: "" }),
+        prow({ path: "/null.pdf", content: null }),
+        prow({ path: "/no-note.pdf", notePath: null }),
+      ]),
+    ).toEqual([]);
+  });
+});
+
 function fakeDb(
   targets: EmbeddingTargetRow[],
   topicTargets: TopicEmbeddingTargetRow[] = [],
   articleTargets: ArticleEmbeddingTargetRow[] = [],
+  pdfTargets: PdfEmbeddingTargetRow[] = [],
 ): {
   db: StateDb;
   stored: Array<{ sessionId: string; vec: number[] }>;
   topicStored: Array<{ id: string; vec: number[] }>;
   articleStored: Array<{ path: string; vec: number[] }>;
+  pdfStored: Array<{ path: string; vec: number[] }>;
 } {
   const stored: Array<{ sessionId: string; vec: number[] }> = [];
   const topicStored: Array<{ id: string; vec: number[] }> = [];
   const articleStored: Array<{ path: string; vec: number[] }> = [];
+  const pdfStored: Array<{ path: string; vec: number[] }> = [];
   const db = {
     listEmbeddingTargets: () => targets,
     listTopicEmbeddingTargets: () => topicTargets,
     listArticleEmbeddingTargets: () => articleTargets,
+    listPdfEmbeddingTargets: () => pdfTargets,
     storeEmbedding: (sessionId: string, vec: number[]) =>
       stored.push({ sessionId, vec }),
     storeTopicEmbedding: (id: string, vec: number[]) =>
       topicStored.push({ id, vec }),
     storeArticleEmbedding: (path: string, vec: number[]) =>
       articleStored.push({ path, vec }),
+    storePdfEmbedding: (path: string, vec: number[]) =>
+      pdfStored.push({ path, vec }),
   } as unknown as StateDb;
-  return { db, stored, topicStored, articleStored };
+  return { db, stored, topicStored, articleStored, pdfStored };
 }
 
 describe("sweepEmbeddings", () => {
@@ -287,5 +335,49 @@ describe("sweepEmbeddings", () => {
     // 1 session + 1 topic + 1 article target, none embedded — retries next run.
     expect(res).toEqual({ ran: false, embedded: 0, errors: 0, pending: 3 });
     expect(articleStored).toEqual([]);
+  });
+
+  it("backfills a NULL-embedding pdf when Ollama is up (by pdf path)", async () => {
+    vi.mocked(isOllamaAvailableCached).mockResolvedValue(true);
+    const { db, pdfStored } = fakeDb(
+      [],
+      [],
+      [],
+      [prow({ path: "/Users/x/papers/transformer.pdf" })],
+    );
+
+    const res = await sweepEmbeddings(db);
+
+    expect(res).toEqual({ ran: true, embedded: 1, errors: 0, pending: 0 });
+    expect(pdfStored).toEqual([
+      { path: "/Users/x/papers/transformer.pdf", vec: [0.1, 0.2, 0.3] },
+    ]);
+  });
+
+  it("counts a pdf embedding failure as pending, not stored", async () => {
+    vi.mocked(isOllamaAvailableCached).mockResolvedValue(true);
+    vi.mocked(embeddingForNote).mockResolvedValueOnce(null);
+    const { db, pdfStored } = fakeDb([], [], [], [prow({ path: "/fail.pdf" })]);
+
+    const res = await sweepEmbeddings(db);
+
+    expect(res).toEqual({ ran: true, embedded: 0, errors: 1, pending: 1 });
+    expect(pdfStored).toEqual([]);
+  });
+
+  it("counts pending pdfs (alongside sessions + topics + articles) when Ollama is down", async () => {
+    vi.mocked(isOllamaAvailableCached).mockResolvedValueOnce(false);
+    const { db, pdfStored } = fakeDb(
+      [row({ path: "/s.jsonl" })],
+      [trow({ id: "t" })],
+      [arow({ path: "/a.md" })],
+      [prow({ path: "/p.pdf" })],
+    );
+
+    const res = await sweepEmbeddings(db);
+
+    // 1 session + 1 topic + 1 article + 1 pdf target, none embedded.
+    expect(res).toEqual({ ran: false, embedded: 0, errors: 0, pending: 4 });
+    expect(pdfStored).toEqual([]);
   });
 });

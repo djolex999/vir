@@ -69,6 +69,20 @@ export interface ArticleEmbeddingTargetRow {
   embedding: string | null;
 }
 
+// A distilled PDF still without an embedding — the pdfs-table counterpart of
+// ArticleEmbeddingTargetRow, the exact complement of getPdfEmbeddings(). Same
+// gates (skipped=0, error null, note_path set, content present, embedding NULL);
+// `path` (the source PK) keys the storePdfEmbedding back-fill. Pure-function
+// counterpart `selectPdfEmbeddingTargets`.
+export interface PdfEmbeddingTargetRow {
+  path: string;
+  notePath: string | null;
+  content: string | null;
+  skipped: number;
+  error: string | null;
+  embedding: string | null;
+}
+
 export interface ProjectStats {
   total: number;
   patterns: number;
@@ -109,6 +123,17 @@ export interface ArticleRow {
   author: string | null;
   published: string | null;
   category: string;
+  confidence: number;
+  distilledAt: string | null;
+  content: string;
+}
+
+export interface PdfRow {
+  path: string;
+  notePath: string | null;
+  title: string;
+  category: string;
+  pages: number | null;
   confidence: number;
   distilledAt: string | null;
   content: string;
@@ -220,6 +245,22 @@ export class StateDb {
         updated_at TEXT NOT NULL,
         embedding TEXT
       );
+      CREATE TABLE IF NOT EXISTS pdfs (
+        path TEXT PRIMARY KEY,
+        hash TEXT NOT NULL,
+        processed_at TEXT NOT NULL,
+        skipped INTEGER NOT NULL DEFAULT 0,
+        note_path TEXT,
+        error TEXT,
+        content TEXT,
+        category TEXT,
+        title TEXT,
+        pages INTEGER,
+        confidence REAL,
+        distilled_at TEXT,
+        embedding TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_pdfs_hash ON pdfs(hash);
     `);
     this.migrate();
   }
@@ -751,6 +792,183 @@ export class StateDb {
       .prepare(
         `SELECT note_path, embedding, title, category
          FROM articles
+         WHERE skipped = 0
+           AND error IS NULL
+           AND embedding IS NOT NULL
+           AND note_path IS NOT NULL`,
+      )
+      .all() as Array<{
+      note_path: string;
+      embedding: string;
+      title: string | null;
+      category: string | null;
+    }>;
+
+    const out: EmbeddingRow[] = [];
+    for (const r of rows) {
+      let vec: number[];
+      try {
+        const parsed = JSON.parse(r.embedding) as unknown;
+        if (!Array.isArray(parsed)) continue;
+        vec = parsed.map((x) => Number(x));
+        if (vec.some((n) => !Number.isFinite(n))) continue;
+      } catch {
+        continue;
+      }
+      out.push({
+        sessionId: deriveSessionId(r.note_path),
+        topic: r.title ?? "",
+        category: r.category ?? "",
+        project: "",
+        filePath: r.note_path,
+        embedding: vec,
+      });
+    }
+    return out;
+  }
+
+  // ── pdfs ──────────────────────────────────────────────────────────────────
+  // PDFs live in their own table so the pdf taxonomy (paper/reference/notes/
+  // other) never pollutes session/article listings, stats, or the rewrite path.
+  // Read methods guard a missing table — the read-only MCP path skips migrations,
+  // so an install that upgraded but never ran a writable pass won't have it yet.
+
+  private hasPdfsTable(): boolean {
+    try {
+      const r = this.db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='pdfs'",
+        )
+        .get();
+      return r !== undefined;
+    } catch {
+      return false;
+    }
+  }
+
+  isPdfProcessed(path: string, hash: string): boolean {
+    if (!this.hasPdfsTable()) return false;
+    const row = this.db
+      .prepare("SELECT hash FROM pdfs WHERE path = ?")
+      .get(path) as { hash: string } | undefined;
+    return row !== undefined && row.hash === hash;
+  }
+
+  recordPdf(opts: {
+    path: string;
+    hash: string;
+    skipped: boolean;
+    notePath?: string | null;
+    error?: string | null;
+    content?: string | null;
+    category?: string | null;
+    title?: string | null;
+    pages?: number | null;
+    confidence?: number | null;
+    distilledAt?: string | null;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO pdfs (
+           path, hash, processed_at, skipped, note_path, error,
+           content, category, title, pages, confidence, distilled_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(path) DO UPDATE SET
+           hash = excluded.hash,
+           processed_at = excluded.processed_at,
+           skipped = excluded.skipped,
+           error = excluded.error,
+           note_path = COALESCE(excluded.note_path, pdfs.note_path),
+           content = COALESCE(excluded.content, pdfs.content),
+           category = COALESCE(excluded.category, pdfs.category),
+           title = COALESCE(excluded.title, pdfs.title),
+           pages = COALESCE(excluded.pages, pdfs.pages),
+           confidence = COALESCE(excluded.confidence, pdfs.confidence),
+           distilled_at = COALESCE(excluded.distilled_at, pdfs.distilled_at)`,
+      )
+      .run(
+        opts.path,
+        opts.hash,
+        new Date().toISOString(),
+        opts.skipped ? 1 : 0,
+        opts.notePath ?? null,
+        opts.error ?? null,
+        opts.content ?? null,
+        opts.category ?? null,
+        opts.title ?? null,
+        opts.pages ?? null,
+        opts.confidence ?? null,
+        opts.distilledAt ?? null,
+      );
+  }
+
+  listPdfs(): PdfRow[] {
+    if (!this.hasPdfsTable()) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT path, note_path, title, category, pages,
+                confidence, distilled_at, content
+         FROM pdfs
+         WHERE skipped = 0 AND error IS NULL AND content IS NOT NULL`,
+      )
+      .all() as Array<{
+      path: string;
+      note_path: string | null;
+      title: string | null;
+      category: string | null;
+      pages: number | null;
+      confidence: number | null;
+      distilled_at: string | null;
+      content: string;
+    }>;
+    return rows.map((r) => ({
+      path: r.path,
+      notePath: r.note_path,
+      title: r.title ?? "",
+      category: r.category ?? "",
+      pages: r.pages,
+      confidence: r.confidence ?? 0,
+      distilledAt: r.distilled_at,
+      content: r.content,
+    }));
+  }
+
+  // PDFs still without an embedding — the pdfs-table complement of
+  // getPdfEmbeddings(). Mirrors getPdfEmbeddings' gates exactly (skipped=0, error
+  // null, note_path set) so the target set is precisely the rows that become
+  // retrievable once embedded. Pure counterpart `selectPdfEmbeddingTargets`.
+  listPdfEmbeddingTargets(): PdfEmbeddingTargetRow[] {
+    if (!this.hasPdfsTable()) return [];
+    return this.db
+      .prepare(
+        `SELECT path, note_path AS notePath, content, skipped, error, embedding
+         FROM pdfs
+         WHERE skipped = 0
+           AND error IS NULL
+           AND content IS NOT NULL
+           AND content != ''
+           AND embedding IS NULL
+           AND note_path IS NOT NULL`,
+      )
+      .all() as PdfEmbeddingTargetRow[];
+  }
+
+  storePdfEmbedding(path: string, embedding: number[]): void {
+    this.db
+      .prepare("UPDATE pdfs SET embedding = ? WHERE path = ?")
+      .run(JSON.stringify(embedding), path);
+  }
+
+  // PDF embeddings, shaped like session/article EmbeddingRow so the retriever can
+  // concat all sources. filePath is the stored note path; project is empty (PDFs
+  // have no project), category is the pdf taxonomy.
+  getPdfEmbeddings(): EmbeddingRow[] {
+    if (!this.hasPdfsTable()) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT note_path, embedding, title, category
+         FROM pdfs
          WHERE skipped = 0
            AND error IS NULL
            AND embedding IS NOT NULL

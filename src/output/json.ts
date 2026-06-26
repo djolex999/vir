@@ -13,7 +13,8 @@ export type VirQueryCategory =
   | "decision"
   | "tool"
   | "article"
-  | "topic";
+  | "topic"
+  | "pdf";
 
 export interface VirQueryResult {
   path: string; // vault-relative path to the .md file
@@ -57,6 +58,7 @@ const CATEGORY_DIRS: Record<string, VirQueryCategory> = {
   tools: "tool",
   articles: "article",
   topics: "topic",
+  pdfs: "pdf",
 };
 
 const WIRE_CATEGORIES = new Set<string>([
@@ -66,6 +68,7 @@ const WIRE_CATEGORIES = new Set<string>([
   "tool",
   "article",
   "topic",
+  "pdf",
 ]);
 
 // Minimal YAML-block parser, kebab-flat. Mirrors mcp/server.ts deliberately —
@@ -105,6 +108,9 @@ function categoryOf(
 ): VirQueryCategory {
   if (fm.type === "article") return "article";
   if (fm.type === "topic") return "topic";
+  // PDF sub-taxonomy (paper/reference/notes/other) collapses to the single
+  // "pdf" wire bucket, exactly like articles collapse to "article".
+  if (fm.type === "pdf") return "pdf";
   if (fm.category && WIRE_CATEGORIES.has(fm.category)) {
     return fm.category as VirQueryCategory;
   }

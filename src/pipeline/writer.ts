@@ -22,6 +22,13 @@ import {
   buildArticleFrontmatter,
   type DistilledArticle,
 } from "./articleDistiller.js";
+import type { ParsedPdf } from "./pdfReader.js";
+import {
+  PDFS_SUBDIR,
+  buildPdfFrontmatter,
+  pdfRelPath,
+  type DistilledPdf,
+} from "./pdfDistiller.js";
 import {
   TOPICS_SUBDIR,
   buildComposeFrontmatter,
@@ -53,6 +60,7 @@ export class VaultWriter {
     for (const sub of [
       ...Object.values(CATEGORY_DIR),
       ARTICLES_SUBDIR,
+      PDFS_SUBDIR,
       this.topicsDir,
     ]) {
       const p = join(this.root, sub);
@@ -184,6 +192,59 @@ export class VaultWriter {
       const vec = await embeddingForNote(fileContent);
       if (!vec) return;
       this.db.storeArticleEmbedding(article.filePath, vec);
+    } catch {
+      // never crash the writer on embedding failure
+    }
+  }
+
+  // Write a distilled PDF note into pdfs/<slug>.md. Parallel to writeArticle()
+  // but uses the PDF frontmatter; the source is a local file path (no URL).
+  async writePdf(
+    parsed: ParsedPdf,
+    distilled: DistilledPdf,
+    mode: "append" | "rewrite" = "append",
+  ): Promise<string> {
+    const relPath = pdfRelPath(parsed);
+    const fullPath = join(this.root, relPath);
+
+    const frontmatter = buildPdfFrontmatter(parsed, distilled);
+    const header = `Category: [[${distilled.classification.category}]]\n\n`;
+    const body = wikilinkRelated(distilled.markdown);
+
+    const finalContent = frontmatter + header + body + "\n";
+    writeFileSync(fullPath, finalContent);
+    await this.maybeEmbedPdf(parsed, finalContent);
+
+    if (mode === "append") {
+      this.appendIndex({
+        date: new Date().toISOString().slice(0, 10),
+        topic: parsed.title,
+        category: distilled.classification.category,
+        project: "pdf",
+        relPath,
+      });
+      this.appendLog({
+        ts: new Date().toISOString().slice(0, 16).replace("T", " "),
+        category: distilled.classification.category,
+        topic: parsed.title,
+        project: "pdf",
+      });
+    }
+    return fullPath;
+  }
+
+  // Best-effort PDF embedding — mirrors maybeEmbedArticle but keyed by the PDF's
+  // source path in the pdfs table. Failure never fails a write.
+  private async maybeEmbedPdf(
+    parsed: ParsedPdf,
+    fileContent: string,
+  ): Promise<void> {
+    if (!this.db) return;
+    try {
+      if (!(await isOllamaAvailableCached())) return;
+      const vec = await embeddingForNote(fileContent);
+      if (!vec) return;
+      this.db.storePdfEmbedding(parsed.filePath, vec);
     } catch {
       // never crash the writer on embedding failure
     }
@@ -466,7 +527,11 @@ export class VaultWriter {
 
   noteCount(): number {
     let n = 0;
-    for (const sub of [...Object.values(CATEGORY_DIR), ARTICLES_SUBDIR]) {
+    for (const sub of [
+      ...Object.values(CATEGORY_DIR),
+      ARTICLES_SUBDIR,
+      PDFS_SUBDIR,
+    ]) {
       const dir = join(this.root, sub);
       if (!existsSync(dir)) continue;
       try {

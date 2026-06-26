@@ -124,6 +124,7 @@ program
     "Skip scan/filter/LLM; re-render stored notes from SQLite",
   )
   .option("--articles-only", "Distill only web articles, skip sessions")
+  .option("--pdfs-only", "Distill only PDFs, skip sessions and articles")
   .option("--yes", "Skip the cost confirmation prompt")
   .option(
     "--force-model <model>",
@@ -140,6 +141,7 @@ program
         daemon?: boolean;
         rewriteOnly?: boolean;
         articlesOnly?: boolean;
+        pdfsOnly?: boolean;
         yes?: boolean;
         forceModel?: string;
         dryRun?: boolean;
@@ -148,6 +150,7 @@ program
         const daemon = opts.daemon === true;
         const rewriteOnly = opts.rewriteOnly === true;
         const articlesOnly = opts.articlesOnly === true;
+        const pdfsOnly = opts.pdfsOnly === true;
         const dryRun = opts.dryRun === true;
         if (opts.forceModel && !["haiku", "sonnet"].includes(opts.forceModel)) {
           console.error(
@@ -159,23 +162,33 @@ program
           return;
         }
         const skipPrompt =
-          opts.yes === true || daemon || rewriteOnly || articlesOnly || dryRun;
+          opts.yes === true ||
+          daemon ||
+          rewriteOnly ||
+          articlesOnly ||
+          pdfsOnly ||
+          dryRun;
         const summary = await runPipeline(cfg, {
           full: opts.full,
           quiet: daemon,
           logToFile: daemon,
           rewriteOnly,
           articlesOnly,
+          pdfsOnly,
           forceDistillModel: opts.forceModel,
           dryRun,
           onConfirm: skipPrompt
             ? undefined
             : async (newCount) => confirmCostIfNeeded(cfg, newCount),
         });
-        // Surface per-session distill failures via a non-zero exit so external
+        // Surface per-item distill failures via a non-zero exit so external
         // callers (and the user) don't get false "success" — the silent-success
         // bug that hid Kie's 200-with-error responses pre-0.7.2.
-        if (summary.errored > 0 || summary.articlesErrored > 0) {
+        if (
+          summary.errored > 0 ||
+          summary.articlesErrored > 0 ||
+          summary.pdfsErrored > 0
+        ) {
           process.exitCode = 1;
         }
       },
@@ -870,7 +883,17 @@ program
           ? db.listArticles().map((a) => ({ path: a.path, content: a.content }))
           : db.listArticleEmbeddingTargets();
 
-      const total = target.length + topicTargets.length + articleTargets.length;
+      // PDFs live in their own table too — same back-fill rationale as articles.
+      const pdfTargets: Array<{ path: string; content: string | null }> =
+        opts.force
+          ? db.listPdfs().map((p) => ({ path: p.path, content: p.content }))
+          : db.listPdfEmbeddingTargets();
+
+      const total =
+        target.length +
+        topicTargets.length +
+        articleTargets.length +
+        pdfTargets.length;
       if (total === 0) {
         ui.row(ui.success(ui.CHECK), ui.text("all notes already embedded"));
         return;
@@ -921,6 +944,20 @@ program
           continue;
         }
         db.storeArticleEmbedding(a.path, vec);
+        embedded += 1;
+        sp.text = ui.dim(`embedding notes (${embedded}/${total})`);
+      }
+      for (const p of pdfTargets) {
+        if (!p.content || p.content.trim().length === 0) {
+          skipped += 1;
+          continue;
+        }
+        const vec = await embeddingForNote(p.content);
+        if (!vec) {
+          errors += 1;
+          continue;
+        }
+        db.storePdfEmbedding(p.path, vec);
         embedded += 1;
         sp.text = ui.dim(`embedding notes (${embedded}/${total})`);
       }
@@ -1536,6 +1573,41 @@ async function cmdInit(): Promise<void> {
     articlesDir = undefined;
   }
 
+  // ── PDFs / papers (optional third input source) ──────────────────────────
+  let pdfsDir: string | undefined = existing?.pdfsDir;
+  const wantsPdfs = await confirm({
+    message: "Do you keep PDFs / papers in a folder to ingest?",
+    default: existing?.pdfsDir !== undefined,
+  });
+  if (wantsPdfs) {
+    for (;;) {
+      pdfsDir = await input({
+        message: "PDFs directory",
+        default: existing?.pdfsDir ?? join(homedir(), "Documents", "papers"),
+      });
+      const expanded = expandHome(pdfsDir);
+      if (existsSync(expanded)) break;
+      const create = await confirm({
+        message: `Path does not exist (${expanded}). Create it?`,
+        default: true,
+      });
+      if (create) {
+        try {
+          mkdirSync(expanded, { recursive: true });
+          break;
+        } catch (err) {
+          console.error(
+            chalk.red(`failed to create: ${(err as Error).message}`),
+          );
+        }
+      } else {
+        break;
+      }
+    }
+  } else {
+    pdfsDir = undefined;
+  }
+
   const cadenceHours = Number(
     await input({
       message: "Cadence (hours)",
@@ -1654,6 +1726,8 @@ async function cmdInit(): Promise<void> {
     filterThreshold,
     articlesDir,
     distillArticles: existing?.distillArticles,
+    pdfsDir,
+    distillPdfs: existing?.distillPdfs,
     filterToolCalls: existing?.filterToolCalls,
     retrievalDiversity: existing?.retrievalDiversity,
     models: {
