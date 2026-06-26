@@ -321,6 +321,7 @@ export async function runPipeline(
           classifyIn,
           CLASSIFY_OUTPUT_TOKENS,
           cfg.pricing,
+          cfg.kieTopUpTier,
         ) +
         computeCost(
           cfg.provider,
@@ -328,6 +329,7 @@ export async function runPipeline(
           distillIn,
           DISTILL_OUTPUT_TOKENS,
           cfg.pricing,
+          cfg.kieTopUpTier,
         );
       totalCost += cost;
       estimated += 1;

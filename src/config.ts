@@ -22,6 +22,11 @@ export const ConfigSchema = z
     provider: z.enum(["anthropic", "kie"]).default("anthropic"),
     anthropicApiKey: z.string().optional(),
     kieApiKey: z.string().optional(),
+    // Kie top-up tier. High-tier top-ups grant +10% bonus credits, so effective
+    // pricing is ~10% below posted — applied as a 0.9× multiplier at computeCost
+    // (the posted rates in pricing.ts stay canonical for standard-tier users).
+    // Backward-compatible: unset → "standard" → no change.
+    kieTopUpTier: z.enum(["standard", "high"]).default("standard"),
     filterThreshold: z.number().min(0).max(1).default(0.4),
     // Path to the raw/ directory of web articles (e.g. Obsidian Web Clipper
     // output). Optional — when unset, article ingestion is skipped entirely

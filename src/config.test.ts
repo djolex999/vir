@@ -28,10 +28,12 @@ function sampleConfig(): Config {
   return {
     vaultPath: join(tmpHome, "vault"),
     outputDir: "vir",
+    topicsDir: "topics",
     claudeProjectsDir: join(tmpHome, ".claude", "projects"),
     cadenceHours: 3,
     provider: "anthropic",
     anthropicApiKey: "sk-ant-test",
+    kieTopUpTier: "standard",
     filterThreshold: 0.4,
     distillArticles: true,
     filterToolCalls: "moderate",

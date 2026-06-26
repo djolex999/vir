@@ -1,5 +1,13 @@
 export type Provider = "anthropic" | "kie";
 
+// Kie high-tier top-ups grant +10% bonus credits, so effective pricing is ~10%
+// below the posted rates — a per-user adjustment, NOT a change to the canonical
+// posted table. 'standard' leaves rates untouched.
+export type TopUpTier = "standard" | "high";
+
+// Effective discount for the high tier: +10% bonus credits ⇒ pay ~0.9× posted.
+const KIE_HIGH_TIER_MULTIPLIER = 0.9;
+
 export interface ModelPricing {
   inputPer1M: number;
   outputPer1M: number;
@@ -45,7 +53,8 @@ function findOverrideKey(
 export function resolvePricing(
   provider: Provider,
   model: string,
-  overrides?: PricingOverrides
+  overrides?: PricingOverrides,
+  tier: TopUpTier = "standard"
 ): ModelPricing | null {
   const table = DEFAULT_PRICING[provider];
   const baseKey = findTableKey(table, model);
@@ -53,6 +62,14 @@ export function resolvePricing(
 
   // Non-null assertion is safe: baseKey came from Object.keys(table)
   const base: ModelPricing = { ...table[baseKey]! };
+
+  // Apply the high-tier discount to the POSTED base before any override patch,
+  // so an explicit config.pricing override (most-specific) overwrites — and thus
+  // beats — the tier multiplier. DEFAULT_PRICING itself stays canonical.
+  if (provider === "kie" && tier === "high") {
+    base.inputPer1M *= KIE_HIGH_TIER_MULTIPLIER;
+    base.outputPer1M *= KIE_HIGH_TIER_MULTIPLIER;
+  }
 
   const providerOverrides = overrides?.[provider];
   if (providerOverrides !== undefined) {
@@ -72,9 +89,10 @@ export function computeCost(
   model: string,
   inputTokens: number,
   outputTokens: number,
-  overrides?: PricingOverrides
+  overrides?: PricingOverrides,
+  tier: TopUpTier = "standard"
 ): number {
-  const pricing = resolvePricing(provider, model, overrides);
+  const pricing = resolvePricing(provider, model, overrides, tier);
   if (pricing === null) return 0;
   return (inputTokens / 1e6) * pricing.inputPer1M + (outputTokens / 1e6) * pricing.outputPer1M;
 }

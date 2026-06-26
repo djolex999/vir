@@ -191,6 +191,7 @@ describe("compose orchestration (end-to-end, LLM mocked)", () => {
       cadenceHours: 3,
       provider: "anthropic",
       anthropicApiKey: "sk-ant-test",
+      kieTopUpTier: "standard",
       filterThreshold: 0.4,
       distillArticles: true,
       filterToolCalls: "moderate",

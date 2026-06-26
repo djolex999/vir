@@ -91,6 +91,7 @@ export function summarizeReconcileTargets(
             classifyIn,
             CLASSIFY_OUTPUT_TOKENS,
             cfg.pricing,
+            cfg.kieTopUpTier,
           ) +
           computeCost(
             cfg.provider,
@@ -98,6 +99,7 @@ export function summarizeReconcileTargets(
             distillIn,
             DISTILL_OUTPUT_TOKENS,
             cfg.pricing,
+            cfg.kieTopUpTier,
           );
       } catch {
         // Bad jsonl now — we'll still attempt retry, but skip the estimate.

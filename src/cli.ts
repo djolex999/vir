@@ -943,6 +943,7 @@ program
           inputTokens,
           outputTokens,
           cfg.pricing,
+          cfg.kieTopUpTier,
         );
 
         ui.summary({

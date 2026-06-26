@@ -294,6 +294,7 @@ function recordCost(
         inputTokens,
         outputTokens,
         config.pricing,
+        config.kieTopUpTier,
       ),
     });
   } catch {

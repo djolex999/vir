@@ -30,6 +30,38 @@ describe("computeCost", () => {
   });
 });
 
+describe("kieTopUpTier multiplier", () => {
+  it("standard tier leaves the posted Kie rate unchanged", () => {
+    expect(
+      computeCost("kie", "claude-sonnet-4-6", 1_000_000, 1_000_000, undefined, "standard"),
+    ).toBeCloseTo(5.04);
+  });
+
+  it("high tier multiplies both input and output Kie rates by 0.9", () => {
+    // posted 0.84 + 4.2 = 5.04 → ×0.9 = 4.536
+    expect(
+      computeCost("kie", "claude-sonnet-4-6", 1_000_000, 1_000_000, undefined, "high"),
+    ).toBeCloseTo(4.536);
+    const p = resolvePricing("kie", "claude-sonnet-4-6", undefined, "high");
+    expect(p!.inputPer1M).toBeCloseTo(0.756); // 0.84 × 0.9
+    expect(p!.outputPer1M).toBeCloseTo(3.78); // 4.2 × 0.9
+  });
+
+  it("does not touch anthropic rates even on high tier", () => {
+    expect(
+      computeCost("anthropic", "claude-sonnet-4-6", 1_000_000, 1_000_000, undefined, "high"),
+    ).toBe(18);
+  });
+
+  it("an explicit config.pricing override beats the tier multiplier (override is most-specific)", () => {
+    const overrides = { kie: { "claude-sonnet-4-6": { inputPer1M: 1.0, outputPer1M: 5.0 } } };
+    // 1.0 + 5.0 = 6.0, NOT (1.0 + 5.0) × 0.9 — the override wins, undiscounted.
+    expect(
+      computeCost("kie", "claude-sonnet-4-6", 1_000_000, 1_000_000, overrides, "high"),
+    ).toBeCloseTo(6.0);
+  });
+});
+
 describe("resolvePricing", () => {
   it("unknown model → null", () => {
     expect(resolvePricing("anthropic", "gpt-4")).toBeNull();
