@@ -35,6 +35,7 @@ import {
   composeRelPath,
   type ComposedTopic,
 } from "./composer.js";
+import { kebab, makeSlug } from "./slug.js";
 
 const CATEGORY_DIR: Record<Category, string> = {
   pattern: "patterns",
@@ -89,9 +90,14 @@ export class VaultWriter {
         ? renderThemesLines(classification.themes)
         : this.preservedThemesBlock(fullPath);
 
+    // Obsidian resolves [[bare-kebab-topic]] (what wikilinkRelated emits in
+    // OTHER notes' Related sections) to this note only via an alias — the
+    // filename carries a -<8hex> suffix the link text can't know.
+    const alias = kebab(classification.topic);
     const frontmatter = [
       "---",
       `topic: "${classification.topic.replace(/"/g, '\\"')}"`,
+      ...(alias.length > 0 ? ["aliases:", `  - "${alias}"`] : []),
       `category: ${classification.category}`,
       `project: "${classification.project.replace(/"/g, '\\"')}"`,
       `session_id: ${session.sessionId}`,
@@ -544,18 +550,9 @@ export class VaultWriter {
   }
 }
 
-export function makeSlug(topic: string, sessionId: string): string {
-  const base = kebab(topic).slice(0, 50);
-  const suffix = sessionId.slice(0, 8);
-  return base.length > 0 ? `${base}-${suffix}` : `note-${suffix}`;
-}
-
-export function kebab(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
+// Definitions live in slug.ts (dependency-free, so db.ts/merger/linter can
+// share them without import cycles); re-exported here for existing importers.
+export { kebab, makeSlug } from "./slug.js";
 
 // Render a non-empty themes list as YAML frontmatter lines: a `themes:` key
 // then one quoted `- ` item per theme (quoted + escaped like topic/project, so

@@ -69,6 +69,7 @@ import { synthesize } from "./search/synthesizer.js";
 import { runMcpServer } from "./mcp/server.js";
 import { runReview } from "./cli/review.js";
 import { runAction } from "./cli/runAction.js";
+import { buildInitConfig } from "./cli/initConfig.js";
 import { runReconcile } from "./cli/reconcile.js";
 import {
   installToClaudeCode,
@@ -1715,36 +1716,22 @@ async function cmdInit(): Promise<void> {
     }),
   );
 
-  const parsed = ConfigSchema.safeParse({
-    vaultPath,
-    outputDir,
-    claudeProjectsDir,
-    cadenceHours,
-    provider,
-    anthropicApiKey,
-    kieApiKey,
-    filterThreshold,
-    articlesDir,
-    distillArticles: existing?.distillArticles,
-    pdfsDir,
-    distillPdfs: existing?.distillPdfs,
-    filterToolCalls: existing?.filterToolCalls,
-    retrievalDiversity: existing?.retrievalDiversity,
-    models: {
-      classify: classifyModel,
-      distill: distillModel,
-      // New installs get hybrid routing out of the box: route routine sessions
-      // to Haiku, keep the chosen distill model for decision/large ones.
-      distillFast:
-        existing?.models?.distillFast ??
-        (provider === "anthropic"
-          ? "claude-haiku-4-5-20251001"
-          : "claude-haiku-4-5"),
-      ...(existing?.models?.distillThreshold != null
-        ? { distillThreshold: existing.models.distillThreshold }
-        : {}),
-    },
-  });
+  const parsed = ConfigSchema.safeParse(
+    buildInitConfig(existing, {
+      vaultPath,
+      outputDir,
+      claudeProjectsDir,
+      cadenceHours,
+      provider,
+      anthropicApiKey,
+      kieApiKey,
+      filterThreshold,
+      articlesDir,
+      pdfsDir,
+      classifyModel,
+      distillModel,
+    }),
+  );
 
   if (!parsed.success) {
     console.error(chalk.red("invalid config:"));

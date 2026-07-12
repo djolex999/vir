@@ -4,13 +4,24 @@ import { basename } from "node:path";
 const HOME = homedir();
 
 const PATTERNS: Array<{ re: RegExp; replace: string | ((m: string) => string) }> = [
-  // Anthropic API keys
-  { re: /sk-ant-[A-Za-z0-9_-]{20,}/g, replace: "[REDACTED_ANTHROPIC_KEY]" },
-  // OpenAI API keys
-  { re: /sk-(?:proj-)?[A-Za-z0-9_-]{20,}/g, replace: "[REDACTED_OPENAI_KEY]" },
-  // Generic bearer tokens
+  // Anthropic API keys. The lookbehind blocks mid-word matches inside
+  // kebab-case identifiers ("risk-ant-…" must not redact); a real key is
+  // preceded by whitespace/quote/=/start, never by [A-Za-z0-9-].
   {
-    re: /\bBearer\s+[A-Za-z0-9_\-.=]+/gi,
+    re: /(?<![A-Za-z0-9-])sk-ant-[A-Za-z0-9_-]{20,}/g,
+    replace: "[REDACTED_ANTHROPIC_KEY]",
+  },
+  // OpenAI API keys — same boundary ("risk-management-strategy-2026-plan"
+  // must survive).
+  {
+    re: /(?<![A-Za-z0-9-])sk-(?:proj-)?[A-Za-z0-9_-]{20,}/g,
+    replace: "[REDACTED_OPENAI_KEY]",
+  },
+  // Generic bearer tokens. Case-sensitive (prose "the bearer of bad news"
+  // must survive; real headers use capital B) and same-line only (\s+ would
+  // eat the first word of the line after a trailing "Bearer").
+  {
+    re: /\bBearer[ \t]+[A-Za-z0-9_\-.=]+/g,
     replace: "Bearer [REDACTED_TOKEN]",
   },
   // GitHub PATs

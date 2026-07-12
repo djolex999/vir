@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { LEGACY_STATE_PATH, STATE_PATH } from "../config.js";
 import type { Category } from "../pipeline/types.js";
+import { makeSlug } from "../pipeline/slug.js";
 
 export interface SessionRow {
   path: string;
@@ -602,10 +603,8 @@ export class StateDb {
         continue;
       }
       const sessionId = deriveSessionId(r.path);
-      const slug = kebabLite(r.topic);
-      const suffix = sessionId.slice(0, 8);
       const dir = `${r.category}s`;
-      const filePath = `${vaultRoot}/${dir}/${slug}-${suffix}.md`;
+      const filePath = `${vaultRoot}/${dir}/${makeSlug(r.topic, sessionId)}.md`;
       out.push({
         sessionId,
         topic: r.topic,
@@ -1201,11 +1200,7 @@ function deriveSessionId(path: string): string {
 // mapping cost.log uses, so the collateral-count join lines up.
 export { deriveSessionId };
 
-// Local copy of `kebab()` so db.ts doesn't pull in pipeline/writer.ts (which
-// would create an import cycle once writer.ts depends on db state).
-function kebabLite(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
+// Slug logic lives in pipeline/slug.ts (dependency-free, cycle-safe) — the
+// old local kebabLite copy drifted from the writer's makeSlug (no 50-char
+// truncation, no note- fallback) and made long-titled notes invisible to
+// embedding search.

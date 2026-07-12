@@ -15,7 +15,7 @@ import {
   normalizeModelName,
   withRateLimitRetry,
 } from "../pipeline/distiller.js";
-import { kebab } from "../pipeline/writer.js";
+import { makeSlug } from "../pipeline/slug.js";
 
 const CATEGORY_DIRS: Record<string, string> = {
   pattern: "patterns",
@@ -116,9 +116,7 @@ ${b.content}`;
 
 function resolveNotePath(root: string, r: DistilledRow): string {
   const dir = CATEGORY_DIRS[r.category] ?? `${r.category}s`;
-  const slug = kebab(r.topic);
-  const suffix = r.sessionId.slice(0, 8);
-  return join(root, dir, `${slug}-${suffix}.md`);
+  return join(root, dir, `${makeSlug(r.topic, r.sessionId)}.md`);
 }
 
 function archiveFile(archivedDir: string, sourcePath: string): string {

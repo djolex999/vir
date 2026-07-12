@@ -8,7 +8,7 @@ import {
   normalizeModelName,
   withRateLimitRetry,
 } from "../pipeline/distiller.js";
-import { kebab } from "../pipeline/writer.js";
+import { kebab, makeSlug } from "../pipeline/slug.js";
 
 const SKIP_BASENAMES = new Set(["index.md", "log.md"]);
 const SKIP_DIRS = new Set(["projects"]);
@@ -47,9 +47,27 @@ interface NoteFile {
   raw: string;
 }
 
+// A note's frontmatter topic, kebab-cased, is what wikilinkRelated emits when
+// another note's Related bullet names it — the link never carries the -<8hex>
+// filename suffix, so resolution must go through this alias, not just ids.
+function topicAlias(raw: string): string | null {
+  const m = raw.match(/^topic:\s*"(.*)"\s*$/m);
+  if (!m || m[1] === undefined) return null;
+  const alias = kebab(m[1].replace(/\\"/g, '"'));
+  return alias.length > 0 ? alias : null;
+}
+
 export function orphanCheck(cfg: Config): OrphanResult {
   const notes = loadVaultNotes(cfg);
   const idSet = new Set(notes.map((n) => n.id));
+  const aliasToIds = new Map<string, string[]>();
+  for (const n of notes) {
+    const alias = topicAlias(n.raw);
+    if (alias === null) continue;
+    const ids = aliasToIds.get(alias) ?? [];
+    ids.push(n.id);
+    aliasToIds.set(alias, ids);
+  }
 
   const outgoing = new Map<string, Set<string>>();
   const incoming = new Map<string, Set<string>>();
@@ -67,10 +85,12 @@ export function orphanCheck(cfg: Config): OrphanResult {
         : target;
       // Only count links that resolve to actual note files; Project/Category
       // virtual nodes (e.g. [[growthq]], [[pattern]]) don't count.
-      if (idSet.has(tail) && tail !== n.id) {
-        targets.add(tail);
-        if (!incoming.has(tail)) incoming.set(tail, new Set());
-        incoming.get(tail)!.add(n.id);
+      const resolved = idSet.has(tail) ? [tail] : (aliasToIds.get(tail) ?? []);
+      for (const target of resolved) {
+        if (target === n.id) continue;
+        targets.add(target);
+        if (!incoming.has(target)) incoming.set(target, new Set());
+        incoming.get(target)!.add(n.id);
       }
     }
     outgoing.set(n.id, targets);
@@ -285,7 +305,5 @@ function walkVault(dir: string, acc: string[]): void {
 
 function noteRef(r: DistilledRow): string {
   const dir = `${r.category}s`;
-  const slug = kebab(r.topic);
-  const suffix = r.sessionId.slice(0, 8);
-  return `${dir}/${slug}-${suffix}`;
+  return `${dir}/${makeSlug(r.topic, r.sessionId)}`;
 }
