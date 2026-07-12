@@ -10,6 +10,7 @@ import {
 import { join, relative } from "node:path";
 import type { Config } from "../config.js";
 import {
+  cosineSimilarity,
   embeddingForNote,
   isOllamaAvailableCached,
 } from "../search/embedder.js";
@@ -118,11 +119,30 @@ export class VaultWriter {
       `Project: [[${projectSlug}]]\n` +
       `Category: [[${categorySlug}]]\n\n`;
 
-    const body = wikilinkRelated(markdown);
+    // The LLM's Related bullets name topics it can't see (1/2261 resolved on a
+    // real vault) — they are discarded and rebuilt from embedding neighbors.
+    // Embed BEFORE composing Related: the vector must not depend on the links
+    // it selects, and the embedded text keeps the title (frontmatter) so
+    // retrieval ranking still weights it.
+    const strippedBody = stripRelatedSection(markdown);
+    const vec = await this.computeNoteEmbedding(
+      frontmatter + wikilinkHeader + strippedBody,
+    );
+    const related = vec ? this.neighborLinks(vec, session.sessionId) : [];
+    const body = strippedBody + renderRelatedSection(related);
 
     const finalContent = frontmatter + wikilinkHeader + body + "\n";
     writeFileSync(fullPath, finalContent);
-    await this.maybeEmbed(session, note, finalContent);
+    if (vec && this.db) {
+      try {
+        this.db.storeEmbedding(session.sessionId, vec);
+        console.log(
+          chalk.dim(`  embedded ${note.classification.topic} (${vec.length}d)`),
+        );
+      } catch {
+        // never crash the writer on embedding failure
+      }
+    }
     // Rewrite mode re-renders existing notes from stored content; the index is
     // rebuilt wholesale via regenerateIndex() afterward and log.md is left
     // untouched, so appending per-note here would duplicate every row.
@@ -451,30 +471,48 @@ export class VaultWriter {
   // Best-effort: embed the freshly-written note via Ollama and store the
   // vector. Any failure (Ollama down, timeout, model missing) is swallowed —
   // an embedding miss must never fail a write.
-  private async maybeEmbed(
-    session: ParsedSession,
-    note: DistilledNote,
-    fileContent: string,
-  ): Promise<void> {
-    if (!this.db) return;
+  // Best-effort note embedding, computed up front so write() can pick
+  // Related neighbors from it before composing the body. Storage happens in
+  // write() after the file lands.
+  private async computeNoteEmbedding(text: string): Promise<number[] | null> {
+    if (!this.db) return null;
     try {
       const available = await isOllamaAvailableCached();
       if (!available) {
         // Traceable, not loud — run.ts logs the aggregate once after the loop.
         // The self-heal sweep back-fills this note next run with Ollama up.
         this.embedSkipped += 1;
-        return;
+        return null;
       }
-      const vec = await embeddingForNote(fileContent);
-      if (!vec) return;
-      this.db.storeEmbedding(session.sessionId, vec);
-      console.log(
-        chalk.dim(
-          `  embedded ${note.classification.topic} (${vec.length}d)`,
-        ),
-      );
+      return await embeddingForNote(text);
     } catch {
       // never crash the writer on embedding failure
+      return null;
+    }
+  }
+
+  // Top-K nearest EXISTING session notes by cosine similarity — the Related
+  // section links only to files that are actually on disk, never to
+  // LLM-guessed topics.
+  private neighborLinks(
+    vec: number[],
+    selfSessionId: string,
+  ): RelatedLink[] {
+    if (!this.db) return [];
+    try {
+      return this.db
+        .getEmbeddings(this.root)
+        .filter((r) => r.sessionId !== selfSessionId)
+        .map((r) => ({ r, sim: cosineSimilarity(vec, r.embedding) }))
+        .filter((x) => x.sim >= RELATED_MIN_SIM && existsSync(x.r.filePath))
+        .sort((a, b) => b.sim - a.sim)
+        .slice(0, RELATED_K)
+        .map((x) => ({
+          slug: makeSlug(x.r.topic, x.r.sessionId),
+          topic: x.r.topic,
+        }));
+    } catch {
+      return [];
     }
   }
 
@@ -565,9 +603,49 @@ export function renderThemesLines(themes: string[]): string[] {
   ];
 }
 
+const RELATED_K = 5;
+// nomic-embed-text cosine floor: unrelated dev notes sit ≈0.4–0.55, genuine
+// neighbors ≥0.6. Below the floor a link is noise, not knowledge.
+const RELATED_MIN_SIM = 0.6;
+
+interface RelatedLink {
+  slug: string;
+  topic: string;
+}
+
+// Drops the LLM's `## Related` section (heading + its bullets, up to the
+// next heading or EOF). Session notes rebuild Related from embedding
+// neighbors; legacy stored content still carries the old section, so the
+// rewrite path must strip it too.
+export function stripRelatedSection(markdown: string): string {
+  const lines = markdown.split("\n");
+  const out: string[] = [];
+  let inRelated = false;
+  for (const line of lines) {
+    if (/^##\s+related\b/i.test(line)) {
+      inRelated = true;
+      continue;
+    }
+    if (inRelated && /^#{1,6}\s+/.test(line)) inRelated = false;
+    if (!inRelated) out.push(line);
+  }
+  return out.join("\n").replace(/\n+$/, "");
+}
+
+// Renders neighbor links as the note's Related section — id-suffixed targets
+// (always resolvable) with the human topic as the display alias.
+export function renderRelatedSection(links: RelatedLink[]): string {
+  if (links.length === 0) return "";
+  return (
+    "\n\n## Related\n\n" +
+    links.map((l) => `- [[${l.slug}|${l.topic}]]`).join("\n")
+  );
+}
+
 // Rewrites the bullet list under a `## Related` heading so each item
 // becomes an Obsidian wikilink to a kebab-cased slug of the item's text.
-// Stops at the next heading or end of document.
+// Still used by the article/PDF/topic writers; session notes now build
+// Related from embedding neighbors instead.
 export function wikilinkRelated(markdown: string): string {
   const lines = markdown.split("\n");
   const out: string[] = [];

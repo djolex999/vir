@@ -1,10 +1,26 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Config } from "../config.js";
 import type { DistilledNote, ParsedSession } from "../pipeline/types.js";
+
+vi.mock("../search/embedder.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../search/embedder.js")>();
+  return {
+    ...actual,
+    isOllamaAvailableCached: vi.fn(async () => true),
+    embeddingForNote: vi.fn(async (text: string) => {
+      // Both notes are retry-themed → near-identical vectors → neighbors.
+      if (text.includes("Retry Backoff Strategy")) return [1, 0.1];
+      if (text.includes("Kie Timeout Handling")) return [1, 0.2];
+      return [0, 1];
+    }),
+  };
+});
+
 import { VaultWriter } from "../pipeline/writer.js";
+import { StateDb } from "../state/db.js";
 import { orphanCheck } from "./linter.js";
 
 function makeCfg(vaultPath: string): Config {
@@ -73,19 +89,28 @@ describe("orphanCheck wikilink resolution", () => {
 
   it("resolves a writer-emitted related-link to the existing target note", async () => {
     const cfg = makeCfg(vault);
-    const writer = new VaultWriter(cfg, null);
+    const db = new StateDb(join(vault, "vir.db"));
+    const writer = new VaultWriter(cfg, db);
 
+    db.record({
+      path: "/x/aaaa1111.jsonl", hash: "h1", skipped: false,
+      notePaths: [], content: "x", category: "pattern",
+      topic: "Retry Backoff Strategy", project: "demo", confidence: 0.9,
+    });
     await writer.write(
       makeSession("aaaa1111"),
       makeNote("Retry Backoff Strategy", "## Summary\n\ntarget note"),
     );
+    db.record({
+      path: "/x/bbbb2222.jsonl", hash: "h2", skipped: false,
+      notePaths: [], content: "x", category: "pattern",
+      topic: "Kie Timeout Handling", project: "demo", confidence: 0.9,
+    });
     await writer.write(
       makeSession("bbbb2222"),
-      makeNote(
-        "Kie Timeout Handling",
-        "## Summary\n\nsource note\n\n## Related\n- Retry Backoff Strategy",
-      ),
+      makeNote("Kie Timeout Handling", "## Summary\n\nsource note"),
     );
+    db.close();
 
     const { orphans } = orphanCheck(cfg);
 

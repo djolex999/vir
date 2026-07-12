@@ -413,7 +413,6 @@ Output a markdown page with these sections (no preamble, start with '## Summary'
 - ## Summary (2-3 sentences)
 - ## What Was Learned
 - ## Context (project: ${cls.project}, category: ${cls.category}, date: ${session.startedAt ?? "unknown"})
-- ## Related
 
 Be concise. Only include information a future developer would reuse.
 Omit implementation details that won't generalize.
