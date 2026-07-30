@@ -33,9 +33,14 @@ const DISTILL_OUTPUT_TOKENS = 4500;
 // Both shapes share one cause — pre-0.7.2 the Kie-200-with-body-error path
 // silently produced an empty distill string; errored runs landed as null.
 // Reconcile retries either.
+// Mirror of StateDb.listReconcileTargets — keep the two predicates identical.
 export function selectReconcileTargets(rows: SessionRow[]): SessionRow[] {
   return rows.filter(
-    (r) => r.skipped === 0 && (r.content === null || r.content === ""),
+    (r) =>
+      r.skipped === 0 &&
+      (r.content === null ||
+        r.content === "" ||
+        (r.error !== null && r.error !== "")),
   );
 }
 
@@ -221,6 +226,26 @@ export async function runReconcile(
       // are cached but we know their stored content is empty, so we want a
       // forced retry. Parse, score, distill, then update the row in place.
       try {
+        if (!existsSync(t.path)) {
+          if (t.content !== null && t.content !== "") {
+            // Source transcript is gone; the previous good distill is all
+            // that's left. Clear the stale error so the note resurfaces in
+            // listDistilled instead of staying hidden forever.
+            db.clearError(t.path);
+            recovered += 1;
+            ui.row(
+              ui.success(ui.CHECK),
+              ui.text("source gone — restored last good note"),
+            );
+            continue;
+          }
+          stillFailed += 1;
+          ui.row(
+            ui.errorColor(ui.CROSS),
+            ui.text("source transcript missing — nothing to recover"),
+          );
+          continue;
+        }
         const parsed = parseSession(t.path, t.hash);
         const score = scoreSession(parsed, cfg.filterThreshold);
         if (!score.passes) {

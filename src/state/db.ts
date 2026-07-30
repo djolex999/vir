@@ -288,20 +288,50 @@ export class StateDb {
   }
 
   // Rows the reconcile flow looks for: sessions that the pipeline thought it
-  // had distilled (`skipped = 0`) but that ended up with no content. Two
-  // shapes for the same symptom — pre-0.7.2 silent failures landed as
-  // `content = ''` (the Kie-200 bug yielded an empty distill text), and
-  // anything that errored landed as `content IS NULL`. The selector covers
-  // both. Pure SQL filter for performance + a pure-function counterpart
-  // (`selectReconcileTargets`) for unit tests against fixture rows.
+  // had distilled (`skipped = 0`) but that ended up with no content — the
+  // pre-0.7.2 silent shape (`content = ''`) and the errored shape
+  // (`content IS NULL`) — plus, since 0.12.1, error rows that still HOLD
+  // content: a failed re-distill whose COALESCE preserved the previous good
+  // note. Those were invisible to both run and the old selector. Pure SQL
+  // filter for performance + a pure-function counterpart
+  // (`selectReconcileTargets`) for unit tests against fixture rows — keep
+  // the two predicates identical.
   listReconcileTargets(): SessionRow[] {
     return this.db
       .prepare(
         `SELECT * FROM sessions
          WHERE skipped = 0
-           AND (content IS NULL OR content = '')`,
+           AND (content IS NULL OR content = ''
+                OR (error IS NOT NULL AND error != ''))`,
       )
       .all() as SessionRow[];
+  }
+
+  // A failure must record its error WITHOUT bumping the stored hash — the
+  // hash means "this exact transcript distilled successfully", so writing it
+  // on a failed attempt makes isProcessed() true and hides the session from
+  // every future `vir run`. First-ever failure: the row is inserted with the
+  // attempted hash (content null keeps it reconcile-eligible, and run won't
+  // hammer a transcript that has never succeeded). Re-distill failure: the
+  // previous hash + content survive untouched, so the changed transcript
+  // stays run-eligible and the old note stays recoverable.
+  recordError(path: string, hash: string, error: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO sessions (path, hash, processed_at, skipped, note_paths, error)
+         VALUES (?, ?, ?, 0, '[]', ?)
+         ON CONFLICT(path) DO UPDATE SET
+           processed_at = excluded.processed_at,
+           skipped = 0,
+           error = excluded.error`,
+      )
+      .run(path, hash, new Date().toISOString(), error);
+  }
+
+  // Rescue for orphaned rows whose source transcript is gone: drop the stale
+  // error so the surviving content is visible to listDistilled again.
+  clearError(path: string): void {
+    this.db.prepare(`UPDATE sessions SET error = NULL WHERE path = ?`).run(path);
   }
 
   // Distilled notes that still have no embedding — the exact complement of

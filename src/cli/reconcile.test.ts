@@ -59,3 +59,23 @@ describe("selectReconcileTargets", () => {
     ]);
   });
 });
+
+describe("selectReconcileTargets — error rows with surviving content (orphan shape)", () => {
+  it("includes a failed re-distill that still holds the previous content", () => {
+    // A re-distill failure records the error while COALESCE keeps the old
+    // content, making the row invisible to both `vir run` (hash recorded on
+    // the attempt) and the old selector (content non-empty). Reconcile is
+    // the rescue path, so it must claim these.
+    const rows = [
+      row({ path: "/d.jsonl", content: "old good note", error: "fetch failed" }),
+    ];
+    expect(selectReconcileTargets(rows).map((r) => r.path)).toEqual([
+      "/d.jsonl",
+    ]);
+  });
+
+  it("still excludes healthy content rows (error null)", () => {
+    const rows = [row({ path: "/e.jsonl", content: "real markdown", error: null })];
+    expect(selectReconcileTargets(rows)).toEqual([]);
+  });
+});

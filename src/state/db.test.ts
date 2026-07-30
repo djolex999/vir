@@ -81,3 +81,58 @@ describe("StateDb.record error lifecycle", () => {
     expect(db.listDistilled().find((r) => r.path === path)?.content).toContain("recovered");
   });
 });
+
+describe("StateDb.recordError — hash records on success, never on attempt", () => {
+  let dir: string;
+  let db: StateDb;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vir-db-"));
+    db = new StateDb(join(dir, "vir.db"));
+  });
+  afterEach(() => {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const success = (path: string, hash: string) =>
+    db.record({
+      path,
+      hash,
+      skipped: false,
+      notePaths: ["/vault/vir/patterns/x.md"],
+      content: "## Summary\ngood note",
+      category: "pattern",
+      topic: "T",
+      project: "demo",
+      confidence: 0.9,
+      startedAt: "2026-07-01T00:00:00.000Z",
+    });
+
+  it("a failed re-distill preserves the last successful hash — the session stays eligible for vir run", () => {
+    const path = "/proj/sess.jsonl";
+    success(path, "h1");
+    db.recordError(path, "h2", "fetch failed");
+    // The changed transcript (h2) must NOT read as processed, or run skips it forever.
+    expect(db.isProcessed(path, "h2")).toBe(false);
+    const r = db.getByPath(path);
+    expect(r?.content).toBe("## Summary\ngood note");
+    expect(r?.error).toBe("fetch failed");
+  });
+
+  it("a first-attempt failure inserts the row with the error (content null → reconcile-eligible)", () => {
+    db.recordError("/proj/new.jsonl", "h1", "boom");
+    const r = db.getByPath("/proj/new.jsonl");
+    expect(r?.error).toBe("boom");
+    expect(r?.content).toBeNull();
+  });
+
+  it("clearError resurfaces surviving content in listDistilled (source-gone rescue)", () => {
+    const path = "/proj/gone.jsonl";
+    success(path, "h1");
+    db.recordError(path, "h2", "fetch failed");
+    expect(db.listDistilled().find((r) => r.path === path)).toBeUndefined();
+    db.clearError(path);
+    expect(db.listDistilled().find((r) => r.path === path)?.content).toContain("good note");
+  });
+});

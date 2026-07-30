@@ -582,13 +582,9 @@ export async function runPipeline(
       if (interactive) ui.row(ui.errorColor(ui.CROSS), ui.text(`error: ${msg}`));
       fileLog(`error on ${found.path}: ${msg}`);
       try {
-        db.record({
-          path: found.path,
-          hash: found.hash,
-          skipped: false,
-          notePaths: [],
-          error: msg,
-        });
+        // recordError, not record: writing the hash on a failed attempt would
+        // mark the transcript processed and hide it from every future run.
+        db.recordError(found.path, found.hash, msg);
       } catch {
         // ignore record errors
       }
