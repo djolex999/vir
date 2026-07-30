@@ -18,6 +18,7 @@ export interface SessionRow {
   project: string | null;
   confidence: number | null;
   started_at: string | null;
+  attempts: number;
 }
 
 export interface EmbeddingRow {
@@ -174,7 +175,20 @@ const ADDED_COLUMNS: Array<{ name: string; ddl: string }> = [
     ddl: "ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
   },
   { name: "embedding", ddl: "ALTER TABLE sessions ADD COLUMN embedding TEXT" },
+  {
+    name: "attempts",
+    // Consecutive failed distill attempts. Existing rows default to 0 —
+    // historical failures don't count toward the bound; the counter starts
+    // with the first failure recorded after this migration.
+    ddl: "ALTER TABLE sessions ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0",
+  },
 ];
+
+// After this many consecutive failed distills, `vir run` stops retrying the
+// session — only `vir reconcile --force` may retry it. Bounds unattended
+// daemon spend on a transcript that fails persistently (each retry is a paid
+// classify call at minimum).
+export const MAX_DISTILL_ATTEMPTS = 3;
 
 export class StateDb {
   private db: Database.Database;
@@ -318,14 +332,24 @@ export class StateDb {
   recordError(path: string, hash: string, error: string): void {
     this.db
       .prepare(
-        `INSERT INTO sessions (path, hash, processed_at, skipped, note_paths, error)
-         VALUES (?, ?, ?, 0, '[]', ?)
+        `INSERT INTO sessions (path, hash, processed_at, skipped, note_paths, error, attempts)
+         VALUES (?, ?, ?, 0, '[]', ?, 1)
          ON CONFLICT(path) DO UPDATE SET
            processed_at = excluded.processed_at,
            skipped = 0,
-           error = excluded.error`,
+           error = excluded.error,
+           attempts = COALESCE(sessions.attempts, 0) + 1`,
       )
       .run(path, hash, new Date().toISOString(), error);
+  }
+
+  // True once the session has burned MAX_DISTILL_ATTEMPTS consecutive
+  // failures — `vir run` skips it; `vir reconcile --force` is the only retry.
+  retryExhausted(path: string): boolean {
+    const row = this.db
+      .prepare(`SELECT COALESCE(attempts, 0) AS attempts FROM sessions WHERE path = ?`)
+      .get(path) as { attempts: number } | undefined;
+    return row !== undefined && row.attempts >= MAX_DISTILL_ATTEMPTS;
   }
 
   // Rescue for orphaned rows whose source transcript is gone: drop the stale
@@ -407,7 +431,8 @@ export class StateDb {
            topic = COALESCE(excluded.topic, sessions.topic),
            project = COALESCE(excluded.project, sessions.project),
            confidence = COALESCE(excluded.confidence, sessions.confidence),
-           started_at = COALESCE(excluded.started_at, sessions.started_at)`,
+           started_at = COALESCE(excluded.started_at, sessions.started_at),
+           attempts = 0`,
       )
       .run(
         opts.path,

@@ -502,6 +502,16 @@ export async function runPipeline(
         continue;
       }
 
+      // Retry bound: MAX_DISTILL_ATTEMPTS consecutive failures park the
+      // session — even under --full — so the daemon can't burn money on a
+      // persistently failing transcript. `vir reconcile --force` is the only
+      // way back in (it resets the counter on success).
+      if (db.retryExhausted(found.path)) {
+        summary.alreadyProcessed += 1;
+        fileLog(`retry-exhausted, skipping: ${found.path}`);
+        continue;
+      }
+
       const parsed = parseSession(found.path, found.hash);
       const filter = scoreSession(parsed, cfg.filterThreshold);
 

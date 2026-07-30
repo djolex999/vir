@@ -11,12 +11,19 @@ import { parseSession } from "../pipeline/parser.js";
 import { scrub } from "../pipeline/scrubber.js";
 import { filterToolCalls } from "../pipeline/toolCallFilter.js";
 import { VaultWriter } from "../pipeline/writer.js";
-import { deriveSessionId, StateDb, type SessionRow } from "../state/db.js";
+import {
+  deriveSessionId,
+  MAX_DISTILL_ATTEMPTS,
+  StateDb,
+  type SessionRow,
+} from "../state/db.js";
 import * as ui from "../ui/display.js";
 
 export interface ReconcileOptions {
   dryRun?: boolean;
   yes?: boolean;
+  // Include retry-exhausted sessions (attempts >= MAX_DISTILL_ATTEMPTS).
+  force?: boolean;
 }
 
 // Cost-estimate constants must stay in sync with run.ts's dry-run estimator —
@@ -34,13 +41,19 @@ const DISTILL_OUTPUT_TOKENS = 4500;
 // silently produced an empty distill string; errored runs landed as null.
 // Reconcile retries either.
 // Mirror of StateDb.listReconcileTargets — keep the two predicates identical.
-export function selectReconcileTargets(rows: SessionRow[]): SessionRow[] {
+// Retry-exhausted rows (attempts >= MAX_DISTILL_ATTEMPTS) are excluded unless
+// force: `vir reconcile --force` is the ONLY path that retries them.
+export function selectReconcileTargets(
+  rows: SessionRow[],
+  force = false,
+): SessionRow[] {
   return rows.filter(
     (r) =>
       r.skipped === 0 &&
       (r.content === null ||
         r.content === "" ||
-        (r.error !== null && r.error !== "")),
+        (r.error !== null && r.error !== "")) &&
+      (force || (r.attempts ?? 0) < MAX_DISTILL_ATTEMPTS),
   );
 }
 
@@ -146,7 +159,10 @@ export async function runReconcile(
     ui.header(opts.dryRun ? "reconcile  --dry-run" : "reconcile");
     ui.blank();
 
-    const targets = db.listReconcileTargets();
+    const targets = selectReconcileTargets(
+      db.listReconcileTargets(),
+      opts.force === true,
+    );
     if (targets.length === 0) {
       ui.row(
         ui.success(ui.CHECK),

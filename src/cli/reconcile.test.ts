@@ -16,6 +16,7 @@ function row(overrides: Partial<SessionRow>): SessionRow {
     project: "proj",
     confidence: 0.8,
     started_at: null,
+    attempts: 0,
     ...overrides,
   };
 }
@@ -77,5 +78,19 @@ describe("selectReconcileTargets — error rows with surviving content (orphan s
   it("still excludes healthy content rows (error null)", () => {
     const rows = [row({ path: "/e.jsonl", content: "real markdown", error: null })];
     expect(selectReconcileTargets(rows)).toEqual([]);
+  });
+});
+
+describe("selectReconcileTargets — retry bound", () => {
+  it("excludes exhausted rows by default; --force includes them", () => {
+    const rows = [
+      row({ path: "/f.jsonl", content: null, attempts: 3 }),
+      row({ path: "/g.jsonl", content: null, attempts: 2 }),
+    ];
+    expect(selectReconcileTargets(rows).map((r) => r.path)).toEqual(["/g.jsonl"]);
+    expect(selectReconcileTargets(rows, true).map((r) => r.path)).toEqual([
+      "/f.jsonl",
+      "/g.jsonl",
+    ]);
   });
 });

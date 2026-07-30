@@ -136,3 +136,47 @@ describe("StateDb.recordError — hash records on success, never on attempt", ()
     expect(db.listDistilled().find((r) => r.path === path)?.content).toContain("good note");
   });
 });
+
+describe("StateDb attempts counter — retry bound", () => {
+  let dir: string;
+  let db: StateDb;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vir-db-"));
+    db = new StateDb(join(dir, "vir.db"));
+  });
+  afterEach(() => {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("recordError increments attempts; retryExhausted flips at MAX_DISTILL_ATTEMPTS", () => {
+    const path = "/proj/flaky.jsonl";
+    expect(db.retryExhausted(path)).toBe(false);
+    db.recordError(path, "h1", "boom 1");
+    db.recordError(path, "h1", "boom 2");
+    expect(db.retryExhausted(path)).toBe(false);
+    db.recordError(path, "h1", "boom 3");
+    expect(db.retryExhausted(path)).toBe(true);
+  });
+
+  it("a successful distill resets attempts to zero", () => {
+    const path = "/proj/flaky.jsonl";
+    db.recordError(path, "h1", "boom 1");
+    db.recordError(path, "h1", "boom 2");
+    db.recordError(path, "h1", "boom 3");
+    db.record({
+      path,
+      hash: "h2",
+      skipped: false,
+      notePaths: ["/vault/vir/patterns/x.md"],
+      content: "## Summary\nrecovered",
+      category: "pattern",
+      topic: "T",
+      project: "demo",
+      confidence: 0.9,
+      startedAt: "2026-07-01T00:00:00.000Z",
+    });
+    expect(db.retryExhausted(path)).toBe(false);
+  });
+});

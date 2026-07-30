@@ -1272,11 +1272,21 @@ program
     "Report recoverable count + estimated cost + false-cost collateral; exit before any LLM call",
   )
   .option("--yes", "Skip the cost confirmation prompt")
+  .option(
+    "--force",
+    "Also retry retry-exhausted sessions (3+ consecutive failed distills)",
+  )
   .action(
-    runAction(async (opts: { dryRun?: boolean; yes?: boolean }) => {
-      const cfg = loadConfig();
-      await runReconcile(cfg, { dryRun: opts.dryRun, yes: opts.yes });
-    }),
+    runAction(
+      async (opts: { dryRun?: boolean; yes?: boolean; force?: boolean }) => {
+        const cfg = loadConfig();
+        await runReconcile(cfg, {
+          dryRun: opts.dryRun,
+          yes: opts.yes,
+          force: opts.force,
+        });
+      },
+    ),
   );
 
 program
