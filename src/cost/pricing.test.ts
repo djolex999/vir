@@ -80,3 +80,23 @@ describe("resolvePricing", () => {
     expect(p!.inputPer1M).toBeCloseTo(0.28);
   });
 });
+
+describe("claude-sonnet-5 pricing (default provider/model as of 0.14.0)", () => {
+  it("anthropic sonnet-5 resolves at posted $3/$15 per MTok", () => {
+    const p = resolvePricing("anthropic", "claude-sonnet-5");
+    expect(p).not.toBeNull();
+    expect(p!.inputPer1M).toBe(3.0);
+    expect(p!.outputPer1M).toBe(15.0);
+  });
+
+  it("sonnet-5 never falls back to the sonnet-4-6 row (no prefix overlap)", () => {
+    // findTableKey prefix-matching does NOT relate the two ids — without an
+    // explicit row, cost would silently log $0 for every default-model call.
+    const p = resolvePricing("anthropic", "claude-sonnet-5");
+    expect(p).not.toBeNull();
+  });
+
+  it("computeCost prices a sonnet-5 distill call above zero", () => {
+    expect(computeCost("anthropic", "claude-sonnet-5", 100_000, 2_000)).toBeGreaterThan(0);
+  });
+});

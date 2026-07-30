@@ -2,22 +2,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Config } from "../config.js";
 import { runPipeline } from "./run.js";
 
-// After MAX_DISTILL_ATTEMPTS consecutive failures a session must stop
-// triggering paid calls from `vir run` — only `vir reconcile --force` may
-// retry it. The spy sits on Distiller.run (the paid-call boundary).
+// One cheap provider probe before the distill loop: if the provider is
+// unreachable, bail with a single clear error instead of entering the loop
+// and generating N individual failures (each burning retry backoffs and
+// attempt-counter increments).
 
 const spies = vi.hoisted(() => ({
   distill: vi.fn(async () => null),
-  exhausted: vi.fn(() => false),
-  recordError: vi.fn(),
+  probe: vi.fn(async () => {}),
 }));
 
 vi.mock("../state/db.js", () => ({
   StateDb: class {
     isProcessed = vi.fn(() => false);
-    retryExhausted = spies.exhausted;
+    retryExhausted = vi.fn(() => false);
     record = vi.fn();
-    recordError = spies.recordError;
+    recordError = vi.fn();
     listDistilled = vi.fn(() => []);
     listEmbeddingTargets = vi.fn(() => []);
     listTopicEmbeddingTargets = vi.fn(() => []);
@@ -36,13 +36,13 @@ vi.mock("./writer.js", () => ({
 }));
 
 vi.mock("./scanner.js", () => ({
-  scanSessions: () => [{ path: "/t/sess.jsonl", hash: "h-new" }],
+  scanSessions: () => [{ path: "/t/sess.jsonl", hash: "h1" }],
 }));
 
 vi.mock("./parser.js", () => ({
   parseSession: () => ({
     path: "/t/sess.jsonl",
-    hash: "h-new",
+    hash: "h1",
     sessionId: "sess",
     projectSlug: "demo",
     startedAt: null,
@@ -65,7 +65,7 @@ vi.mock("./distiller.js", async (importOriginal) => {
   const real = await importOriginal<typeof import("./distiller.js")>();
   return {
     ...real,
-    probeProvider: vi.fn(async () => {}),
+    probeProvider: spies.probe,
     Distiller: class {
       run = spies.distill;
     },
@@ -81,28 +81,30 @@ function cfg(): Config {
     vaultPath: "/tmp/vir-test-vault",
     outputDir: "Vir",
     claudeProjectsDir: "/tmp/vir-test-projects",
-    provider: "kie",
+    provider: "anthropic",
+    anthropicApiKey: "sk-ant-test",
     filterThreshold: 1,
-    models: { classify: "claude-haiku-4-5", distill: "claude-sonnet-4-6" },
+    models: { classify: "claude-haiku-4-5", distill: "claude-sonnet-5" },
   } as unknown as Config;
 }
 
-describe("runPipeline — retry bound on repeated distill failures", () => {
+describe("runPipeline — provider preflight probe", () => {
   beforeEach(() => {
     spies.distill.mockClear();
-    spies.exhausted.mockReset();
-    spies.recordError.mockClear();
+    spies.probe.mockReset();
   });
 
-  it("an exhausted session (attempts >= max) never reaches the paid call", async () => {
-    spies.exhausted.mockReturnValue(true);
-    await runPipeline(cfg(), { quiet: true });
+  it("provider unreachable → bails with one error, never enters the loop", async () => {
+    spies.probe.mockRejectedValue(new Error("fetch failed"));
+    await expect(runPipeline(cfg(), { quiet: true })).rejects.toThrow(
+      /provider|unreachable|preflight/i,
+    );
     expect(spies.distill).not.toHaveBeenCalled();
   });
 
-  it("a non-exhausted session still distills (gate is scoped)", async () => {
-    spies.exhausted.mockReturnValue(false);
+  it("provider reachable → probe runs once, loop proceeds", async () => {
     await runPipeline(cfg(), { quiet: true });
+    expect(spies.probe).toHaveBeenCalledTimes(1);
     expect(spies.distill).toHaveBeenCalledTimes(1);
   });
 });

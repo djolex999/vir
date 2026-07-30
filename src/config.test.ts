@@ -61,3 +61,20 @@ describe("config file permissions", () => {
     expect(statSync(file).mode & 0o777).toBe(0o600);
   });
 });
+
+describe("provider/model defaults (0.14.0: anthropic + claude-sonnet-5)", () => {
+  it("defaults to provider anthropic with distill claude-sonnet-5", async () => {
+    const { ConfigSchema } = await import("./config.js");
+    const parsed = ConfigSchema.safeParse({
+      vaultPath: "/tmp/v",
+      outputDir: "vir",
+      claudeProjectsDir: "/tmp/p",
+      provider: "anthropic",
+      anthropicApiKey: "sk-ant-test",
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.models.distill).toBe("claude-sonnet-5");
+    }
+  });
+});

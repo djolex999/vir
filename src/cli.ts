@@ -1671,11 +1671,11 @@ async function cmdInit(): Promise<void> {
     default: existing?.provider ?? "anthropic",
     choices: [
       {
-        name: "Anthropic  (direct, official pricing)",
+        name: "Anthropic  (direct + reliable, official pricing — recommended)",
         value: "anthropic" as const,
       },
       {
-        name: "Kie.ai     (same Claude models, ~72% cheaper)",
+        name: "Kie.ai     (~72% cheaper, third-party proxy — you trade reliability for cost)",
         value: "kie" as const,
       },
     ],
@@ -1725,9 +1725,10 @@ async function cmdInit(): Promise<void> {
     provider === "anthropic"
       ? [
           {
-            name: "claude-sonnet-4-6  (recommended)",
-            value: "claude-sonnet-4-6",
+            name: "claude-sonnet-5  (recommended)",
+            value: "claude-sonnet-5",
           },
+          { name: "claude-sonnet-4-6", value: "claude-sonnet-4-6" },
           {
             name: "claude-haiku-4-5-20251001  (faster, cheaper)",
             value: "claude-haiku-4-5-20251001",

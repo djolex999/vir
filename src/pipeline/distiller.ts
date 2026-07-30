@@ -332,6 +332,32 @@ export async function callLLM(
   return result.text;
 }
 
+// One cheap reachability probe before a distill loop starts: a tiny classify-
+// model call with a hard timeout. No opts.cost context, so nothing lands in
+// cost.log. A failure here means the provider is down NOW — bail with one
+// clear error instead of entering the loop and burning N per-session retry
+// chains (and attempt-counter increments) on the same outage.
+const PROBE_TIMEOUT_MS = 15_000;
+
+export async function probeProvider(
+  config: Config,
+  client: Anthropic | null,
+): Promise<void> {
+  const probe = callLLM(config, client, {
+    prompt: "ping",
+    model: normalizeModelName(config.models.classify, config.provider),
+    maxTokens: 5,
+  });
+  const timeout = new Promise<never>((_, reject) => {
+    const t = setTimeout(
+      () => reject(new Error(`no response within ${PROBE_TIMEOUT_MS / 1000}s`)),
+      PROBE_TIMEOUT_MS,
+    );
+    void probe.finally(() => clearTimeout(t));
+  });
+  await Promise.race([probe, timeout]);
+}
+
 export class Distiller {
   private client: Anthropic | null;
   private cfg: Config;

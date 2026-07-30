@@ -5,7 +5,9 @@ import { StateDb } from "../state/db.js";
 import * as ui from "../ui/display.js";
 import {
   Distiller,
+  maybeAnthropicClient,
   normalizeModelName,
+  probeProvider,
   resolveModelShorthand,
 } from "./distiller.js";
 import { computeCost } from "../cost/pricing.js";
@@ -369,6 +371,19 @@ export async function runPipeline(
     `preflight: found=${discovered.length} cached=${cached} new=${preflightNew} pendingEmbedding=${pendingEmbedding}`,
   );
 
+  // 0.14.0 changed the default provider to anthropic (claude-sonnet-5). A kie
+  // config keeps working exactly as configured — someone's config is not ours
+  // to change — but surface the default change once per interactive run so
+  // users who only ever accepted the old init default know the ground moved.
+  if (interactive && cfg.provider === "kie") {
+    ui.line(
+      ui.dim(
+        "  Note: the default provider is now anthropic (claude-sonnet-5). Your 'kie' setting is unchanged — run vir init to switch.",
+      ),
+    );
+    ui.blank();
+  }
+
   // Nudge session-only installs toward hybrid routing. interactive is already
   // false under --quiet/--daemon, so this never prints on the daemon path.
   if (interactive && !cfg.models.distillFast) {
@@ -492,6 +507,28 @@ export async function runPipeline(
       fileLog("aborted by user at cost prompt");
       db.close();
       return summary;
+    }
+  }
+
+  // One cheap probe before the loop: a provider-wide outage should be ONE
+  // clear failure, not N sessions each burning full retry chains and
+  // attempt-counter increments. Skipped when there is nothing to distill.
+  if (preflightNew > 0) {
+    try {
+      await probeProvider(cfg, maybeAnthropicClient(cfg));
+    } catch (err) {
+      const msg = (err as Error).message ?? String(err);
+      fileLog(`provider preflight failed: ${msg}`);
+      if (interactive) {
+        ui.row(
+          ui.errorColor(ui.CROSS),
+          ui.text(`provider ${cfg.provider} unreachable — ${msg}`),
+        );
+      }
+      db.close();
+      throw new Error(
+        `provider ${cfg.provider} unreachable (preflight probe failed): ${msg}`,
+      );
     }
   }
 

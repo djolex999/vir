@@ -82,7 +82,7 @@ export const ConfigSchema = z
         classify: z.string().default("claude-haiku-4-5-20251001"),
         // The "smart" model — used for decision-heavy / large sessions under
         // hybrid routing, and for every session when distillFast is unset.
-        distill: z.string().default("claude-sonnet-4-6"),
+        distill: z.string().default("claude-sonnet-5"),
         // The cheap model for routine sessions. Hybrid routing is OFF until
         // this is set, so existing installs keep using `distill` unchanged.
         distillFast: z.string().min(1).optional(),
@@ -92,7 +92,7 @@ export const ConfigSchema = z
       })
       .default({
         classify: "claude-haiku-4-5-20251001",
-        distill: "claude-sonnet-4-6",
+        distill: "claude-sonnet-5",
       }),
     // Per-provider, per-model price overrides ($/1M tokens). Optional and
     // partial — set only the rates you want to override; anything unset falls

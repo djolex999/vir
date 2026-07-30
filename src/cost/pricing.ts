@@ -24,6 +24,11 @@ export const DEFAULT_PRICING: Record<Provider, Record<string, ModelPricing>> = {
   anthropic: {
     "claude-haiku-4-5-20251001": { inputPer1M: 1.0,  outputPer1M: 5.0  },
     "claude-sonnet-4-6":         { inputPer1M: 3.0,  outputPer1M: 15.0 },
+    // Posted rate. Intro pricing ($2/$10 through 2026-08-31) is NOT encoded —
+    // costs shown are the stable ceiling; use config.pricing to opt into the
+    // intro rate if desired. No prefix overlap with the sonnet-4-6 row, so
+    // this entry is load-bearing: without it cost logs $0 silently.
+    "claude-sonnet-5":           { inputPer1M: 3.0,  outputPer1M: 15.0 },
   },
   kie: {
     "claude-haiku-4-5-20251001": { inputPer1M: 0.28, outputPer1M: 1.4  },
