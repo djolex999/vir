@@ -149,6 +149,18 @@ export const STATE_PATH = join(VIR_DIR, "vir.db");
 export const LEGACY_STATE_PATH = join(VIR_DIR, "state.db");
 export const DAEMON_LOG_PATH = join(VIR_DIR, "daemon.log");
 
+// THE redaction helper for secret config values (API keys, tokens). Every
+// place that renders a secret to a terminal, log, or error message must route
+// through this — never slice keys ad hoc at the call site. First 8 + last 5
+// for long secrets ("sk-ant-a…5rgAA": enough to recognize which key, useless
+// to reconstruct); anything shorter is fully masked because first8+last5
+// would leak most of it.
+export function maskSecret(secret: string): string {
+  if (secret.length === 0) return "";
+  if (secret.length < 20) return "•".repeat(secret.length);
+  return `${secret.slice(0, 8)}…${secret.slice(-5)}`;
+}
+
 export function expandHome(p: string): string {
   if (p.startsWith("~/")) return join(homedir(), p.slice(2));
   if (p === "~") return homedir();

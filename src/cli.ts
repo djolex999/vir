@@ -12,6 +12,7 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   CONFIG_PATH,
+  maskSecret,
   ConfigSchema,
   configExists,
   ensureVirDir,
@@ -1681,22 +1682,40 @@ async function cmdInit(): Promise<void> {
     ],
   })) as "anthropic" | "kie";
 
+  // Secret prompt discipline: mask while typing, echo only a masked
+  // confirmation (maskSecret), and NEVER render the existing key as the
+  // visible inquirer default — that prints the full secret to the terminal
+  // before a single keystroke. Empty input keeps the existing/env key.
+  const promptSecret = async (
+    message: string,
+    keep: string | undefined,
+    validate: (v: string) => true | string,
+  ): Promise<string> => {
+    const value = await input({
+      message: keep
+        ? `${message} (Enter keeps ${maskSecret(keep)})`
+        : message,
+      transformer: (v: string, { isFinal }: { isFinal: boolean }) =>
+        isFinal ? maskSecret(v || keep || "") : "•".repeat(v.length),
+      validate: (v: string) => (v === "" && keep ? true : validate(v)),
+    });
+    return value === "" && keep ? keep : value;
+  };
+
   let anthropicApiKey: string | undefined;
   let kieApiKey: string | undefined;
   if (provider === "anthropic") {
-    anthropicApiKey = await input({
-      message: "Anthropic API key",
-      default: existing?.anthropicApiKey ?? process.env.ANTHROPIC_API_KEY ?? "",
-      validate: (v: string) =>
-        v.startsWith("sk-ant-") ? true : "key should start with sk-ant-",
-    });
+    anthropicApiKey = await promptSecret(
+      "Anthropic API key",
+      existing?.anthropicApiKey ?? process.env.ANTHROPIC_API_KEY ?? undefined,
+      (v) => (v.startsWith("sk-ant-") ? true : "key should start with sk-ant-"),
+    );
   } else {
-    kieApiKey = await input({
-      message: "Kie.ai API key",
-      default: existing?.kieApiKey ?? process.env.KIE_API_KEY ?? "",
-      validate: (v: string) =>
-        v.length > 10 ? true : "enter a valid Kie.ai API key",
-    });
+    kieApiKey = await promptSecret(
+      "Kie.ai API key",
+      existing?.kieApiKey ?? process.env.KIE_API_KEY ?? undefined,
+      (v) => (v.length > 10 ? true : "enter a valid Kie.ai API key"),
+    );
   }
 
   // ── model pickers (provider-aware) ──────────────────────────────────────

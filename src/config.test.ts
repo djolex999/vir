@@ -78,3 +78,26 @@ describe("provider/model defaults (0.14.0: anthropic + claude-sonnet-5)", () => 
     }
   });
 });
+
+describe("maskSecret — the ONE redaction helper for secret config values", () => {
+  it("renders first 8 + last 5 with an ellipsis, never the full key", async () => {
+    const { maskSecret } = await import("./config.js");
+    const key = "sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-abcde5rgAA";
+    const masked = maskSecret(key);
+    expect(masked).toBe("sk-ant-a…5rgAA");
+    expect(masked).not.toContain(key);
+    expect(masked.length).toBeLessThan(20);
+  });
+
+  it("fully masks short secrets (first8+last5 would leak most of it)", async () => {
+    const { maskSecret } = await import("./config.js");
+    const masked = maskSecret("shortkey12");
+    expect(masked).not.toContain("shortkey12");
+    expect(masked).toBe("••••••••••");
+  });
+
+  it("empty input stays empty", async () => {
+    const { maskSecret } = await import("./config.js");
+    expect(maskSecret("")).toBe("");
+  });
+});
