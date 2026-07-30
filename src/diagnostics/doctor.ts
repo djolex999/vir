@@ -26,7 +26,11 @@ import {
   normalizeModelName,
 } from "../pipeline/distiller.js";
 import { status as daemonStatus } from "../daemon/index.js";
-import { EMBED_MODEL, isOllamaAvailable } from "../search/embedder.js";
+import {
+  EMBED_MODEL,
+  isOllamaAvailable,
+  probeEmbedding,
+} from "../search/embedder.js";
 import { isClaudeAvailable, isInstalled } from "../mcp/install.js";
 import { StateDb } from "../state/db.js";
 import { buildDoctorResult } from "../output/json.js";
@@ -252,14 +256,32 @@ async function checkDaemon(cfg: Config | null): Promise<CheckResult> {
 }
 
 // ── 8. Ollama (optional) ──────────────────────────────────────────────────────
-async function checkOllama(): Promise<CheckResult> {
-  if (await isOllamaAvailable()) {
-    return ok("Ollama", "running · semantic search enabled");
+// Exported for tests: pure mapping from (reachability, probe result) to a
+// verdict. probedModel is the result of a one-shot embed("ping") — a daemon
+// that answers /api/tags while embed() fails must NOT read healthy, because
+// that state silently downgrades every query to TF-IDF.
+export function ollamaCheck(
+  reachable: boolean,
+  probedModel: string | null,
+): CheckResult {
+  if (!reachable) {
+    return warn(
+      "Ollama",
+      "not running — semantic search will use TF-IDF fallback\ninstall: brew install ollama",
+    );
   }
-  return warn(
-    "Ollama",
-    "not running — semantic search will use TF-IDF fallback\ninstall: brew install ollama",
-  );
+  if (probedModel === null) {
+    return warn(
+      "Ollama",
+      `reachable but the embedding probe failed — semantic search will use TF-IDF fallback\ncheck: ollama pull ${EMBED_MODEL}`,
+    );
+  }
+  return ok("Ollama", `running · embedding probe ok (${probedModel})`);
+}
+
+async function checkOllama(): Promise<CheckResult> {
+  const reachable = await isOllamaAvailable();
+  return ollamaCheck(reachable, reachable ? await probeEmbedding() : null);
 }
 
 // ── 9. Claude Code CLI ────────────────────────────────────────────────────────
@@ -404,6 +426,9 @@ export async function runDoctorJson(): Promise<void> {
   const { cfg } = checkConfig();
   const ds = await daemonStatus();
   const ollamaReachable = await isOllamaAvailable();
+  // The wire `model` is a probe result: the model id only when a one-shot
+  // embed("ping") succeeded, else null — never the constant echoed back.
+  const ollamaModel = ollamaReachable ? await probeEmbedding() : null;
 
   const result = buildDoctorResult({
     daemonInstalled: ds.installed,
@@ -413,7 +438,7 @@ export async function runDoctorJson(): Promise<void> {
     vaultPath: cfg?.vaultPath ?? "",
     configValid: cfg !== null,
     ollamaReachable,
-    ollamaModel: ollamaReachable ? EMBED_MODEL : null,
+    ollamaModel,
     cadenceHours: cfg?.cadenceHours ?? 3,
     version: readVirVersion(),
   });

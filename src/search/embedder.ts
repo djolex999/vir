@@ -79,6 +79,19 @@ export function isOllamaAvailableCached(): Promise<boolean> {
   return _availabilityCache;
 }
 
+// One-shot health probe for doctor: proves the model can actually embed, not
+// just that the daemon answers /api/tags (a state where the model is deleted
+// or the embed endpoint is broken reads "healthy" on reachability alone).
+// Returns the model id on success, null on any failure.
+export async function probeEmbedding(): Promise<string | null> {
+  try {
+    await embed("ping");
+    return EMBED_MODEL;
+  } catch {
+    return null;
+  }
+}
+
 export async function embeddingForNote(text: string): Promise<number[] | null> {
   try {
     return await embed(text);
