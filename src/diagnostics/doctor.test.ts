@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { daemonCheck, ollamaCheck } from "./doctor.js";
+import { backupCheck, daemonCheck, ollamaCheck } from "./doctor.js";
 
 // The doctor Ollama check must be probe-based, not reachability-based: a
 // daemon that answers /api/tags while embed() throws (model deleted, legacy
@@ -48,5 +48,26 @@ describe("daemonCheck", () => {
     expect(r.status).toBe("ok");
     expect(r.detail).toContain("launchd");
     expect(r.detail).toContain("3h");
+  });
+});
+
+describe("backupCheck", () => {
+  const NOW = Date.parse("2026-07-30T12:00:00Z");
+
+  it("emits no row when no backup job is configured", () => {
+    expect(backupCheck(false, null, NOW)).toBeNull();
+  });
+
+  it("warns when configured but never succeeded", () => {
+    expect(backupCheck(true, null, NOW)?.status).toBe("warn");
+  });
+
+  it("ok within 48h, warn past it", () => {
+    const fresh = "2026-07-29T12:00:00Z"; // 24h
+    const stale = "2026-07-27T12:00:00Z"; // 72h
+    expect(backupCheck(true, fresh, NOW)?.status).toBe("ok");
+    const r = backupCheck(true, stale, NOW);
+    expect(r?.status).toBe("warn");
+    expect(r?.detail).toContain("72h");
   });
 });

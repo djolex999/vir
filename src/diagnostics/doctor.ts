@@ -275,6 +275,50 @@ async function checkDaemon(cfg: Config | null): Promise<CheckResult> {
   );
 }
 
+// ── 7b. backup freshness (only when a backup job is configured) ──────────────
+// ~/.vir/backup.sh stamps ~/.vir/backup.last (ISO UTC) on every successful
+// push. 354 distilled sessions exist ONLY in the DB (source transcripts aged
+// out), so a silently-dead backup job is real data-loss exposure — warn past
+// the threshold. Exported + parameterized for tests.
+export const BACKUP_STALE_MS = 48 * 3600 * 1000;
+
+export function backupCheck(
+  configured: boolean,
+  lastIso: string | null,
+  now: number,
+): CheckResult | null {
+  // No backup job configured — not an error state, just not this install's
+  // setup; emit no row rather than nag every vanilla install.
+  if (!configured) return null;
+  if (lastIso === null) {
+    return warn("backup", "job configured but never succeeded — run ~/.vir/backup.sh");
+  }
+  const at = Date.parse(lastIso);
+  if (Number.isNaN(at)) {
+    return warn("backup", "backup.last is unreadable — run ~/.vir/backup.sh");
+  }
+  const ageH = Math.round((now - at) / 3600000);
+  if (now - at > BACKUP_STALE_MS) {
+    return warn(
+      "backup",
+      `last success ${ageH}h ago (> 48h) — check ~/.vir/backup.log`,
+    );
+  }
+  return ok("backup", `last success ${ageH}h ago`);
+}
+
+function checkBackup(): CheckResult | null {
+  const virDir = join(homedir(), ".vir");
+  const configured = existsSync(join(virDir, "backup.sh"));
+  let lastIso: string | null = null;
+  try {
+    lastIso = readFileSync(join(virDir, "backup.last"), "utf8").trim();
+  } catch {
+    // never stamped
+  }
+  return backupCheck(configured, lastIso, Date.now());
+}
+
 // ── 8. Ollama (optional) ──────────────────────────────────────────────────────
 // Exported for tests: pure mapping from (reachability, probe result) to a
 // verdict. probedModel is the result of a one-shot embed("ping") — a daemon
@@ -357,6 +401,9 @@ export async function runDoctor(): Promise<void> {
 
   record(checkDatabase());
   record(await checkDaemon(cfg));
+  const backup = checkBackup();
+  if (backup) record(backup);
+
   record(await checkOllama());
 
   const claude = await checkClaudeCli();
