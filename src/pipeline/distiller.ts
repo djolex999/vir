@@ -465,6 +465,17 @@ export function isRetryable(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   // A client-side timeout is a transient stall, same family as a 5xx.
   if (err instanceof KieTimeoutError) return true;
+  // Node's fetch (undici) surfaces network-level failures (ECONNREFUSED,
+  // ENOTFOUND, socket resets) as a TypeError with the underlying error
+  // attached as `cause`. Match that structure, never the "fetch failed"
+  // message — the text is not contractual across Node versions or locales.
+  // A programming TypeError carries no cause and stays non-retryable. Only
+  // the Kie path uses native fetch; the Anthropic SDK wraps its own
+  // connection errors, so this branch cannot over-retry that path.
+  if (err instanceof TypeError) {
+    const cause = (err as { cause?: unknown }).cause;
+    return typeof cause === "object" && cause !== null;
+  }
   if (err instanceof HttpError) {
     if (KIE_RETRYABLE_STATUS.has(err.status)) return true;
     // Kie occasionally returns 404 with body `{error: {type: "api_error"}}`

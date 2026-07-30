@@ -45,3 +45,39 @@ describe("StateDb.getEmbeddings path reconstruction", () => {
     );
   });
 });
+
+describe("StateDb.record error lifecycle", () => {
+  let dir: string;
+  let db: StateDb;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vir-db-"));
+    db = new StateDb(join(dir, "vir.db"));
+  });
+  afterEach(() => {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("a successful distill clears a previously recorded error", () => {
+    const path = "/proj/sess.jsonl";
+    db.record({ path, hash: "h1", skipped: false, notePaths: [], error: "fetch failed" });
+    expect(db.listDistilled().find((r) => r.path === path)).toBeUndefined();
+
+    db.record({
+      path,
+      hash: "h2",
+      skipped: false,
+      notePaths: ["/vault/vir/patterns/x.md"],
+      content: "## Summary\nrecovered",
+      category: "pattern",
+      topic: "Recovered",
+      project: "demo",
+      confidence: 0.9,
+      startedAt: "2026-07-01T00:00:00.000Z",
+    });
+    // error must be gone: listDistilled filters `error IS NULL`, so a stale
+    // error would make a good note invisible to rewrites and summaries.
+    expect(db.listDistilled().find((r) => r.path === path)?.content).toContain("recovered");
+  });
+});

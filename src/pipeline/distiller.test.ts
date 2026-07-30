@@ -57,6 +57,34 @@ describe("isRetryable", () => {
   it("does not retry on non-HTTP errors", () => {
     expect(isRetryable(new Error("network failure"))).toBe(false);
   });
+
+  it("retries a fetch-level network TypeError (undici attaches the socket error as cause)", () => {
+    // Node's fetch throws `TypeError: fetch failed` with the underlying
+    // network error (ECONNREFUSED/ENOTFOUND/UND_ERR_*) as `cause`. 30 of the
+    // 41 backlog rows died this way with zero retries.
+    const err = Object.assign(new TypeError("fetch failed"), {
+      cause: Object.assign(new Error("connect ECONNREFUSED 1.2.3.4:443"), {
+        code: "ECONNREFUSED",
+      }),
+    });
+    expect(isRetryable(err)).toBe(true);
+  });
+
+  it("retries when the cause is an aggregate error (happy-eyeballs multi-address failure)", () => {
+    // Node throws AggregateError as the cause when every resolved address
+    // fails; model it structurally so the test compiles on the ES2020 lib.
+    const agg = Object.assign(new Error(""), {
+      errors: [Object.assign(new Error("ECONNREFUSED"), { code: "ECONNREFUSED" })],
+    });
+    const err = Object.assign(new TypeError("fetch failed"), { cause: agg });
+    expect(isRetryable(err)).toBe(true);
+  });
+
+  it("does NOT retry a plain programming TypeError (no cause)", () => {
+    expect(
+      isRetryable(new TypeError("Cannot read properties of undefined")),
+    ).toBe(false);
+  });
 });
 
 describe("kieResponseError", () => {
