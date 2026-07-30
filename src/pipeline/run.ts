@@ -157,6 +157,20 @@ export async function runPipeline(
   if (opts.rewriteOnly) {
     const rows = db.listDistilled();
     fileLog(`rewrite-only: ${rows.length} distilled sessions in db`);
+    if (opts.dryRun) {
+      if (interactive) {
+        ui.blank();
+        ui.divider();
+        ui.summary({
+          "would rewrite": { value: rows.length, color: ui.info },
+        });
+        ui.divider();
+        ui.line(ui.dim("  dry run — no notes rewritten, no index regenerated"));
+      }
+      fileLog(`dry-run rewrite-only: would rewrite ${rows.length} notes`);
+      db.close();
+      return summary;
+    }
     if (interactive) {
       const sp = ui.spinner(`rewriting ${rows.length} notes`).start();
       try {
