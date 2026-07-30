@@ -251,9 +251,18 @@ export function daemonCheck(
   active: boolean,
   method: string | null,
   cadenceHours: number | null,
+  staleLabel: string | null = null,
 ): CheckResult {
   if (!installed) {
     return warn("daemon", "not installed — run vir schedule install");
+  }
+  // A pre-rename label is a real install (never "not installed") but needs
+  // migration before it drifts from the shipped plist.
+  if (staleLabel !== null) {
+    return warn(
+      "daemon",
+      `running under old label ${staleLabel} — run vir schedule install to migrate`,
+    );
   }
   const cadence = cadenceHours !== null ? ` · every ${cadenceHours}h` : "";
   if (!active) {
@@ -272,6 +281,7 @@ async function checkDaemon(cfg: Config | null): Promise<CheckResult> {
     ds.active,
     ds.method ?? null,
     ds.cadenceHours ?? cfg?.cadenceHours ?? null,
+    ds.staleLabel,
   );
 }
 

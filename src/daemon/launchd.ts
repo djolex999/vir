@@ -4,9 +4,60 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { DAEMON_LOG_PATH } from "../config.js";
 
-export const LABEL = "lab.growthq.vir";
+export const LABEL = "com.github.djolex999.vir";
+// Every label this daemon has ever shipped under. `vir schedule install`
+// unloads + removes any of these it finds before writing the current plist —
+// otherwise a rename leaves TWO loaded jobs running the paid pipeline every
+// interval. A future rename is one line here (append the outgoing LABEL) plus
+// the LABEL change above.
+export const PREVIOUS_LABELS: readonly string[] = ["lab.growthq.vir"];
 const LAUNCH_AGENTS_DIR = join(homedir(), "Library", "LaunchAgents");
 const PLIST_PATH = join(LAUNCH_AGENTS_DIR, `${LABEL}.plist`);
+
+function labelPlistPath(label: string): string {
+  return join(LAUNCH_AGENTS_DIR, `${label}.plist`);
+}
+
+export interface StalePlist {
+  label: string;
+  path: string;
+}
+
+export function stalePlists(
+  exists: (p: string) => boolean = existsSync,
+): StalePlist[] {
+  return PREVIOUS_LABELS.map((label) => ({
+    label,
+    path: labelPlistPath(label),
+  })).filter((s) => exists(s.path));
+}
+
+// Unload + remove every previous-label plist. unload is best-effort per item
+// (an on-disk-but-never-loaded plist makes launchctl unload fail — that must
+// not keep the file around); remove is what actually prevents the
+// double-loaded state.
+export function migrateOldLabels(
+  deps: {
+    stale?: StalePlist[];
+    unload?: (path: string) => void;
+    remove?: (path: string) => void;
+  } = {},
+): string[] {
+  const stale = deps.stale ?? stalePlists();
+  const unload = deps.unload ?? ((p: string) => void launchctl(["unload", p]));
+  const remove = deps.remove ?? unlinkSync;
+  const removed: string[] = [];
+  for (const s of stale) {
+    try {
+      unload(s.path);
+    } catch {
+      // not loaded — still remove the file
+    }
+    remove(s.path);
+    removed.push(s.label);
+  }
+  return removed;
+}
 
 export function plistPath(): string {
   return PLIST_PATH;
@@ -81,6 +132,9 @@ export function installPlist(opts: {
     logPath: DAEMON_LOG_PATH,
   });
 
+  // A label rename must not leave the old job loaded alongside the new one.
+  migrateOldLabels();
+
   writeFileSync(PLIST_PATH, xml);
 
   // unload first in case it exists; ignore failure
@@ -102,7 +156,9 @@ export function startNow(): void {
 }
 
 export function uninstallPlist(): { removed: boolean } {
-  if (!existsSync(PLIST_PATH)) return { removed: false };
+  // Old-label plists count as an install worth removing too.
+  const migrated = migrateOldLabels();
+  if (!existsSync(PLIST_PATH)) return { removed: migrated.length > 0 };
   launchctl(["unload", PLIST_PATH]);
   unlinkSync(PLIST_PATH);
   return { removed: true };
@@ -112,12 +168,28 @@ export function daemonStatus(): {
   installed: boolean;
   loaded: boolean;
   plistPath: string;
+  // Set when the job on this machine is a previous-label install that
+  // `vir schedule install` hasn't migrated yet — installed-but-stale, never
+  // "not installed".
+  staleLabel: string | null;
 } {
-  const installed = existsSync(PLIST_PATH);
+  let installed = existsSync(PLIST_PATH);
+  let staleLabel: string | null = null;
+  let checkLabel = LABEL;
+  let plistPath = PLIST_PATH;
+  if (!installed) {
+    const stale = stalePlists()[0];
+    if (stale) {
+      installed = true;
+      staleLabel = stale.label;
+      checkLabel = stale.label;
+      plistPath = stale.path;
+    }
+  }
   let loaded = false;
   const res = spawnSync("launchctl", ["list"], { encoding: "utf8" });
   if (res.status === 0 && typeof res.stdout === "string") {
-    loaded = res.stdout.includes(LABEL);
+    loaded = res.stdout.includes(checkLabel);
   }
-  return { installed, loaded, plistPath: PLIST_PATH };
+  return { installed, loaded, plistPath, staleLabel };
 }

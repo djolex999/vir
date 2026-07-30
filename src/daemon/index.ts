@@ -18,6 +18,9 @@ export interface DaemonStatus {
   // platform doesn't expose it (launchd) — callers fall back to config.
   cadenceHours: number | null;
   configPath: string | null;
+  // The job exists under a pre-rename label (launchd only) — installed but
+  // needs `vir schedule install` to migrate.
+  staleLabel: string | null;
 }
 
 const NONE: DaemonStatus = {
@@ -26,6 +29,7 @@ const NONE: DaemonStatus = {
   method: "none",
   cadenceHours: null,
   configPath: null,
+  staleLabel: null,
 };
 
 // process.execPath is the absolute node binary; argv[1] is this CLI's entry
@@ -123,16 +127,17 @@ export async function status(): Promise<DaemonStatus> {
       method: "launchd",
       cadenceHours: null,
       configPath: ds.plistPath,
+      staleLabel: ds.staleLabel,
     };
   }
   if (platform === "linux") {
     if (systemd.isSystemdAvailable()) {
       const s = systemd.status();
-      if (s.installed) return { ...s, method: "systemd" };
+      if (s.installed) return { ...s, method: "systemd", staleLabel: null };
     }
     if (cron.isCronAvailable()) {
       const c = cron.status();
-      if (c.installed) return { ...c, method: "cron" };
+      if (c.installed) return { ...c, method: "cron", staleLabel: null };
     }
     return NONE;
   }

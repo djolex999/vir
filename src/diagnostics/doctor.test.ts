@@ -71,3 +71,17 @@ describe("backupCheck", () => {
     expect(r?.detail).toContain("72h");
   });
 });
+
+describe("daemonCheck — old-label migration awareness", () => {
+  it("an old-label job reads installed-but-stale, never not-installed", () => {
+    const r = daemonCheck(true, true, "launchd", 3, "lab.growthq.vir");
+    expect(r.status).toBe("warn");
+    expect(r.detail).toContain("lab.growthq.vir");
+    expect(r.detail).toMatch(/schedule install/);
+    expect(r.detail).not.toContain("not installed");
+  });
+
+  it("no stale label → behavior unchanged", () => {
+    expect(daemonCheck(true, true, "launchd", 3, null).status).toBe("ok");
+  });
+});
