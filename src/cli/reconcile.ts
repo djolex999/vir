@@ -7,6 +7,7 @@ import { readCostLog } from "../cost/log.js";
 import { computeCost } from "../cost/pricing.js";
 import { Distiller, normalizeModelName, resolveModelShorthand } from "../pipeline/distiller.js";
 import { scoreSession } from "../pipeline/filter.js";
+import { acquireLock, LockHeldError, releaseLock } from "../pipeline/lock.js";
 import { parseSession } from "../pipeline/parser.js";
 import { scrub } from "../pipeline/scrubber.js";
 import { filterToolCalls } from "../pipeline/toolCallFilter.js";
@@ -154,6 +155,21 @@ export async function runReconcile(
   cfg: Config,
   opts: ReconcileOptions = {},
 ): Promise<void> {
+  // Reconcile calls the distiller — same lock as vir run, except dry-run
+  // (read-only). Second acquirer exits with the holder's PID, no wait.
+  const needsLock = opts.dryRun !== true;
+  if (needsLock) {
+    try {
+      acquireLock();
+    } catch (err) {
+      if (err instanceof LockHeldError) {
+        ui.row(ui.warn(ui.WARN_GLYPH), ui.text(err.message));
+        process.exitCode = 1;
+        return;
+      }
+      throw err;
+    }
+  }
   const db = new StateDb();
   try {
     ui.header(opts.dryRun ? "reconcile  --dry-run" : "reconcile");
@@ -358,5 +374,6 @@ export async function runReconcile(
     }
   } finally {
     db.close();
+    if (needsLock) releaseLock();
   }
 }

@@ -63,6 +63,7 @@ import {
   embeddingForNote,
   isOllamaAvailable,
 } from "./search/embedder.js";
+import { acquireLock, LockHeldError, releaseLock } from "./pipeline/lock.js";
 import { search, searchWithOutcome, vaultRoot } from "./search/retriever.js";
 import { buildQueryResults, errorPayload } from "./output/json.js";
 import { synthesize } from "./search/synthesizer.js";
@@ -169,19 +170,39 @@ program
           articlesOnly ||
           pdfsOnly ||
           dryRun;
-        const summary = await runPipeline(cfg, {
-          full: opts.full,
-          quiet: daemon,
-          logToFile: daemon,
-          rewriteOnly,
-          articlesOnly,
-          pdfsOnly,
-          forceDistillModel: opts.forceModel,
-          dryRun,
-          onConfirm: skipPrompt
-            ? undefined
-            : async (newCount) => confirmCostIfNeeded(cfg, newCount),
-        });
+        // Dry-run and rewrite-only never call the distiller — no lock needed,
+        // and they must not be blocked by (or block) a running pipeline.
+        const needsLock = !dryRun && !rewriteOnly;
+        if (needsLock) {
+          try {
+            acquireLock();
+          } catch (err) {
+            if (err instanceof LockHeldError) {
+              console.error(chalk.yellow(err.message));
+              process.exitCode = 1;
+              return;
+            }
+            throw err;
+          }
+        }
+        let summary;
+        try {
+          summary = await runPipeline(cfg, {
+            full: opts.full,
+            quiet: daemon,
+            logToFile: daemon,
+            rewriteOnly,
+            articlesOnly,
+            pdfsOnly,
+            forceDistillModel: opts.forceModel,
+            dryRun,
+            onConfirm: skipPrompt
+              ? undefined
+              : async (newCount) => confirmCostIfNeeded(cfg, newCount),
+          });
+        } finally {
+          if (needsLock) releaseLock();
+        }
         // Surface per-item distill failures via a non-zero exit so external
         // callers (and the user) don't get false "success" — the silent-success
         // bug that hid Kie's 200-with-error responses pre-0.7.2.
@@ -345,11 +366,12 @@ const schedule = program
   .description("Manage the background daemon (launchd / systemd / cron)");
 schedule
   .command("install")
-  .description("Install + start the scheduled daemon")
+  .description("Install the scheduled daemon (first run at the next interval)")
+  .option("--run-now", "Also kick off one run immediately after installing")
   .action(
-    runAction(async () => {
+    runAction(async (opts: { runNow?: boolean }) => {
       const cfg = loadConfig();
-      await installDaemon(cfg);
+      await installDaemon(cfg, { runNow: opts.runNow });
       const ds = await daemonStatus();
       console.log(
         chalk.green(
