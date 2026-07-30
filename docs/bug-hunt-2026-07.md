@@ -1,5 +1,9 @@
 # Bug hunt — 2026-07-08
 
+**Last re-verified: 2026-07-30** — #1, #2, #4, #5, #6, #9 RESOLVED (verified
+against source at the noted file:line); #3, #7, #8 NOT RE-VERIFIED (status
+unknown since 07-08 — do not read them as confirmed-live).
+
 Whole-codebase hunt at v0.11.1 (4 parallel finders over pipeline / state+search /
 CLI+config+cost / MCP+daemon+lint+dedupe), followed by an independent
 verification pass on every high-severity finding. Report only — nothing fixed.
@@ -9,7 +13,10 @@ empirically confirmed against the live vault (363 notes).
 
 ## High severity
 
-1. **Slug-reconstruction drift — one bug, three sites, real data affected.**
+1. **RESOLVED 2026-07-30** (fixed in 0.11.2): slug derivation single-sourced in
+   `src/pipeline/slug.ts:1` — `db.ts:6`, `merger.ts:18`, `linter.ts:11` all
+   import `makeSlug` from it; no local reimplementation remains.
+   **Slug-reconstruction drift — one bug, three sites, real data affected.**
    [2×][E] `writer.ts:547–551` builds filenames as `kebab(topic).slice(0, 50)`
    with a `note-<suffix>` fallback; three other modules rebuild the path with
    untruncated `kebab(topic)` and no fallback:
@@ -25,7 +32,11 @@ empirically confirmed against the live vault (363 notes).
      that don't exist (display-only).
    Fix direction: export writer's `makeSlug` as the single source of truth.
 
-2. **TF-IDF fallback surfaces `.rejected/` and `archived/` notes.** [2×]
+2. **RESOLVED 2026-07-30**: `retriever.ts:20` `SKIP_DIRS` now includes
+   `.rejected` and `archived` (TDD, commit 9f7c446); embedding path verified
+   separately (`db.ts` getEmbeddings gates `archived`; rejected paths fail the
+   content read). **TF-IDF fallback surfaces `.rejected/` and `archived/`
+   notes.** [2×]
    `retriever.ts:15` `SKIP_DIRS = new Set(["summaries"])`; the walk
    (`:291–310`) indexes everything else, including the reject destination
    (`cli/review.ts:116–118`) and the dedupe archive dir. With Ollama down,
@@ -33,21 +44,28 @@ empirically confirmed against the live vault (363 notes).
    rejected as wrong. Violates CLAUDE.md's "never re-surfaced" claim (true
    only for `collectNotes`). Latent today (vault has no such dirs yet).
 
-3. **`--full` is silently ignored by the article and PDF distill phases.** [V]
+3. **NOT RE-VERIFIED 2026-07-30.**
+   **`--full` is silently ignored by the article and PDF distill phases.** [V]
    `run.ts:787` / `run.ts:885` check `isArticleProcessed`/`isPdfProcessed`
    with no `opts.full ||` guard — unlike the session loop (`run.ts:486`) and
    unlike the dry-run counters (`run.ts:452,718,722`), which DO honor full.
    So `--full --dry-run` prices N docs; the real `--full` run re-processes 0.
    The documented "re-process everything" contract is unmet for 2 of 3 sources.
 
-4. **`vir run --rewrite-only --dry-run` mutates the vault under a dry-run
-   banner.** [V] `run.ts:139` prints the `--dry-run` header, but the
+4. **RESOLVED 2026-07-30**: the rewrite-only block now returns before any
+   write under `opts.dryRun`, printing the would-rewrite count (`run.ts:160`,
+   TDD, commit 5860d05). Conflicting-mode-flag precedence unchanged (not part
+   of the fix). **`vir run --rewrite-only --dry-run` mutates the vault under a
+   dry-run banner.** [V] `run.ts:139` prints the `--dry-run` header, but the
    `rewriteOnly` branch (`:157`) never checks `opts.dryRun`. No LLM cost, but
    every note file + index.md is rewritten. Same precedence chain silently
    resolves conflicting mode flags (`--rewrite-only --articles-only`, etc.)
    instead of rejecting them.
 
-5. **Re-running `vir init` silently destroys config.** [V] The
+5. **RESOLVED 2026-07-30** (fixed in 0.11.2): `cli/initConfig.ts:36-38`
+   `buildInitConfig` carries `kieTopUpTier`, `topicsDir`, `pricing` (and both
+   provider keys) through re-init. **Re-running `vir init` silently destroys
+   config.** [V] The
    `ConfigSchema.safeParse` object (`cli.ts:1718–1747`) omits `kieTopUpTier`,
    `topicsDir`, and `pricing` from `existing` → zod re-defaults them and
    `saveConfig` persists the loss (high-tier Kie user's costs inflate 11%;
@@ -55,7 +73,9 @@ empirically confirmed against the live vault (363 notes).
    Also `cli.ts:1640–1654`: choosing a provider sets the other provider's
    API key to `undefined`, discarding it.
 
-6. **Scrubber false positives mangle distill input.** [V — behaviorally
+6. **RESOLVED 2026-07-30** (fixed in 0.11.2): `scrubber.ts:11,17` key patterns
+   now carry a `(?<![A-Za-z0-9-])` left boundary ("risk-management-…" no longer
+   redacts). **Scrubber false positives mangle distill input.** [V — behaviorally
    confirmed] `scrubber.ts:10` `/sk-(?:proj-)?[A-Za-z0-9_-]{20,}/g` has no
    left anchor: `risk-management-strategy-2026-plan` →
    `ri[REDACTED_OPENAI_KEY]`. `scrubber.ts:13` `/\bBearer\s+…/gi`: "the
@@ -63,17 +83,23 @@ empirically confirmed against the live vault (363 notes).
    crosses newlines). Kebab identifiers are ubiquitous in transcripts; this
    can destroy the exact branch/file names a note is about.
 
-7. **`callKie`'s timeout covers time-to-headers only.** [V]
+7. **NOT RE-VERIFIED 2026-07-30.**
+   **`callKie`'s timeout covers time-to-headers only.** [V]
    `distiller.ts:~195` clears the abort timer in `finally` as soon as `fetch`
    resolves; `response.json()`/`response.text()` stream the body afterwards
    with no timeout. A mid-body stall still hangs the daemon forever — the
    exact failure mode the 0.8.1 `KIE_TIMEOUT_MS` fix claims to have closed.
 
-8. **`vir query --limit` ignored on the human path.** [V] `cli.ts:1049`
+8. **NOT RE-VERIFIED 2026-07-30.**
+   **`vir query --limit` ignored on the human path.** [V] `cli.ts:1049`
    hardcodes `search(cfg, db, question, 8)`; only `--json` honors the parsed
    limit.
 
-9. **`vir lint --orphans` is 100% noise.** [E] Related-section wikilinks are
+9. **RESOLVED 2026-07-30** (fixed in 0.12.0): Related links now come from
+   embedding neighbors as id-suffixed, existsSync-guarded wikilinks
+   (`writer.ts:507`), legacy Related sections are stripped on rewrite
+   (`writer.ts:127`), notes carry bare-slug aliases, and the linter resolves
+   via topic aliases. **`vir lint --orphans` is 100% noise.** [E] Related-section wikilinks are
    written as `[[kebab(text)]]` (writer.ts:601–602) — never carrying the
    `-<8-hex>` suffix that note ids have — so the linter's resolution
    (`linter.ts:59–83`) matched **0 of 2,261 wikilinks** in the live vault:
