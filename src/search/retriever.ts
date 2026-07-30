@@ -9,10 +9,12 @@ import {
 } from "./embedder.js";
 
 const SKIP_FILES = new Set(["index.md", "log.md"]);
-// Derived artifacts (period summaries) are files-only and must never be queried
-// as notes — exclude the directory from the TF-IDF walk. Embeddings already skip
-// them (they never enter any SQLite table).
-const SKIP_DIRS = new Set(["summaries"]);
+// Directories the TF-IDF walk must never index: derived period summaries
+// (files-only, never in SQLite), human-rejected notes (`vir review` moves
+// them to .rejected/), and dedupe-archived duplicates. The embedding path is
+// covered separately — rejected notes' recorded paths no longer exist (the
+// content read skips them) and getEmbeddings gates on `archived`.
+const SKIP_DIRS = new Set(["summaries", ".rejected", "archived"]);
 
 export interface IndexedDoc {
   relPath: string;

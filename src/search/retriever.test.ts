@@ -282,3 +282,41 @@ describe("searchWithOutcome — embed failure degrades to TF-IDF, loudly", () =>
     expect(out.embedError).toBeNull();
   });
 });
+
+describe("loadIndex — rejected and archived notes never enter the TF-IDF index", () => {
+  const tmps: string[] = [];
+  afterEach(() => {
+    for (const p of tmps) rmSync(p, { recursive: true, force: true });
+    tmps.length = 0;
+  });
+
+  it("excludes .rejected/ and archived/ from the walk", () => {
+    const vault = mkdtempSync(join(tmpdir(), "vir-idx-"));
+    tmps.push(vault);
+    mkdirSync(join(vault, "vir", "patterns"), { recursive: true });
+    mkdirSync(join(vault, "vir", ".rejected"), { recursive: true });
+    mkdirSync(join(vault, "vir", "archived"), { recursive: true });
+    writeFileSync(
+      join(vault, "vir", "patterns", "live-note.md"),
+      "---\ntopic: widget\ncategory: pattern\n---\nA live widget pattern.",
+    );
+    // A human explicitly rejected this knowledge via `vir review` — it must
+    // never resurface through the TF-IDF fallback.
+    writeFileSync(
+      join(vault, "vir", ".rejected", "bad-note.md"),
+      "---\ntopic: widget\nrejected_at: 2026-07-01\n---\nA rejected widget claim.",
+    );
+    // Dedupe archived this note as a duplicate; same rule.
+    writeFileSync(
+      join(vault, "vir", "archived", "dupe-note.md"),
+      "---\ntopic: widget\n---\nAn archived duplicate widget note.",
+    );
+
+    const cfg = { vaultPath: vault, outputDir: "vir" } as unknown as Config;
+    const rels = loadIndex(cfg).map((d) => d.relPath);
+
+    expect(rels).toContain("patterns/live-note.md");
+    expect(rels.some((r) => r.startsWith(".rejected/"))).toBe(false);
+    expect(rels.some((r) => r.startsWith("archived/"))).toBe(false);
+  });
+});
