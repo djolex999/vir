@@ -63,7 +63,7 @@ import {
   embeddingForNote,
   isOllamaAvailable,
 } from "./search/embedder.js";
-import { search, vaultRoot } from "./search/retriever.js";
+import { search, searchWithOutcome, vaultRoot } from "./search/retriever.js";
 import { buildQueryResults, errorPayload } from "./output/json.js";
 import { synthesize } from "./search/synthesizer.js";
 import { runMcpServer } from "./mcp/server.js";
@@ -1041,17 +1041,27 @@ program
       ui.divider();
       ui.blank();
 
-      const ollamaUp = await isOllamaAvailable();
-      const sp = ui
-        .spinner(`searching vault (${ollamaUp ? "embeddings" : "tfidf"})`)
-        .start();
-      let hits;
+      // The label must reflect what actually served the results, so it can
+      // only be printed AFTER the search — the old up-front isOllamaAvailable
+      // label claimed "embeddings" even when the embed call failed and TF-IDF
+      // served the hits.
+      const sp = ui.spinner("searching vault").start();
+      let outcome;
       try {
-        hits = await search(cfg, db, question, 8);
+        outcome = await searchWithOutcome(cfg, db, question, 8);
         sp.stop();
       } catch (err) {
         sp.fail(ui.errorColor((err as Error).message));
         return;
+      }
+      const hits = outcome.hits;
+      if (outcome.degraded) {
+        ui.row(
+          ui.warn(ui.WARN_GLYPH),
+          ui.text(
+            `embedding search failed — results are TF-IDF fallback (${outcome.embedError})`,
+          ),
+        );
       }
 
       if (hits.length === 0) {
@@ -1064,7 +1074,7 @@ program
       console.log(ui.text(ui.wrap(answer.trim(), 60)));
       ui.blank();
 
-      const method = hits[0]?.method ?? "tfidf";
+      const method = outcome.method;
       const relevant = hits.filter((h) => h.score > 0).slice(0, 3);
       ui.divider();
       for (const h of relevant) ui.sourceRow(h.title, h.score);
@@ -1075,7 +1085,10 @@ program
           : new VaultWriter(cfg).noteCount();
       ui.summary({
         sources: { value: relevant.length, color: ui.info },
-        via: { value: method, color: ui.accent },
+        via: {
+          value: outcome.degraded ? "tfidf (embeddings failed)" : method,
+          color: outcome.degraded ? ui.warn : ui.accent,
+        },
         searched: { value: totalNotes, color: ui.muted },
       });
     } finally {

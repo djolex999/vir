@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadIndex, mmrRerank, search, type ScoredCandidate } from "./retriever.js";
+import { loadIndex, mmrRerank, search, searchWithOutcome, type ScoredCandidate } from "./retriever.js";
 import type { Config } from "../config.js";
 import type { EmbeddingRow, StateDb } from "../state/db.js";
+
+import { embed, EmbedderError } from "./embedder.js";
 
 // Keep cosineSimilarity real (mmrRerank + searchByEmbedding need it); only force
 // Ollama "up" and stub the query embedding so the test never touches the network.
@@ -207,5 +209,76 @@ describe("search — topic embeddings are first-class in the pool", () => {
     expect(hits).toHaveLength(1);
     expect(hits[0]?.method).toBe("embedding");
     expect(hits[0]?.filePath).toBe(pdfPath);
+  });
+});
+
+describe("searchWithOutcome — embed failure degrades to TF-IDF, loudly", () => {
+  const tmps: string[] = [];
+  afterEach(() => {
+    for (const p of tmps) rmSync(p, { recursive: true, force: true });
+    tmps.length = 0;
+  });
+
+  it("labels results tfidf, marks the set degraded, and records the embed error", async () => {
+    const vault = mkdtempSync(join(tmpdir(), "vir-deg-"));
+    tmps.push(vault);
+    mkdirSync(join(vault, "vir", "patterns"), { recursive: true });
+    writeFileSync(
+      join(vault, "vir", "patterns", "widget-note.md"),
+      "---\ntopic: widget\ncategory: pattern\n---\nA durable widget pattern.",
+    );
+    // A second doc without the term — with a single doc idf = log(1/1) = 0
+    // and even a perfect lexical match scores zero.
+    writeFileSync(
+      join(vault, "vir", "patterns", "other-note.md"),
+      "---\ntopic: other\ncategory: pattern\n---\nUnrelated gadget lore.",
+    );
+    vi.mocked(embed).mockRejectedValueOnce(
+      new EmbedderError('Ollama 400: "nomic-embed-text" does not support generate'),
+    );
+    // embed() throws before any embedding row is read, so the db is never touched.
+    const db = {} as unknown as StateDb;
+    const cfg = {
+      vaultPath: vault,
+      outputDir: "vir",
+      topicsDir: "topics",
+      retrievalDiversity: 0.3,
+    } as unknown as Config;
+
+    const out = await searchWithOutcome(cfg, db, "widget", 5);
+
+    expect(out.method).toBe("tfidf");
+    expect(out.degraded).toBe(true);
+    expect(out.embedError).toContain("400");
+    expect(out.hits.length).toBeGreaterThan(0);
+    expect(out.hits[0]?.method).toBe("tfidf");
+  });
+
+  it("a clean embedding miss (no error) falls back WITHOUT the degraded flag", async () => {
+    const vault = mkdtempSync(join(tmpdir(), "vir-deg-"));
+    tmps.push(vault);
+    mkdirSync(join(vault, "vir", "patterns"), { recursive: true });
+    writeFileSync(
+      join(vault, "vir", "patterns", "widget-note.md"),
+      "---\ntopic: widget\ncategory: pattern\n---\nA durable widget pattern.",
+    );
+    const db = {
+      getEmbeddings: () => [],
+      getArticleEmbeddings: () => [],
+      getTopicEmbeddings: () => [],
+      getPdfEmbeddings: () => [],
+    } as unknown as StateDb;
+    const cfg = {
+      vaultPath: vault,
+      outputDir: "vir",
+      topicsDir: "topics",
+      retrievalDiversity: 0.3,
+    } as unknown as Config;
+
+    const out = await searchWithOutcome(cfg, db, "widget", 5);
+
+    expect(out.method).toBe("tfidf");
+    expect(out.degraded).toBe(false);
+    expect(out.embedError).toBeNull();
   });
 });

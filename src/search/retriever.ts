@@ -63,6 +63,17 @@ function isVerified(raw: string): boolean {
   return /(^|\n)\s*verified:\s*true\s*(\r?\n|$)/i.test(m[1]);
 }
 
+export interface SearchOutcome {
+  hits: SearchHit[];
+  method: "embedding" | "tfidf";
+  // True when embeddings were ATTEMPTED but the embedder itself failed —
+  // distinct from a clean semantic miss (every cosine below the floor).
+  // embedError carries the EmbedderError message (HTTP status + body) so the
+  // caller can surface it instead of the old empty-catch discard.
+  degraded: boolean;
+  embedError: string | null;
+}
+
 // Verified notes get +VERIFIED_BOOST, pushing human-approved knowledge to the
 // top of results over unverified auto-distillations of similar relevance.
 export async function search(
@@ -71,14 +82,41 @@ export async function search(
   query: string,
   topK = 8,
 ): Promise<SearchHit[]> {
+  return (await searchWithOutcome(cfg, db, query, topK)).hits;
+}
+
+export async function searchWithOutcome(
+  cfg: Config,
+  db: StateDb,
+  query: string,
+  topK = 8,
+): Promise<SearchOutcome> {
   if (await isOllamaAvailable()) {
-    const hits = await searchByEmbedding(cfg, db, query, topK);
+    const attempt = await searchByEmbedding(cfg, db, query, topK);
     // If embeddings produced at least one match above the floor, take it.
     // Otherwise fall through to TF-IDF: low cosine on every doc means the
     // query is semantically off; lexical overlap might still find a match.
-    if (hits.length > 0) return hits;
+    if (attempt.hits.length > 0) {
+      return {
+        hits: attempt.hits,
+        method: "embedding",
+        degraded: false,
+        embedError: null,
+      };
+    }
+    return {
+      hits: searchByTfIdf(cfg, query, topK),
+      method: "tfidf",
+      degraded: attempt.error !== null,
+      embedError: attempt.error,
+    };
   }
-  return searchByTfIdf(cfg, query, topK);
+  return {
+    hits: searchByTfIdf(cfg, query, topK),
+    method: "tfidf",
+    degraded: false,
+    embedError: null,
+  };
 }
 
 async function searchByEmbedding(
@@ -86,12 +124,12 @@ async function searchByEmbedding(
   db: StateDb,
   query: string,
   topK: number,
-): Promise<SearchHit[]> {
+): Promise<{ hits: SearchHit[]; error: string | null }> {
   let queryVec: number[];
   try {
     queryVec = await embed(query);
-  } catch {
-    return [];
+  } catch (err) {
+    return { hits: [], error: (err as Error).message };
   }
 
   const root = vaultRoot(cfg);
@@ -104,7 +142,7 @@ async function searchByEmbedding(
     ...db.getTopicEmbeddings(root, cfg.topicsDir),
     ...db.getPdfEmbeddings(),
   ];
-  if (rows.length === 0) return [];
+  if (rows.length === 0) return { hits: [], error: null };
 
   // Read each candidate's content once, here, so the verified boost can be
   // applied BEFORE the topK slice — a verified note must be able to outrank an
@@ -141,7 +179,7 @@ async function searchByEmbedding(
   // MMR convention where lambda is the *relevance* weight, so invert here.
   const ranked = mmrRerank(candidates, topK, 1 - cfg.retrievalDiversity);
 
-  return ranked.map((c) => {
+  const hits = ranked.map((c) => {
     const rel = relative(root, c.docId);
     return {
       filePath: c.docId,
@@ -151,6 +189,7 @@ async function searchByEmbedding(
       method: "embedding" as const,
     };
   });
+  return { hits, error: null };
 }
 
 // Maximal Marginal Relevance: greedily reranks a candidate pool to trade off
