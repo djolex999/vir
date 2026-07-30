@@ -50,11 +50,18 @@ function throwUnsupported(platform: string): never {
   );
 }
 
-export async function install(cfg: Config): Promise<void> {
+export async function install(
+  cfg: Config,
+  opts: { runNow?: boolean } = {},
+): Promise<void> {
   const platform = process.platform;
   if (platform === "darwin") {
     const { nodePath, cliPath } = resolvePaths();
     launchd.installPlist({ nodePath, cliPath, cadenceHours: cfg.cadenceHours });
+    // Installing a schedule must not start a paid job (RunAtLoad is false);
+    // --run-now is the explicit opt-in for the old kick-off-immediately
+    // behavior.
+    if (opts.runNow) launchd.startNow();
     return;
   }
   if (platform === "linux") {

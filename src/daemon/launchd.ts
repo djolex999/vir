@@ -43,7 +43,7 @@ export function renderPlist(opts: {
   <key>StartInterval</key>
   <integer>${opts.intervalSeconds}</integer>
   <key>RunAtLoad</key>
-  <true/>
+  <false/>
   <key>StandardOutPath</key>
   <string>${escapeXml(opts.logPath)}</string>
   <key>StandardErrorPath</key>
@@ -91,6 +91,14 @@ export function installPlist(opts: {
   }
 
   return { plistPath: PLIST_PATH, loaded: true };
+}
+
+// Kick off one tick immediately (the job stays on its StartInterval cadence).
+export function startNow(): void {
+  const res = launchctl(["start", LABEL]);
+  if (res.code !== 0) {
+    throw new Error(`launchctl start failed: ${res.stderr.trim()}`);
+  }
 }
 
 export function uninstallPlist(): { removed: boolean } {
