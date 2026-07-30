@@ -243,16 +243,36 @@ function checkDatabase(): CheckResult {
 }
 
 // ── 7. daemon ─────────────────────────────────────────────────────────────────
-async function checkDaemon(cfg: Config | null): Promise<CheckResult> {
-  const ds = await daemonStatus();
-  if (!ds.installed) {
+// Exported for tests. "Not installed" and "installed but down" demand
+// different actions (install vs investigate), so they must not collapse into
+// one verdict — and installed-but-inactive must never read ok.
+export function daemonCheck(
+  installed: boolean,
+  active: boolean,
+  method: string | null,
+  cadenceHours: number | null,
+): CheckResult {
+  if (!installed) {
     return warn("daemon", "not installed — run vir schedule install");
   }
-  const cadence = ds.cadenceHours ?? cfg?.cadenceHours ?? null;
-  const state = ds.active ? "active" : "inactive";
-  const parts = [ds.method, state];
-  if (cadence !== null) parts.push(`every ${cadence}h`);
-  return ok("daemon", parts.join(" · "));
+  const cadence = cadenceHours !== null ? ` · every ${cadenceHours}h` : "";
+  if (!active) {
+    return warn(
+      "daemon",
+      `installed but not running (${method ?? "unknown"}${cadence}) — check vir schedule status`,
+    );
+  }
+  return ok("daemon", `${method ?? "unknown"} · active${cadence}`);
+}
+
+async function checkDaemon(cfg: Config | null): Promise<CheckResult> {
+  const ds = await daemonStatus();
+  return daemonCheck(
+    ds.installed,
+    ds.active,
+    ds.method ?? null,
+    ds.cadenceHours ?? cfg?.cadenceHours ?? null,
+  );
 }
 
 // ── 8. Ollama (optional) ──────────────────────────────────────────────────────
