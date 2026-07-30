@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.13.0 — 2026-07-30
+
+- **Retry bound:** 3 consecutive failed distills park a session (new
+  `sessions.attempts` column, reset on success) — `vir run` skips it even
+  under `--full`; `vir reconcile --force` is the only way back in.
+- **Process lock:** `~/.vir/vir.lock` pidfile with stale-PID reclaim
+  serializes distiller-calling commands; a second `vir run`/`vir reconcile`
+  exits immediately with the holder PID instead of double-spending.
+- **`vir schedule install` no longer starts a paid run** (`RunAtLoad` is now
+  false); new `--run-now` flag opts into an immediate first tick.
+- **`vir doctor` backup-freshness check** (renders only when
+  `~/.vir/backup.sh` exists): warns when the last successful backup is
+  older than 48h.
+
 Earlier releases (≤ 0.12.0) are documented in their annotated git tags and
 commit messages (`git log --oneline --decorate`).
 
