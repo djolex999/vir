@@ -57,24 +57,90 @@ describe("daemonCheck", () => {
   });
 });
 
+// backup.last stamps carry the trigger ("<iso> manual|scheduled"); only a
+// SCHEDULED success within 48h reads healthy. A manual run proves the script
+// works, not that the launchd job runs — it must never silence the warning.
+// The last FAIL line from backup.log is surfaced, not left to a file nobody
+// reads.
 describe("backupCheck", () => {
   const NOW = Date.parse("2026-07-30T12:00:00Z");
+  const base = {
+    configured: true,
+    last: null as string | null,
+    lastScheduled: null as string | null,
+    lastFail: null as string | null,
+  };
 
   it("emits no row when no backup job is configured", () => {
-    expect(backupCheck(false, null, NOW)).toBeNull();
+    expect(backupCheck({ ...base, configured: false }, NOW)).toBeNull();
   });
 
   it("warns when configured but never succeeded", () => {
-    expect(backupCheck(true, null, NOW)?.status).toBe("warn");
+    expect(backupCheck(base, NOW)?.status).toBe("warn");
   });
 
-  it("ok within 48h, warn past it", () => {
-    const fresh = "2026-07-29T12:00:00Z"; // 24h
-    const stale = "2026-07-27T12:00:00Z"; // 72h
-    expect(backupCheck(true, fresh, NOW)?.status).toBe("ok");
-    const r = backupCheck(true, stale, NOW);
+  it("legacy bare-ISO stamp counts as scheduled: ok fresh, warn stale", () => {
+    const fresh = { ...base, last: "2026-07-29T12:00:00Z" }; // 24h
+    const stale = { ...base, last: "2026-07-27T12:00:00Z" }; // 72h
+    expect(backupCheck(fresh, NOW)?.status).toBe("ok");
+    const r = backupCheck(stale, NOW);
     expect(r?.status).toBe("warn");
     expect(r?.detail).toContain("72h");
+  });
+
+  it("fresh scheduled stamp → ok", () => {
+    const r = backupCheck(
+      { ...base, last: "2026-07-30T03:30:00Z scheduled", lastScheduled: "2026-07-30T03:30:00Z scheduled" },
+      NOW,
+    );
+    expect(r?.status).toBe("ok");
+  });
+
+  it("fresh MANUAL stamp with no scheduled success still warns", () => {
+    const r = backupCheck({ ...base, last: "2026-07-30T11:00:00Z manual" }, NOW);
+    expect(r?.status).toBe("warn");
+    expect(r?.detail).toMatch(/manual/i);
+  });
+
+  it("fresh manual + stale scheduled → warn with the scheduled age", () => {
+    const r = backupCheck(
+      {
+        ...base,
+        last: "2026-07-30T11:00:00Z manual",
+        lastScheduled: "2026-07-27T12:00:00Z scheduled", // 72h
+      },
+      NOW,
+    );
+    expect(r?.status).toBe("warn");
+    expect(r?.detail).toContain("72h");
+    expect(r?.detail).toMatch(/manual/i);
+  });
+
+  it("a FAIL newer than the last scheduled success is surfaced verbatim", () => {
+    const r = backupCheck(
+      {
+        ...base,
+        last: "2026-07-29T03:30:00Z scheduled",
+        lastScheduled: "2026-07-29T03:30:00Z scheduled",
+        lastFail: "[2026-07-30T01:30:03Z] FAIL: sqlite dump",
+      },
+      NOW,
+    );
+    expect(r?.status).toBe("warn");
+    expect(r?.detail).toContain("FAIL: sqlite dump");
+  });
+
+  it("a FAIL older than the last scheduled success does not warn", () => {
+    const r = backupCheck(
+      {
+        ...base,
+        last: "2026-07-30T03:30:00Z scheduled",
+        lastScheduled: "2026-07-30T03:30:00Z scheduled",
+        lastFail: "[2026-07-28T01:30:03Z] FAIL: sqlite dump",
+      },
+      NOW,
+    );
+    expect(r?.status).toBe("ok");
   });
 });
 

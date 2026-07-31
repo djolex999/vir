@@ -377,41 +377,116 @@ async function checkDaemon(cfg: Config | null): Promise<CheckResult> {
 // the threshold. Exported + parameterized for tests.
 export const BACKUP_STALE_MS = 48 * 3600 * 1000;
 
-export function backupCheck(
-  configured: boolean,
-  lastIso: string | null,
-  now: number,
-): CheckResult | null {
+export interface BackupState {
+  configured: boolean;
+  /** raw ~/.vir/backup.last — "<iso>" (legacy) or "<iso> manual|scheduled" */
+  last: string | null;
+  /** raw ~/.vir/backup.last.scheduled — written only by scheduled runs */
+  lastScheduled: string | null;
+  /** last "FAIL:" line from ~/.vir/backup.log, verbatim */
+  lastFail: string | null;
+}
+
+// A stamp is "<iso>" or "<iso> <trigger>". Legacy bare-ISO stamps predate the
+// trigger field and were overwhelmingly the nightly job — treating them as
+// manual would false-warn every upgraded install until its next scheduled run.
+function parseStamp(raw: string | null): { at: number; trigger: string } | null {
+  if (raw === null) return null;
+  const [iso, trigger = "scheduled"] = raw.trim().split(/\s+/);
+  const at = Date.parse(iso ?? "");
+  if (Number.isNaN(at)) return null;
+  return { at, trigger };
+}
+
+// Timestamp of a backup.log line like "[<iso>] FAIL: sqlite dump".
+function parseFailTime(line: string | null): number | null {
+  const iso = line?.match(/^\[([^\]]+)\]/)?.[1];
+  if (iso === undefined) return null;
+  const at = Date.parse(iso);
+  return Number.isNaN(at) ? null : at;
+}
+
+// Only a SCHEDULED success within 48h reads healthy: a manual run proves the
+// script works, not that the launchd job runs, so it must never silence the
+// warning. And a FAIL that post-dates the last scheduled success is surfaced
+// verbatim — a job that fails loudly every night into a log nobody reads is
+// still a silent failure.
+export function backupCheck(s: BackupState, now: number): CheckResult | null {
   // No backup job configured — not an error state, just not this install's
   // setup; emit no row rather than nag every vanilla install.
-  if (!configured) return null;
-  if (lastIso === null) {
-    return warn("backup", "job configured but never succeeded — run ~/.vir/backup.sh");
-  }
-  const at = Date.parse(lastIso);
-  if (Number.isNaN(at)) {
-    return warn("backup", "backup.last is unreadable — run ~/.vir/backup.sh");
-  }
-  const ageH = Math.round((now - at) / 3600000);
-  if (now - at > BACKUP_STALE_MS) {
+  if (!s.configured) return null;
+
+  const last = parseStamp(s.last);
+  const scheduled =
+    parseStamp(s.lastScheduled) ??
+    (last !== null && last.trigger !== "manual" ? last : null);
+  const failNote = s.lastFail === null ? "" : `\nlast failure: ${s.lastFail}`;
+  const manualNote =
+    last !== null && last.trigger === "manual"
+      ? `\nmanual run ${ageH(last.at, now)}h ago proves the script, not the job`
+      : "";
+
+  if (scheduled === null) {
+    if (s.last !== null && last === null) {
+      return warn("backup", "backup.last is unreadable — run ~/.vir/backup.sh");
+    }
     return warn(
       "backup",
-      `last success ${ageH}h ago (> 48h) — check ~/.vir/backup.log`,
+      `scheduled job has never succeeded — check ~/.vir/backup.log${manualNote}${failNote}`,
     );
   }
-  return ok("backup", `last success ${ageH}h ago`);
+  if (now - scheduled.at > BACKUP_STALE_MS) {
+    return warn(
+      "backup",
+      `last scheduled success ${ageH(scheduled.at, now)}h ago (> 48h) — check ~/.vir/backup.log${manualNote}${failNote}`,
+    );
+  }
+  const failAt = parseFailTime(s.lastFail);
+  if (failAt !== null && failAt > scheduled.at) {
+    return warn(
+      "backup",
+      `a run failed after the last scheduled success${failNote}`,
+    );
+  }
+  return ok("backup", `last scheduled success ${ageH(scheduled.at, now)}h ago`);
+}
+
+function ageH(at: number, now: number): number {
+  return Math.round((now - at) / 3600000);
+}
+
+function readTrimmed(path: string): string | null {
+  try {
+    return readFileSync(path, "utf8").trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function lastFailLine(logPath: string): string | null {
+  try {
+    const lines = readFileSync(logPath, "utf8").split("\n");
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      if (line !== undefined && line.includes("FAIL: ")) return line.trim();
+    }
+  } catch {
+    // no log yet
+  }
+  return null;
 }
 
 function checkBackup(): CheckResult | null {
   const virDir = join(homedir(), ".vir");
-  const configured = existsSync(join(virDir, "backup.sh"));
-  let lastIso: string | null = null;
-  try {
-    lastIso = readFileSync(join(virDir, "backup.last"), "utf8").trim();
-  } catch {
-    // never stamped
-  }
-  return backupCheck(configured, lastIso, Date.now());
+  return backupCheck(
+    {
+      configured: existsSync(join(virDir, "backup.sh")),
+      last: readTrimmed(join(virDir, "backup.last")),
+      lastScheduled: readTrimmed(join(virDir, "backup.last.scheduled")),
+      lastFail: lastFailLine(join(virDir, "backup.log")),
+    },
+    Date.now(),
+  );
 }
 
 // ── 8. Ollama (optional) ──────────────────────────────────────────────────────
