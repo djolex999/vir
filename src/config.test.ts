@@ -39,6 +39,10 @@ function sampleConfig(): Config {
     distillPdfs: true,
     filterToolCalls: "moderate",
     retrievalDiversity: 0.3,
+    projects: {},
+    notifications: true,
+    workflowTranscripts: "exclude",
+    agentTranscripts: "exclude",
     models: {
       classify: "claude-haiku-4-5-20251001",
       distill: "claude-sonnet-4-6",
@@ -76,6 +80,80 @@ describe("provider/model defaults (0.14.0: anthropic + claude-sonnet-5)", () => 
     if (parsed.success) {
       expect(parsed.data.models.distill).toBe("claude-sonnet-5");
     }
+  });
+});
+
+describe("projects decision map (three-state: include/exclude/absent=undecided)", () => {
+  const base = {
+    vaultPath: "/tmp/v",
+    outputDir: "vir",
+    claudeProjectsDir: "/tmp/p",
+    provider: "anthropic",
+    anthropicApiKey: "sk-ant-test",
+  };
+
+  it("an existing config without the key migrates to {} — every project undecided", async () => {
+    const { ConfigSchema } = await import("./config.js");
+    const parsed = ConfigSchema.safeParse(base);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.projects).toEqual({});
+  });
+
+  it("parses include/exclude decisions", async () => {
+    const { ConfigSchema } = await import("./config.js");
+    const parsed = ConfigSchema.safeParse({
+      ...base,
+      projects: { vir: "include", scratch: "exclude" },
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.projects).toEqual({
+        vir: "include",
+        scratch: "exclude",
+      });
+    }
+  });
+
+  it("rejects any decision value other than include/exclude", async () => {
+    const { ConfigSchema } = await import("./config.js");
+    const parsed = ConfigSchema.safeParse({
+      ...base,
+      projects: { vir: "pending" },
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("workflowTranscripts defaults to exclude and rejects unknown values", async () => {
+    const { ConfigSchema } = await import("./config.js");
+    const parsed = ConfigSchema.safeParse(base);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.workflowTranscripts).toBe("exclude");
+    expect(
+      ConfigSchema.safeParse({ ...base, workflowTranscripts: "ask" }).success,
+    ).toBe(false);
+    const inc = ConfigSchema.safeParse({
+      ...base,
+      workflowTranscripts: "include",
+    });
+    expect(inc.success).toBe(true);
+    if (inc.success) expect(inc.data.workflowTranscripts).toBe("include");
+  });
+
+  it("agentTranscripts defaults to exclude (existing installs), rejects unknown values", async () => {
+    const { ConfigSchema } = await import("./config.js");
+    const parsed = ConfigSchema.safeParse(base);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.agentTranscripts).toBe("exclude");
+    expect(
+      ConfigSchema.safeParse({ ...base, agentTranscripts: "ask" }).success,
+    ).toBe(false);
+  });
+
+  it("notifications defaults to true", async () => {
+    const { ConfigSchema } = await import("./config.js");
+    const parsed = ConfigSchema.safeParse(base);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.notifications).toBe(true);
   });
 });
 

@@ -30,6 +30,18 @@ import {
   stalenessCheck,
 } from "./lint/linter.js";
 import { runPipeline } from "./pipeline/run.js";
+import {
+  categorizeTranscriptHead,
+  classifyTranscript,
+  estimateSessionCost,
+  groupByProject,
+  readTranscriptHead,
+} from "./pipeline/projects.js";
+import {
+  persistProjectDecisions,
+  promptProjectDecisions,
+} from "./cli/projectSelect.js";
+import { gatherProjectsReport } from "./cli/projects.js";
 import { scanSessions } from "./pipeline/scanner.js";
 import { parseSession } from "./pipeline/parser.js";
 import { scoreSession } from "./pipeline/filter.js";
@@ -137,6 +149,18 @@ program
     "--dry-run",
     "Estimate per-session cost after filtering, then exit before any LLM call",
   )
+  .option(
+    "--only <project>",
+    "Restrict this run to a project (repeatable, never persisted)",
+    (v: string, acc: string[]) => acc.concat(v),
+    [] as string[],
+  )
+  .option(
+    "--exclude-project <project>",
+    "Skip a project for this run only (repeatable, never persisted)",
+    (v: string, acc: string[]) => acc.concat(v),
+    [] as string[],
+  )
   .action(
     runAction(
       async (opts: {
@@ -148,6 +172,8 @@ program
         yes?: boolean;
         forceModel?: string;
         dryRun?: boolean;
+        only?: string[];
+        excludeProject?: string[];
       }) => {
         const cfg = loadConfig();
         const daemon = opts.daemon === true;
@@ -186,6 +212,12 @@ program
             throw err;
           }
         }
+        // Interactivity for the undecided-projects triage is a TTY question,
+        // not a --yes question: --yes skips the COST prompt but a human at a
+        // terminal can still answer include/exclude. launchd/cron have no
+        // TTY, so the daemon path can never reach the prompt.
+        const canPromptProjects =
+          process.stdin.isTTY === true && !daemon && !dryRun;
         let summary;
         try {
           summary = await runPipeline(cfg, {
@@ -197,6 +229,27 @@ program
             pdfsOnly,
             forceDistillModel: opts.forceModel,
             dryRun,
+            onlyProjects: opts.only?.length ? opts.only : undefined,
+            excludeProjects: opts.excludeProject?.length
+              ? opts.excludeProject
+              : undefined,
+            onUndecidedProjects: canPromptProjects
+              ? async (pending) => {
+                  const answers = await promptProjectDecisions(
+                    pending,
+                    cfg.projects,
+                    `${pending.length} project(s) have sessions awaiting a decision — select the ones vir should track`,
+                  );
+                  persistProjectDecisions(answers);
+                  ui.row(
+                    ui.success(ui.CHECK),
+                    ui.text(
+                      `saved ${Object.keys(answers).length} project decision(s)`,
+                    ),
+                  );
+                  return answers;
+                }
+              : undefined,
             onConfirm: skipPrompt
               ? undefined
               : async (newCount) => confirmCostIfNeeded(cfg, newCount),
@@ -1250,6 +1303,112 @@ program
     }),
   );
 
+const projectsCmd = program
+  .command("projects")
+  .description("Per-project distillation decisions: table + include/exclude");
+
+projectsCmd
+  .option("--json", "Machine-readable output")
+  .action(
+    runAction(async (opts: { json?: boolean }) => {
+      const cfg = loadConfig();
+      const rows = gatherProjectsReport(cfg);
+      if (opts.json === true) {
+        process.stdout.write(
+          JSON.stringify(
+            rows.map(({ pendingPaths: _pendingPaths, ...r }) => r),
+            null,
+            2,
+          ) + "\n",
+        );
+        return;
+      }
+      ui.header("projects");
+      ui.blank();
+      if (rows.length === 0) {
+        ui.line(ui.dim("  no projects found under the Claude projects dir"));
+        return;
+      }
+      const nameW = Math.min(
+        Math.max(...rows.map((r) => r.name.length), 7),
+        44,
+      );
+      ui.line(
+        ui.dim(
+          `  ${"project".padEnd(nameW)}  decision   sessions  distilled  pending  excluded  est. pending`,
+        ),
+      );
+      for (const r of rows) {
+        const decision =
+          r.decision === "include"
+            ? ui.success("include  ")
+            : r.decision === "exclude"
+              ? ui.dim("exclude  ")
+              : ui.warn("undecided");
+        const nestedParts = [
+          ...(r.workflowSessions > 0 ? [`+${r.workflowSessions} workflow`] : []),
+          ...(r.sidechainSessions > 0
+            ? [`+${r.sidechainSessions} sidechain`]
+            : []),
+          ...(r.agentSessions > 0 ? [`+${r.agentSessions} agent`] : []),
+        ];
+        const nestedNote =
+          nestedParts.length > 0 ? ui.dim(`  (${nestedParts.join(", ")})`) : "";
+        ui.line(
+          `  ${ui.text(r.name.padEnd(nameW))}  ${decision}  ${String(r.sessions).padStart(8)}  ${String(r.distilled).padStart(9)}  ${String(r.pending).padStart(7)}  ${String(r.excluded).padStart(8)}  ${r.pending > 0 ? ui.warn(ui.formatUsd(r.estPendingCost).padStart(12)) : ui.dim("—".padStart(12))}${nestedNote}`,
+        );
+      }
+      const pending = rows.filter(
+        (r) => r.decision === "undecided" && r.pending > 0,
+      );
+      if (pending.length > 0) {
+        ui.blank();
+        ui.line(
+          ui.dim(
+            `  ${pending.length} project(s) undecided — vir projects include|exclude <name>, or answer the prompt on the next interactive vir run`,
+          ),
+        );
+      }
+    }),
+  );
+
+async function cmdProjectDecision(
+  name: string,
+  decision: "include" | "exclude",
+): Promise<void> {
+  const cfg = loadConfig();
+  const rows = gatherProjectsReport(cfg);
+  const known = rows.find((r) => r.name === name);
+  if (!known) {
+    console.error(
+      chalk.red(
+        `unknown project '${name}' — seen projects: ${rows.map((r) => r.name).join(", ") || "(none)"}`,
+      ),
+    );
+    process.exitCode = 1;
+    return;
+  }
+  persistProjectDecisions({ [name]: decision });
+  ui.row(
+    ui.success(ui.CHECK),
+    ui.text(
+      decision === "include"
+        ? `${name} will be distilled from the next run (${known.pending} session(s) pending)`
+        : `${name} excluded — forward-looking only; already-distilled notes stay in the vault`,
+    ),
+  );
+}
+
+projectsCmd
+  .command("include <name>")
+  .description("Track a project's sessions from now on")
+  .action(runAction(async (name: string) => cmdProjectDecision(name, "include")));
+
+projectsCmd
+  .command("exclude <name>")
+  .description("Stop tracking a project (existing notes are untouched)")
+  .action(runAction(async (name: string) => cmdProjectDecision(name, "exclude")));
+
 program
   .command("status")
   .description("Show processing status + knowledge base breakdown")
@@ -1781,6 +1940,90 @@ async function cmdInit(): Promise<void> {
     }),
   );
 
+  // ── project triage (the primary decision point) ─────────────────────────
+  // Every project found under the Claude projects dir is shown once with its
+  // session count and rough cost; selected = include, unselected = exclude.
+  // Projects that appear later start undecided and trigger the run prompt.
+  let projectDecisions: Record<string, "include" | "exclude"> = {};
+  let agentTranscriptsAnswer: "exclude" | "include" | undefined;
+  try {
+    const projectsDirX = expandHome(claudeProjectsDir);
+    const allFound = scanSessions(projectsDirX);
+    // Triage counts + the agent-transcript question. Only top-level
+    // transcripts count (nested workflow/sidechain have their own filter),
+    // and agent transcripts are excluded from the per-project multi-select
+    // numbers so the costs shown reflect what would actually distill.
+    const topLevel = allFound.filter(
+      (s) => classifyTranscript(s.path, projectsDirX) === "session",
+    );
+    const counts = { interactive: 0, agent: 0, stub: 0 };
+    const agentPaths = new Set<string>();
+    for (const s of topLevel) {
+      const cat = categorizeTranscriptHead(readTranscriptHead(s.path), s.size);
+      counts[cat] += 1;
+      if (cat === "agent") agentPaths.add(s.path);
+    }
+    if (counts.agent > 0) {
+      ui.blank();
+      ui.line(
+        ui.dim(
+          `  ${counts.interactive} interactive · ${counts.agent} SDK-launched · ${counts.stub} stubs`,
+        ),
+      );
+      agentTranscriptsAnswer = (await select({
+        message:
+          "SDK-launched agent transcripts (review/verify harness output) — distill them?",
+        default: existing?.agentTranscripts ?? "exclude",
+        choices: [
+          {
+            name: "Exclude  (recommended — agent-internal execution, not your decisions)",
+            value: "exclude" as const,
+          },
+          { name: "Include  (distill them like any session)", value: "include" as const },
+        ],
+      })) as "exclude" | "include";
+    }
+    const found =
+      agentTranscriptsAnswer !== "include"
+        ? topLevel.filter((s) => !agentPaths.has(s.path))
+        : topLevel;
+    const groups = [...groupByProject(found, projectsDirX).values()];
+    if (groups.length > 0) {
+      const classifyId = normalizeModelName(classifyModel, provider);
+      const distillId = normalizeModelName(distillModel, provider);
+      const infos = groups
+        .map((g) => ({
+          name: g.name,
+          sessionCount: g.sessions.length,
+          totalBytes: g.totalBytes,
+          estCost: g.sessions.reduce(
+            (sum, s) =>
+              sum +
+              estimateSessionCost(provider, classifyId, distillId, s.size),
+            0,
+          ),
+        }))
+        .sort((a, b) => b.estCost - a.estCost);
+      ui.blank();
+      ui.line(
+        ui.dim(
+          "  Which projects should vir distill? Costs are rough upper bounds.",
+        ),
+      );
+      projectDecisions = await promptProjectDecisions(
+        infos,
+        existing?.projects ?? {},
+        "Projects to track",
+      );
+    }
+  } catch (err) {
+    console.warn(
+      chalk.yellow(
+        `project scan failed (${(err as Error).message}) — you can decide later with vir projects`,
+      ),
+    );
+  }
+
   const parsed = ConfigSchema.safeParse(
     buildInitConfig(existing, {
       vaultPath,
@@ -1795,6 +2038,8 @@ async function cmdInit(): Promise<void> {
       pdfsDir,
       classifyModel,
       distillModel,
+      projects: projectDecisions,
+      agentTranscripts: agentTranscriptsAnswer,
     }),
   );
 

@@ -28,6 +28,31 @@ export const ConfigSchema = z
     // Backward-compatible: unset → "standard" → no change.
     kieTopUpTier: z.enum(["standard", "high"]).default("standard"),
     filterThreshold: z.number().min(0).max(1).default(0.4),
+    // Per-project distillation decisions, keyed by decoded project name.
+    // Three-state by design: absent from the map = UNDECIDED (a real, visible
+    // state — never an implicit include or exclude). Existing configs without
+    // the key migrate to {} via the default, i.e. everything undecided, so
+    // upgrading forces a triage pass instead of silently auto-including.
+    projects: z
+      .record(z.string(), z.enum(["include", "exclude"]))
+      .default({}),
+    // Desktop notifications (macOS osascript / Linux notify-send), e.g. the
+    // "N projects awaiting decision" nudge from the daemon path.
+    notifications: z.boolean().default(true),
+    // Nested workflow (wf_*) and main-loop Agent-tool sidechain transcripts
+    // are agent-internal execution, not user decisions — distilling them
+    // pollutes the vault with worker-output payloads (the serbeval clitics
+    // notes). One knob covers both categories; they stay separately countable
+    // via their distinct skip reasons. Default exclude — the evidence said
+    // they're categorically not durable knowledge.
+    workflowTranscripts: z.enum(["exclude", "include"]).default("exclude"),
+    // SDK-launched agent transcripts stored at the project TOP level (review/
+    // verify harness agents — first user line's entrypoint starts with "sdk").
+    // Separate knob from workflowTranscripts: different detection (launch
+    // signature vs path), different population (they dominate top-level
+    // volume), independently reversible. New installs decide this at vir init;
+    // existing installs get exclude via the default, with a run-time notice.
+    agentTranscripts: z.enum(["exclude", "include"]).default("exclude"),
     // Path to the raw/ directory of web articles (e.g. Obsidian Web Clipper
     // output). Optional — when unset, article ingestion is skipped entirely
     // and existing session-only configs keep working unchanged.

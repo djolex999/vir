@@ -13,6 +13,12 @@ export interface InitAnswers {
   pdfsDir: string | undefined;
   classifyModel: string;
   distillModel: string;
+  // Decisions from the wizard's project multi-select. Merged OVER existing
+  // decisions — projects the wizard didn't show stay as they were.
+  projects: Record<string, "include" | "exclude">;
+  // The wizard's agent-transcript question; undefined (scan failed, question
+  // skipped) falls back to the existing setting, then the schema default.
+  agentTranscripts?: "exclude" | "include";
 }
 
 // Assembles the candidate config a re-run of `vir init` hands to
@@ -43,6 +49,10 @@ export function buildInitConfig(
     distillPdfs: existing?.distillPdfs,
     filterToolCalls: existing?.filterToolCalls,
     retrievalDiversity: existing?.retrievalDiversity,
+    projects: { ...existing?.projects, ...a.projects },
+    notifications: existing?.notifications,
+    workflowTranscripts: existing?.workflowTranscripts,
+    agentTranscripts: a.agentTranscripts ?? existing?.agentTranscripts,
     models: {
       classify: a.classifyModel,
       distill: a.distillModel,

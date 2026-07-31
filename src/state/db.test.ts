@@ -180,3 +180,212 @@ describe("StateDb attempts counter — retry bound", () => {
     expect(db.retryExhausted(path)).toBe(false);
   });
 });
+
+describe("StateDb project skip reasons", () => {
+  let dir: string;
+  let db: StateDb;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vir-db-"));
+    db = new StateDb(join(dir, "vir.db"));
+  });
+  afterEach(() => {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("record stores a skip reason and getByPath returns it", () => {
+    db.record({
+      path: "/p/a.jsonl",
+      hash: "h1",
+      skipped: true,
+      notePaths: [],
+      skipReason: "project-excluded",
+    });
+    expect(db.getByPath("/p/a.jsonl")?.skip_reason).toBe("project-excluded");
+  });
+
+  it("a project-excluded row is NOT processed — flipping to include re-distills it", () => {
+    db.record({
+      path: "/p/a.jsonl",
+      hash: "h1",
+      skipped: true,
+      notePaths: [],
+      skipReason: "project-excluded",
+    });
+    expect(db.isProcessed("/p/a.jsonl", "h1")).toBe(false);
+  });
+
+  it("a project-pending row is NOT processed — deciding later re-distills it", () => {
+    db.record({
+      path: "/p/b.jsonl",
+      hash: "h1",
+      skipped: true,
+      notePaths: [],
+      skipReason: "project-pending",
+    });
+    expect(db.isProcessed("/p/b.jsonl", "h1")).toBe(false);
+  });
+
+  it("a successful distill clears a stale project skip reason", () => {
+    db.record({
+      path: "/p/c.jsonl",
+      hash: "h1",
+      skipped: true,
+      notePaths: [],
+      skipReason: "project-pending",
+    });
+    db.record({
+      path: "/p/c.jsonl",
+      hash: "h1",
+      skipped: false,
+      notePaths: ["/vault/n.md"],
+      content: "body",
+      category: "pattern",
+      topic: "t",
+      project: "vir",
+    });
+    const row = db.getByPath("/p/c.jsonl");
+    expect(row?.skip_reason).toBeNull();
+    expect(db.isProcessed("/p/c.jsonl", "h1")).toBe(true);
+  });
+
+  it("a heuristic-filter skip (no reason) still counts as processed", () => {
+    db.record({
+      path: "/p/d.jsonl",
+      hash: "h1",
+      skipped: true,
+      notePaths: [],
+    });
+    expect(db.isProcessed("/p/d.jsonl", "h1")).toBe(true);
+  });
+
+  it("countBySkipReason groups project-filtered rows", () => {
+    db.record({ path: "/p/e1.jsonl", hash: "h", skipped: true, notePaths: [], skipReason: "project-pending" });
+    db.record({ path: "/p/e2.jsonl", hash: "h", skipped: true, notePaths: [], skipReason: "project-pending" });
+    db.record({ path: "/p/e3.jsonl", hash: "h", skipped: true, notePaths: [], skipReason: "project-excluded" });
+    expect(db.countBySkipReason()).toEqual({
+      "project-pending": 2,
+      "project-excluded": 1,
+    });
+  });
+});
+
+describe("StateDb.listSessionMeta", () => {
+  let dir: string;
+  let db: StateDb;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vir-db-"));
+    db = new StateDb(join(dir, "vir.db"));
+  });
+  afterEach(() => {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("returns per-session status rows for aggregation", () => {
+    db.record({
+      path: "/p/demo/a.jsonl",
+      hash: "h1",
+      skipped: false,
+      notePaths: ["/v/n.md"],
+      content: "body",
+      category: "pattern",
+      topic: "t",
+      project: "demo",
+    });
+    db.record({
+      path: "/p/demo/b.jsonl",
+      hash: "h2",
+      skipped: true,
+      notePaths: [],
+      skipReason: "project-pending",
+    });
+    const rows = db.listSessionMeta();
+    expect(rows).toHaveLength(2);
+    const a = rows.find((r) => r.path === "/p/demo/a.jsonl");
+    const b = rows.find((r) => r.path === "/p/demo/b.jsonl");
+    expect(a).toMatchObject({ hash: "h1", skipped: 0, skipReason: null, hasContent: 1 });
+    expect(b).toMatchObject({ hash: "h2", skipped: 1, skipReason: "project-pending", hasContent: 0 });
+  });
+});
+
+describe("StateDb transcript-category skip reasons are reversible", () => {
+  let dir: string;
+  let db: StateDb;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vir-db-"));
+    db = new StateDb(join(dir, "vir.db"));
+  });
+  afterEach(() => {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("workflow-transcript and sidechain-transcript rows are NOT processed — flipping the knob re-enters them", () => {
+    db.record({
+      path: "/p/s/subagents/workflows/wf_1/a.jsonl",
+      hash: "h1",
+      skipped: true,
+      notePaths: [],
+      skipReason: "workflow-transcript",
+    });
+    db.record({
+      path: "/p/s/subagents/b.jsonl",
+      hash: "h2",
+      skipped: true,
+      notePaths: [],
+      skipReason: "sidechain-transcript",
+    });
+    expect(db.isProcessed("/p/s/subagents/workflows/wf_1/a.jsonl", "h1")).toBe(false);
+    expect(db.isProcessed("/p/s/subagents/b.jsonl", "h2")).toBe(false);
+    expect(db.countBySkipReason()).toEqual({
+      "workflow-transcript": 1,
+      "sidechain-transcript": 1,
+    });
+  });
+});
+
+describe("StateDb agent-transcript rows", () => {
+  let dir: string;
+  let db: StateDb;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vir-db-"));
+    db = new StateDb(join(dir, "vir.db"));
+  });
+  afterEach(() => {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("persists the detected entrypoint and keeps the row re-enterable", () => {
+    db.record({
+      path: "/p/x/agent1.jsonl",
+      hash: "h1",
+      skipped: true,
+      notePaths: [],
+      skipReason: "agent-transcript",
+      entrypoint: "sdk-py",
+    });
+    const row = db.getByPath("/p/x/agent1.jsonl");
+    expect(row?.skip_reason).toBe("agent-transcript");
+    expect(row?.entrypoint).toBe("sdk-py");
+    expect(db.isProcessed("/p/x/agent1.jsonl", "h1")).toBe(false);
+  });
+
+  it("counts skipped agent transcripts grouped by entrypoint", () => {
+    db.record({ path: "/p/a.jsonl", hash: "h", skipped: true, notePaths: [], skipReason: "agent-transcript", entrypoint: "sdk-py" });
+    db.record({ path: "/p/b.jsonl", hash: "h", skipped: true, notePaths: [], skipReason: "agent-transcript", entrypoint: "sdk-py" });
+    db.record({ path: "/p/c.jsonl", hash: "h", skipped: true, notePaths: [], skipReason: "agent-transcript", entrypoint: "sdk-ts" });
+    expect(db.countAgentEntrypoints()).toEqual({ "sdk-py": 2, "sdk-ts": 1 });
+  });
+
+  it("a later record without entrypoint preserves the stored one", () => {
+    db.record({ path: "/p/d.jsonl", hash: "h1", skipped: true, notePaths: [], skipReason: "agent-transcript", entrypoint: "sdk-py" });
+    db.record({ path: "/p/d.jsonl", hash: "h2", skipped: true, notePaths: [], skipReason: "agent-transcript" });
+    expect(db.getByPath("/p/d.jsonl")?.entrypoint).toBe("sdk-py");
+  });
+});

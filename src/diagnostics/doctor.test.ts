@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { backupCheck, daemonCheck, ollamaCheck } from "./doctor.js";
+import {
+  agentTranscriptsCheck,
+  backupCheck,
+  daemonCheck,
+  ollamaCheck,
+  pendingProjectsCheck,
+} from "./doctor.js";
 
 // The doctor Ollama check must be probe-based, not reachability-based: a
 // daemon that answers /api/tags while embed() throws (model deleted, legacy
@@ -83,5 +89,47 @@ describe("daemonCheck — old-label migration awareness", () => {
 
   it("no stale label → behavior unchanged", () => {
     expect(daemonCheck(true, true, "launchd", 3, null).status).toBe("ok");
+  });
+});
+
+describe("pendingProjectsCheck — undecided is a decision with a deadline", () => {
+  const NOW2 = Date.parse("2026-07-30T12:00:00Z");
+
+  it("ok when every project is decided", () => {
+    const r = pendingProjectsCheck(0, 0, null, NOW2);
+    expect(r.status).toBe("ok");
+  });
+
+  it("warns with counts, oldest transcript age, and the ~30-day prune deadline", () => {
+    const oldest = "2026-07-05T12:00:00Z"; // 25 days old
+    const r = pendingProjectsCheck(14, 3, oldest, NOW2);
+    expect(r.status).toBe("warn");
+    expect(r.detail).toContain("14");
+    expect(r.detail).toContain("3");
+    expect(r.detail).toContain("25d");
+    expect(r.detail).toMatch(/30 day/);
+    expect(r.detail).toMatch(/vir projects/);
+  });
+
+  it("warns even without a readable mtime", () => {
+    const r = pendingProjectsCheck(2, 1, null, NOW2);
+    expect(r.status).toBe("warn");
+    expect(r.detail).toContain("2");
+  });
+});
+
+describe("agentTranscriptsCheck — informational, never a warning", () => {
+  it("reports the skip count and entrypoints seen", () => {
+    const r = agentTranscriptsCheck({ "sdk-py": 66, "sdk-ts": 1 });
+    expect(r.status).toBe("ok");
+    expect(r.detail).toContain("67");
+    expect(r.detail).toContain("sdk-py");
+    expect(r.detail).toContain("sdk-ts");
+  });
+
+  it("zero skips reads as none", () => {
+    const r = agentTranscriptsCheck({});
+    expect(r.status).toBe("ok");
+    expect(r.detail).toMatch(/none/i);
   });
 });

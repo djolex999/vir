@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.14.0 — 2026-07-31
+
+**Project-level and transcript-category distillation filtering.** Every
+filter gates at the SCAN phase — before the paid classify call — and every
+skip records a DB row with its reason; never a silent omission.
+
+- **Per-project decisions** (`projects` config map, three-state: include /
+  exclude / absent = undecided). Undecided sessions record `project-pending`
+  and wait; the daemon never prompts (macOS notification instead, behind the
+  new `notifications` flag); interactive `vir run` and `vir init` triage via
+  a multi-select showing session counts and rough costs. Multi-select
+  defaults to over-capture (undecided starts checked) — transcripts prune at
+  ~30 days, so a wrong exclude is permanent.
+- **`vir projects`**: per-project table (decision, sessions, distilled,
+  pending, excluded, est. pending cost), `include|exclude <name>`, `--json`.
+- **Project identity** decoded from transcript dir names by longest match
+  against real on-disk directories (handles dashed names, dots, deleted
+  cwds; falls back to the raw dir name, never guesses).
+- **Nested workflow/subagent transcripts** (`subagents/…`, `wf_*`) are
+  agent-internal execution, excluded by default (`workflowTranscripts`),
+  with distinct `workflow-transcript` / `sidechain-transcript` skip reasons.
+- **Top-level SDK-launched harness agents** (review/verify transcripts —
+  first user line's `entrypoint` starts with `"sdk"`) excluded by default
+  under their own `agentTranscripts` key and `agent-transcript` reason;
+  detected entrypoint persisted per session; doctor reports counts by
+  entrypoint. On the audited machine these were 67 of 97 top-level
+  transcripts.
+- **All filter skips are reversible** (flipping a decision or knob re-enters
+  the transcripts) and **forward-only** (a row holding a distilled note is
+  never overwritten — existing notes stay retrievable).
+- **One-off run scoping**: `vir run --only <p>` / `--exclude-project <p>`
+  (repeatable, never persisted).
+- **`vir doctor`**: warns on undecided projects (with oldest-transcript age
+  and the ~30-day prune deadline); informational agent-transcript line.
+- **Default provider is now anthropic + claude-sonnet-5** (Kie stays fully
+  supported; existing kie configs untouched, one-line notice on interactive
+  runs). Provider preflight probe makes an outage one clear failure instead
+  of N retry chains.
+- **`vir init` masks API-key input** and echoes only a masked confirmation.
+- New dep: `@inquirer/checkbox` (the multi-select). Additive DB migrations:
+  `skip_reason`, `entrypoint`.
+
 ## 0.13.0 — 2026-07-30
 
 - **Retry bound:** 3 consecutive failed distills park a session (new

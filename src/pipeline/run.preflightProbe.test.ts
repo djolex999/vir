@@ -84,6 +84,7 @@ function cfg(): Config {
     provider: "anthropic",
     anthropicApiKey: "sk-ant-test",
     filterThreshold: 1,
+    projects: { t: "include" },
     models: { classify: "claude-haiku-4-5", distill: "claude-sonnet-5" },
   } as unknown as Config;
 }

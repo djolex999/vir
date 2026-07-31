@@ -32,6 +32,7 @@ import {
   probeEmbedding,
 } from "../search/embedder.js";
 import { isClaudeAvailable, isInstalled } from "../mcp/install.js";
+import { gatherProjectsReport } from "../cli/projects.js";
 import { StateDb } from "../state/db.js";
 import { buildDoctorResult } from "../output/json.js";
 import * as ui from "../ui/display.js";
@@ -200,6 +201,90 @@ function checkSessions(cfg: Config): CheckResult {
   const n = countJsonl(dir);
   if (n === 0) return warn("Claude Code sessions", "no sessions found yet");
   return ok("Claude Code sessions", `${n} JSONL files found`);
+}
+
+// ── 5b. project decisions ─────────────────────────────────────────────────────
+// Undecided projects are a spend decision with a DEADLINE: Claude Code prunes
+// transcripts at ~30 days, so a session that pends long enough is gone before
+// anyone decides. Exported + pure for tests.
+export function pendingProjectsCheck(
+  pendingSessions: number,
+  pendingProjects: number,
+  oldestPendingMtimeIso: string | null,
+  now: number,
+): CheckResult {
+  if (pendingSessions === 0) {
+    return ok("project decisions", "all projects decided");
+  }
+  let age = "";
+  if (oldestPendingMtimeIso !== null) {
+    const days = Math.floor(
+      (now - Date.parse(oldestPendingMtimeIso)) / 86_400_000,
+    );
+    if (Number.isFinite(days) && days >= 0) {
+      age = ` · oldest transcript ${days}d old`;
+    }
+  }
+  return warn(
+    "project decisions",
+    `${pendingSessions} session(s) in ${pendingProjects} undecided project(s)${age} — Claude Code prunes transcripts at ~30 days, so undecided means lost; run vir projects`,
+  );
+}
+
+// Informational: how many SDK-launched agent transcripts the filter has
+// skipped, by entrypoint. Always ok — this is the filter working as
+// configured, not a problem state.
+export function agentTranscriptsCheck(
+  byEntrypoint: Record<string, number>,
+): CheckResult {
+  const entries = Object.entries(byEntrypoint);
+  const total = entries.reduce((s, [, n]) => s + n, 0);
+  if (total === 0) return ok("agent transcripts", "none skipped");
+  const eps = entries
+    .sort((a, b) => b[1] - a[1])
+    .map(([ep, n]) => `${ep} (${n})`)
+    .join(", ");
+  return ok("agent transcripts", `${total} skipped · entrypoints: ${eps}`);
+}
+
+function checkAgentTranscripts(): CheckResult {
+  if (!existsSync(STATE_PATH)) return agentTranscriptsCheck({});
+  let db: StateDb | null = null;
+  try {
+    db = new StateDb(STATE_PATH, { readonly: true });
+    return agentTranscriptsCheck(db.countAgentEntrypoints());
+  } catch (err) {
+    return agentTranscriptsCheck({});
+  } finally {
+    db?.close();
+  }
+}
+
+function checkPendingProjects(cfg: Config): CheckResult {
+  try {
+    const rows = gatherProjectsReport(cfg);
+    const pendingRows = rows.filter((r) => r.pending > 0);
+    const pendingSessions = pendingRows.reduce((s, r) => s + r.pending, 0);
+    let oldest: string | null = null;
+    for (const r of pendingRows) {
+      for (const p of r.pendingPaths) {
+        try {
+          const iso = statSync(p).mtime.toISOString();
+          if (oldest === null || iso < oldest) oldest = iso;
+        } catch {
+          // unreadable transcript — age just stays unknown
+        }
+      }
+    }
+    return pendingProjectsCheck(
+      pendingSessions,
+      pendingRows.length,
+      oldest,
+      Date.now(),
+    );
+  } catch (err) {
+    return warn("project decisions", truncate((err as Error).message));
+  }
 }
 
 // ── 6. sqlite database ────────────────────────────────────────────────────────
@@ -398,12 +483,15 @@ export async function runDoctor(): Promise<void> {
     record(checkVaultPath(cfg));
     record(checkOutputDir(cfg));
     record(checkSessions(cfg));
+    record(checkPendingProjects(cfg));
+    record(checkAgentTranscripts());
   } else {
     for (const label of [
       "api key",
       "vault path",
       "output directory",
       "Claude Code sessions",
+      "project decisions",
     ]) {
       record(fail(label, "skipped — fix config first"));
     }

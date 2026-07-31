@@ -1,6 +1,6 @@
 {
   "name": "@djolex999/vir-cli",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "An LLM Wiki for Claude Code, in your Obsidian vault.",
   "author": "Djordje Marković <djordje@growthq.rs>",
   "license": "MIT",
@@ -47,6 +47,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
+    "@inquirer/checkbox": "^5.2.1",
     "@inquirer/confirm": "^6.0.13",
     "@inquirer/input": "^5.0.13",
     "@inquirer/select": "^5.1.5",

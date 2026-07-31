@@ -18,6 +18,8 @@ export function parseSession(path: string, hash: string): ParsedSession {
   let startedAt: string | null = null;
   let endedAt: string | null = null;
   let toolCallCount = 0;
+  let isSidechain = false;
+  let entrypoint: string | null = null;
   const filesTouched = new Set<string>();
   const assistantBlocks: string[] = [];
   const userBlocks: string[] = [];
@@ -33,6 +35,15 @@ export function parseSession(path: string, hash: string): ParsedSession {
       evt = JSON.parse(line) as TranscriptLine;
     } catch {
       continue;
+    }
+
+    if (evt.isSidechain === true) isSidechain = true;
+    if (
+      entrypoint === null &&
+      evt.type === "user" &&
+      typeof evt.entrypoint === "string"
+    ) {
+      entrypoint = evt.entrypoint;
     }
 
     const ts = typeof evt.timestamp === "string" ? evt.timestamp : null;
@@ -120,6 +131,8 @@ export function parseSession(path: string, hash: string): ParsedSession {
     userText,
     rawSummary,
     transcriptText,
+    isSidechain,
+    entrypoint,
   };
 }
 

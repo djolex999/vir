@@ -83,6 +83,7 @@ function cfg(): Config {
     claudeProjectsDir: "/tmp/vir-test-projects",
     provider: "kie",
     filterThreshold: 1,
+    projects: { t: "include" },
     models: { classify: "claude-haiku-4-5", distill: "claude-sonnet-4-6" },
   } as unknown as Config;
 }

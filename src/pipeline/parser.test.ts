@@ -119,3 +119,84 @@ describe("parseSession tool block emission", () => {
     expect(parsed.transcriptText).toContain("[tool_result: unknown]");
   });
 });
+
+describe("parseSession — sidechain detection (backstop for the transcript filter)", () => {
+  it("marks a transcript whose lines carry isSidechain: true", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vir-parser-"));
+    const p = join(dir, "agent-a1.jsonl");
+    writeFileSync(
+      p,
+      [
+        JSON.stringify({
+          isSidechain: true,
+          agentId: "a1",
+          type: "user",
+          message: { role: "user", content: "do the thing" },
+          timestamp: "2026-07-30T10:00:00Z",
+        }),
+        JSON.stringify({
+          type: "assistant",
+          message: { role: "assistant", content: [{ type: "text", text: "done" }] },
+          timestamp: "2026-07-30T10:01:00Z",
+        }),
+      ].join("\n"),
+    );
+    const parsed = parseSession(p, "h");
+    rmSync(dir, { recursive: true, force: true });
+    expect(parsed.isSidechain).toBe(true);
+  });
+
+  it("a normal transcript is not a sidechain", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vir-parser-"));
+    const p = join(dir, "sess.jsonl");
+    writeFileSync(
+      p,
+      JSON.stringify({
+        type: "user",
+        message: { role: "user", content: "hi" },
+        timestamp: "2026-07-30T10:00:00Z",
+      }),
+    );
+    const parsed = parseSession(p, "h");
+    rmSync(dir, { recursive: true, force: true });
+    expect(parsed.isSidechain).toBe(false);
+  });
+});
+
+describe("parseSession — first-user-line entrypoint (agent-transcript backstop)", () => {
+  it("captures the entrypoint of the first user line", () => {
+    const d = mkdtempSync(join(tmpdir(), "vir-parser-"));
+    const p = join(d, "agent-a2.jsonl");
+    writeFileSync(
+      p,
+      [
+        JSON.stringify({ type: "queue-operation" }),
+        JSON.stringify({
+          type: "user",
+          entrypoint: "sdk-py",
+          message: { role: "user", content: "review" },
+        }),
+        JSON.stringify({
+          type: "user",
+          entrypoint: "cli",
+          message: { role: "user", content: "later" },
+        }),
+      ].join("\n"),
+    );
+    const parsed = parseSession(p, "h");
+    rmSync(d, { recursive: true, force: true });
+    expect(parsed.entrypoint).toBe("sdk-py");
+  });
+
+  it("entrypoint is null when no user line carries one", () => {
+    const d = mkdtempSync(join(tmpdir(), "vir-parser-"));
+    const p = join(d, "sess.jsonl");
+    writeFileSync(
+      p,
+      JSON.stringify({ type: "user", message: { role: "user", content: "hi" } }),
+    );
+    const parsed = parseSession(p, "h");
+    rmSync(d, { recursive: true, force: true });
+    expect(parsed.entrypoint).toBeNull();
+  });
+});

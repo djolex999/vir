@@ -19,7 +19,30 @@ export interface SessionRow {
   confidence: number | null;
   started_at: string | null;
   attempts: number;
+  skip_reason: string | null;
+  entrypoint: string | null;
 }
+
+// Why a session was skipped without ever reaching a paid call. Heuristic-
+// filter and low-confidence skips keep a NULL reason (their skip is final
+// for that hash, so they stay "processed") — unlike these gated reasons,
+// which must re-enter the pipeline when the config decision changes:
+// project-* when the project decision flips, *-transcript when the
+// workflowTranscripts knob flips to "include".
+export type SkipReason =
+  | "project-excluded"
+  | "project-pending"
+  | "workflow-transcript"
+  | "sidechain-transcript"
+  | "agent-transcript";
+
+const GATED_SKIP_REASONS: ReadonlySet<string> = new Set([
+  "project-excluded",
+  "project-pending",
+  "workflow-transcript",
+  "sidechain-transcript",
+  "agent-transcript",
+]);
 
 export interface EmbeddingRow {
   sessionId: string;
@@ -182,6 +205,16 @@ const ADDED_COLUMNS: Array<{ name: string; ddl: string }> = [
     // with the first failure recorded after this migration.
     ddl: "ALTER TABLE sessions ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0",
   },
+  {
+    name: "skip_reason",
+    ddl: "ALTER TABLE sessions ADD COLUMN skip_reason TEXT",
+  },
+  {
+    // Launch signature of the transcript's first user line (e.g. "sdk-py").
+    // Recorded whenever the pipeline knows it; NULL for pre-existing rows.
+    name: "entrypoint",
+    ddl: "ALTER TABLE sessions ADD COLUMN entrypoint TEXT",
+  },
 ];
 
 // After this many consecutive failed distills, `vir run` stops retrying the
@@ -296,9 +329,55 @@ export class StateDb {
       .get(path) as SessionRow | undefined;
   }
 
+  // A gated skip row (project filter or transcript-category filter) never
+  // counts as processed: its transcript was recorded but never distilled, so
+  // the moment the gating decision changes it must re-enter the pipeline —
+  // a matching hash must not hide it.
   isProcessed(path: string, hash: string): boolean {
     const row = this.getByPath(path);
-    return row !== undefined && row.hash === hash;
+    return (
+      row !== undefined &&
+      row.hash === hash &&
+      !(row.skip_reason !== null && GATED_SKIP_REASONS.has(row.skip_reason))
+    );
+  }
+
+  // Minimal per-session status projection for `vir projects` aggregation —
+  // one query instead of a getByPath per discovered file.
+  listSessionMeta(): Array<{
+    path: string;
+    hash: string;
+    skipped: number;
+    skipReason: string | null;
+    hasContent: number;
+  }> {
+    return this.db
+      .prepare(
+        `SELECT path, hash, skipped, skip_reason AS skipReason,
+                (content IS NOT NULL AND content != '') AS hasContent
+         FROM sessions`,
+      )
+      .all() as Array<{
+      path: string;
+      hash: string;
+      skipped: number;
+      skipReason: string | null;
+      hasContent: number;
+    }>;
+  }
+
+  countBySkipReason(): Record<string, number> {
+    const rows = this.db
+      .prepare(
+        `SELECT skip_reason AS reason, COUNT(*) AS c
+         FROM sessions
+         WHERE skip_reason IS NOT NULL
+         GROUP BY skip_reason`,
+      )
+      .all() as Array<{ reason: string; c: number }>;
+    const out: Record<string, number> = {};
+    for (const r of rows) out[r.reason] = r.c;
+    return out;
   }
 
   // Rows the reconcile flow looks for: sessions that the pipeline thought it
@@ -412,20 +491,30 @@ export class StateDb {
     project?: string | null;
     confidence?: number | null;
     startedAt?: string | null;
+    skipReason?: SkipReason | null;
+    entrypoint?: string | null;
   }): void {
     this.db
       .prepare(
+        // skip_reason is a direct assignment, not COALESCE: a successful
+        // distill (or any later record without a reason) must CLEAR a stale
+        // project-pending/excluded stamp, never preserve it. entrypoint IS
+        // COALESCEd — it's a fact about the transcript, not run state, so a
+        // caller that doesn't know it must not wipe it.
         `INSERT INTO sessions (
            path, hash, processed_at, skipped, note_paths, error,
-           content, category, topic, project, confidence, started_at
+           content, category, topic, project, confidence, started_at,
+           skip_reason, entrypoint
          )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(path) DO UPDATE SET
            hash = excluded.hash,
            processed_at = excluded.processed_at,
            skipped = excluded.skipped,
            note_paths = excluded.note_paths,
            error = excluded.error,
+           skip_reason = excluded.skip_reason,
+           entrypoint = COALESCE(excluded.entrypoint, sessions.entrypoint),
            content = COALESCE(excluded.content, sessions.content),
            category = COALESCE(excluded.category, sessions.category),
            topic = COALESCE(excluded.topic, sessions.topic),
@@ -447,7 +536,25 @@ export class StateDb {
         opts.project ?? null,
         opts.confidence ?? null,
         opts.startedAt ?? null,
+        opts.skipReason ?? null,
+        opts.entrypoint ?? null,
       );
+  }
+
+  // Skipped agent transcripts grouped by launch entrypoint — feeds the
+  // doctor's informational line ("67 skipped · entrypoints: sdk-py").
+  countAgentEntrypoints(): Record<string, number> {
+    const rows = this.db
+      .prepare(
+        `SELECT COALESCE(entrypoint, '(unknown)') AS ep, COUNT(*) AS c
+         FROM sessions
+         WHERE skip_reason = 'agent-transcript'
+         GROUP BY ep`,
+      )
+      .all() as Array<{ ep: string; c: number }>;
+    const out: Record<string, number> = {};
+    for (const r of rows) out[r.ep] = r.c;
+    return out;
   }
 
   listDistilled(): DistilledRow[] {
