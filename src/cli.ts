@@ -223,7 +223,6 @@ program
           summary = await runPipeline(cfg, {
             full: opts.full,
             quiet: daemon,
-            logToFile: daemon,
             rewriteOnly,
             articlesOnly,
             pdfsOnly,

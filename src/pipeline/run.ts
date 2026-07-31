@@ -54,7 +54,6 @@ import { sweepEmbeddings } from "./embeddingSweep.js";
 export interface RunOptions {
   full?: boolean;
   quiet?: boolean;
-  logToFile?: boolean;
   rewriteOnly?: boolean;
   // Distill only web articles, skipping the Claude Code session pipeline.
   articlesOnly?: boolean;
@@ -149,6 +148,22 @@ export function estimatePerDocDistillCost(
   );
 }
 
+// The run log is the audit trail for spend, and spend happens in every mode —
+// so this is UNGATED: interactive runs log exactly like daemon runs. (It was
+// once gated behind a daemon-only flag; an interactive run that distilled 6
+// sessions left no trace and produced two wrong diagnoses.) Best-effort:
+// logging must never fail a run.
+export function appendRunLog(
+  msg: string,
+  logPath: string = DAEMON_LOG_PATH,
+): void {
+  try {
+    appendFileSync(logPath, `[${new Date().toISOString()}] ${msg}\n`);
+  } catch {
+    // ignore log errors
+  }
+}
+
 export async function runPipeline(
   cfg: Config,
   opts: RunOptions = {},
@@ -184,18 +199,7 @@ export async function runPipeline(
 
   const interactive = !opts.quiet;
 
-  // File-only logging — used for the daemon run.log regardless of UI mode.
-  const fileLog = (msg: string): void => {
-    if (!opts.logToFile) return;
-    try {
-      appendFileSync(
-        DAEMON_LOG_PATH,
-        `[${new Date().toISOString()}] ${msg}\n`,
-      );
-    } catch {
-      // ignore log errors
-    }
-  };
+  const fileLog = (msg: string): void => appendRunLog(msg);
 
   if (interactive) {
     ui.header(

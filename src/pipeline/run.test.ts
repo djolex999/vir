@@ -36,3 +36,34 @@ describe("estimatePerDocDistillCost", () => {
     expect(kie).toBeLessThan(anth);
   });
 });
+
+// fileLog was gated on opts.logToFile (daemon-only), so an interactive run
+// that distilled 6 sessions left no daemon.log trace — the log is the audit
+// trail for spend, and spend happens in both modes. appendRunLog is the
+// ungated writer runPipeline now uses unconditionally.
+describe("appendRunLog", () => {
+  it("appends a timestamped line with no mode gate", async () => {
+    const { mkdtempSync, rmSync, readFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { appendRunLog } = await import("./run.js");
+    const dir = mkdtempSync(join(tmpdir(), "vir-runlog-"));
+    try {
+      const log = join(dir, "daemon.log");
+      appendRunLog("interactive run line", log);
+      appendRunLog("second line", log);
+      const text = readFileSync(log, "utf8");
+      const lines = text.trimEnd().split("\n");
+      expect(lines).toHaveLength(2);
+      expect(lines[0]).toMatch(/^\[\d{4}-\d{2}-\d{2}T.+Z\] interactive run line$/);
+      expect(lines[1]).toMatch(/^\[\d{4}-\d{2}-\d{2}T.+Z\] second line$/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("swallows write errors (logging must never fail a run)", async () => {
+    const { appendRunLog } = await import("./run.js");
+    expect(() => appendRunLog("x", "/nonexistent-dir-zz/daemon.log")).not.toThrow();
+  });
+});
