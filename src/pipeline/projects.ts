@@ -128,22 +128,57 @@ export function sniffAgentEntrypoint(head: string): string | null {
   return null;
 }
 
-// How much of a transcript the scan-time sniff reads. Review-agent first
-// prompts embed whole diffs, so the first user line can be tens of KB; 256KB
-// covers every observed case while staying trivial next to the full-file
-// read the scanner already does for hashing.
+// Chunk size for the scan-time sniff. Review-agent first prompts embed whole
+// diffs, so the first user line can be >100KB — and a queue-operation enqueue
+// preamble DUPLICATES that prompt before it (observed: 133KB enqueue + 134KB
+// user line, neither alone over one chunk, together past it). So the reader
+// below keeps appending chunks until a COMPLETE user line is buffered instead
+// of stopping at a fixed byte count — raising the constant would just lose
+// the same race at a bigger size, since the preamble scales with the prompt.
 export const SNIFF_HEAD_BYTES = 262_144;
+// Hard ceiling — a pathological transcript must not drag the scan toward a
+// full-file read. Past this, the sniff gives up (null → interactive; never
+// downgrade what we can't see — the parser backstop still catches it later).
+export const SNIFF_CAP_BYTES = 4 * SNIFF_HEAD_BYTES;
+
+// True when a complete line in the buffer parses as a user event. The final
+// line is complete only at EOF — a mid-line chunk boundary must not count.
+function hasCompleteUserLine(head: string, eof: boolean): boolean {
+  const lines = head.split("\n");
+  const complete = eof ? lines.length : lines.length - 1;
+  for (let i = 0; i < complete; i++) {
+    const line = lines[i];
+    if (line === undefined || line.trim().length === 0) continue;
+    try {
+      if ((JSON.parse(line) as { type?: unknown }).type === "user") return true;
+    } catch {
+      // non-JSON or garbage line — keep scanning
+    }
+  }
+  return false;
+}
 
 export function readTranscriptHead(
   path: string,
   bytes: number = SNIFF_HEAD_BYTES,
+  cap: number = SNIFF_CAP_BYTES,
 ): string {
   try {
     const fd = openSync(path, "r");
     try {
       const buf = Buffer.alloc(bytes);
-      const n = readSync(fd, buf, 0, bytes, 0);
-      return buf.toString("utf8", 0, n);
+      // Decode from the concatenated bytes each round — decoding chunks
+      // separately would corrupt a multi-byte char split across a boundary.
+      const chunks: Buffer[] = [];
+      let pos = 0;
+      for (;;) {
+        const n = readSync(fd, buf, 0, bytes, pos);
+        chunks.push(Buffer.from(buf.subarray(0, n)));
+        pos += n;
+        const eof = n < bytes;
+        const head = Buffer.concat(chunks).toString("utf8");
+        if (eof || pos >= cap || hasCompleteUserLine(head, eof)) return head;
+      }
     } finally {
       closeSync(fd);
     }

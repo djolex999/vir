@@ -6,6 +6,7 @@ import {
   decodeProjectName,
   estimateSessionCost,
   groupByProject,
+  readTranscriptHead,
   sniffAgentEntrypoint,
 } from "./projects.js";
 
@@ -330,5 +331,50 @@ describe("estimateSessionCost — rough triage estimate from file size", () => {
     );
     expect(small).toBeGreaterThan(0);
     expect(big).toBeGreaterThan(small);
+  });
+});
+
+// Real layout from -Users-…-projects-vir/1be1dc54 (2026-07-31): a ~133KB
+// queue-operation enqueue line precedes the first user line (~134KB), pushing
+// it across the 256KB head boundary. Neither line alone exceeds the head; the
+// preamble doubles the need. The reader must keep going until the first
+// COMPLETE user line is in the buffer (hard-capped), not stop at a byte count.
+describe("readTranscriptHead + sniffAgentEntrypoint — queue-operation preamble", () => {
+  it("resolves sdk-py when the preamble pushes the first user line past one chunk", async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "vir-sniff-"));
+    try {
+      const p = join(dir, "t.jsonl");
+      const lines = [
+        JSON.stringify({ type: "queue-operation", operation: "enqueue", prompt: "x".repeat(133_000) }),
+        JSON.stringify({ type: "queue-operation", operation: "dequeue" }),
+        JSON.stringify({ type: "user", entrypoint: "sdk-py", message: { role: "user", content: "y".repeat(134_000) } }),
+        JSON.stringify({ type: "assistant", message: { role: "assistant", content: "ok" } }),
+      ];
+      writeFileSync(p, lines.join("\n") + "\n");
+      expect(sniffAgentEntrypoint(readTranscriptHead(p))).toBe("sdk-py");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("gives up at the hard cap — a user line past it stays null (never downgrade what we can't see)", async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "vir-sniff-"));
+    try {
+      const p = join(dir, "t.jsonl");
+      const lines = [
+        JSON.stringify({ type: "queue-operation", operation: "enqueue", prompt: "x".repeat(2_000_000) }),
+        JSON.stringify({ type: "user", entrypoint: "sdk-py", message: { role: "user", content: "hi" } }),
+      ];
+      writeFileSync(p, lines.join("\n") + "\n");
+      expect(sniffAgentEntrypoint(readTranscriptHead(p))).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
