@@ -50,6 +50,7 @@ import { filterToolCalls } from "./toolCallFilter.js";
 import type { DistilledNote, ParsedSession } from "./types.js";
 import { kebab, VaultWriter } from "./writer.js";
 import { sweepEmbeddings } from "./embeddingSweep.js";
+import { resolveEmbeddingProvider } from "../search/provider.js";
 
 export interface RunOptions {
   full?: boolean;
@@ -313,7 +314,7 @@ export async function runPipeline(
       return summary;
     }
     await runArticlePhase(cfg, db, writer, summary, fileLog, interactive);
-    await runEmbeddingSweep(db, writer, fileLog, interactive);
+    await runEmbeddingSweep(cfg, db, writer, fileLog, interactive);
     if (interactive) {
       ui.blank();
       ui.divider();
@@ -351,7 +352,7 @@ export async function runPipeline(
       return summary;
     }
     await runPdfPhase(cfg, db, writer, summary, fileLog, interactive);
-    await runEmbeddingSweep(db, writer, fileLog, interactive);
+    await runEmbeddingSweep(cfg, db, writer, fileLog, interactive);
     if (interactive) {
       ui.blank();
       ui.divider();
@@ -1020,7 +1021,7 @@ export async function runPipeline(
   // Self-heal: back-fill notes whose write-time embedding silently no-op'd
   // (Ollama down during distill). Without this a transient outage is permanent
   // — the note never enters the embedding-search candidate set.
-  await runEmbeddingSweep(db, writer, fileLog, interactive);
+  await runEmbeddingSweep(cfg, db, writer, fileLog, interactive);
 
   fileLog(
     `vir run done — scanned=${summary.scanned} new=${summary.scanned - summary.alreadyProcessed} distilled=${summary.distilled} skipped=${summary.skippedByFilter} lowConf=${summary.lowConfidence} errored=${summary.errored} projectExcluded=${summary.projectExcluded} projectPending=${summary.projectPending} flagSkipped=${summary.flagSkipped} workflowSkipped=${summary.workflowSkipped} sidechainSkipped=${summary.sidechainSkipped} agentSkipped=${summary.agentSkipped} articles=${summary.articlesDistilled} pdfs=${summary.pdfsDistilled}`,
@@ -1076,13 +1077,27 @@ export async function runPipeline(
 // invocation rather than waiting for the next full run). A sweep failure must
 // never fail the run; when Ollama is down it no-ops and retries next pass.
 async function runEmbeddingSweep(
+  cfg: Config,
   db: StateDb,
   writer: VaultWriter,
   fileLog: (msg: string) => void,
   interactive: boolean,
 ): Promise<void> {
   try {
-    const sweep = await sweepEmbeddings(db);
+    const provider = await resolveEmbeddingProvider(cfg.embeddingProvider);
+    if (!provider) {
+      // Once per run, never per note — and it's an offer, not an error.
+      // TF-IDF is a supported mode.
+      if (interactive) {
+        ui.line(ui.dim("· No embedding provider. Using keyword search."));
+        ui.line(
+          ui.dim("  Semantic search: `vir embed --setup` (one command, ~1 min, 233 MB)"),
+        );
+        ui.line(ui.dim("  Or install Ollama for 768d local embeddings."));
+      }
+      fileLog("no embedding provider — keyword search only");
+    }
+    const sweep = await sweepEmbeddings(db, fileLog, provider);
     if (sweep.ran) {
       if (sweep.embedded > 0 || sweep.errors > 0) {
         fileLog(
@@ -1097,12 +1112,12 @@ async function runEmbeddingSweep(
       }
     } else if (sweep.pending > 0) {
       fileLog(
-        `embedding skipped, Ollama unavailable — ${sweep.pending} pending (${writer.embedSkipped} this run)`,
+        `embedding skipped, no usable provider — ${sweep.pending} pending (${writer.embedSkipped} this run)`,
       );
       if (interactive) {
         ui.line(
           ui.dim(
-            `  embedding skipped (Ollama unavailable) — ${sweep.pending} pending`,
+            `  embedding skipped (no usable provider) — ${sweep.pending} pending`,
           ),
         );
       }

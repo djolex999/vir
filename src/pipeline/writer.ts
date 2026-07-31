@@ -9,11 +9,13 @@ import {
 } from "node:fs";
 import { join, relative } from "node:path";
 import type { Config } from "../config.js";
+import { cosineSimilarity } from "../search/embedder.js";
 import {
-  cosineSimilarity,
-  embeddingForNote,
-  isOllamaAvailableCached,
-} from "../search/embedder.js";
+  embedNoteWithProvider,
+  resolveEmbeddingProvider,
+  type EmbeddingProvider,
+} from "../search/provider.js";
+import { thresholdsFor } from "../search/thresholds.js";
 import type { StateDb } from "../state/db.js";
 import type { Category, DistilledNote, ParsedSession } from "./types.js";
 import type { ParsedArticle } from "./articleReader.js";
@@ -48,6 +50,7 @@ const CATEGORY_DIR: Record<Category, string> = {
 export class VaultWriter {
   private root: string;
   private db: StateDb | null;
+  private embeddingChoice: Config["embeddingProvider"];
   private topicsDir: string;
   // Count of notes whose write-time embedding was skipped because Ollama was
   // down. run.ts reads this to emit one traceable daemon.log line — a silent
@@ -58,6 +61,7 @@ export class VaultWriter {
   constructor(cfg: Config, db: StateDb | null = null) {
     this.root = join(cfg.vaultPath, cfg.outputDir);
     this.db = db;
+    this.embeddingChoice = cfg.embeddingProvider;
     this.topicsDir = cfg.topicsDir ?? TOPICS_SUBDIR;
     for (const sub of [
       ...Object.values(CATEGORY_DIR),
@@ -128,14 +132,18 @@ export class VaultWriter {
     const vec = await this.computeNoteEmbedding(
       frontmatter + wikilinkHeader + strippedBody,
     );
-    const related = vec ? this.neighborLinks(vec, session.sessionId) : [];
+    const provider = vec ? await this.provider() : null;
+    const related =
+      vec && provider
+        ? this.neighborLinks(vec, session.sessionId, provider.modelName)
+        : [];
     const body = strippedBody + renderRelatedSection(related);
 
     const finalContent = frontmatter + wikilinkHeader + body + "\n";
     writeFileSync(fullPath, finalContent);
-    if (vec && this.db) {
+    if (vec && provider && this.db) {
       try {
-        this.db.storeEmbedding(session.sessionId, vec);
+        this.db.storeEmbedding(session.sessionId, vec, provider.provenance());
         console.log(
           chalk.dim(`  embedded ${note.classification.topic} (${vec.length}d)`),
         );
@@ -214,10 +222,11 @@ export class VaultWriter {
   ): Promise<void> {
     if (!this.db) return;
     try {
-      if (!(await isOllamaAvailableCached())) return;
-      const vec = await embeddingForNote(fileContent);
+      const provider = await this.provider();
+      if (!provider) return;
+      const vec = await embedNoteWithProvider(provider, fileContent);
       if (!vec) return;
-      this.db.storeArticleEmbedding(article.filePath, vec);
+      this.db.storeArticleEmbedding(article.filePath, vec, provider.provenance());
     } catch {
       // never crash the writer on embedding failure
     }
@@ -267,10 +276,11 @@ export class VaultWriter {
   ): Promise<void> {
     if (!this.db) return;
     try {
-      if (!(await isOllamaAvailableCached())) return;
-      const vec = await embeddingForNote(fileContent);
+      const provider = await this.provider();
+      if (!provider) return;
+      const vec = await embedNoteWithProvider(provider, fileContent);
       if (!vec) return;
-      this.db.storePdfEmbedding(parsed.filePath, vec);
+      this.db.storePdfEmbedding(parsed.filePath, vec, provider.provenance());
     } catch {
       // never crash the writer on embedding failure
     }
@@ -338,10 +348,11 @@ export class VaultWriter {
   ): Promise<void> {
     if (!this.db) return;
     try {
-      if (!(await isOllamaAvailableCached())) return;
-      const vec = await embeddingForNote(fileContent);
+      const provider = await this.provider();
+      if (!provider) return;
+      const vec = await embedNoteWithProvider(provider, fileContent);
       if (!vec) return;
-      this.db.storeTopicEmbedding(id, vec);
+      this.db.storeTopicEmbedding(id, vec, provider.provenance());
     } catch {
       // never crash the writer on embedding failure
     }
@@ -474,17 +485,27 @@ export class VaultWriter {
   // Best-effort note embedding, computed up front so write() can pick
   // Related neighbors from it before composing the body. Storage happens in
   // write() after the file lands.
+  // The provider is resolved once per writer instance (configured > Ollama
+  // detected > local installed > none) and reused for every embed + provenance
+  // stamp, so a note can never carry a vector from one model and the label of
+  // another.
+  private providerPromise: Promise<EmbeddingProvider | null> | null = null;
+  private provider(): Promise<EmbeddingProvider | null> {
+    this.providerPromise ??= resolveEmbeddingProvider(this.embeddingChoice);
+    return this.providerPromise;
+  }
+
   private async computeNoteEmbedding(text: string): Promise<number[] | null> {
     if (!this.db) return null;
     try {
-      const available = await isOllamaAvailableCached();
-      if (!available) {
+      const provider = await this.provider();
+      if (!provider) {
         // Traceable, not loud — run.ts logs the aggregate once after the loop.
-        // The self-heal sweep back-fills this note next run with Ollama up.
+        // The self-heal sweep back-fills this note on a later run.
         this.embedSkipped += 1;
         return null;
       }
-      return await embeddingForNote(text);
+      return await embedNoteWithProvider(provider, text);
     } catch {
       // never crash the writer on embedding failure
       return null;
@@ -497,14 +518,22 @@ export class VaultWriter {
   private neighborLinks(
     vec: number[],
     selfSessionId: string,
+    model: string,
   ): RelatedLink[] {
     if (!this.db) return [];
+    const relatedMinSim = thresholdsFor(model).relatedMinSim;
     try {
       return this.db
         .getEmbeddings(this.root)
-        .filter((r) => r.sessionId !== selfSessionId)
+        .filter(
+          (r) =>
+            r.sessionId !== selfSessionId &&
+            // Cross-model cosine is meaningless — only neighbors embedded by
+            // the same model as `vec` are candidates.
+            r.embeddingModel === model,
+        )
         .map((r) => ({ r, sim: cosineSimilarity(vec, r.embedding) }))
-        .filter((x) => x.sim >= RELATED_MIN_SIM && existsSync(x.r.filePath))
+        .filter((x) => x.sim >= relatedMinSim && existsSync(x.r.filePath))
         .sort((a, b) => b.sim - a.sim)
         .slice(0, RELATED_K)
         .map((x) => ({
@@ -604,9 +633,8 @@ export function renderThemesLines(themes: string[]): string[] {
 }
 
 const RELATED_K = 5;
-// nomic-embed-text cosine floor: unrelated dev notes sit ≈0.4–0.55, genuine
-// neighbors ≥0.6. Below the floor a link is noise, not knowledge.
-const RELATED_MIN_SIM = 0.6;
+// The cosine floor is per-model (nomic ≥0.6; bge runs hotter) — resolved from
+// thresholds.ts at use time, never a shared constant.
 
 interface RelatedLink {
   slug: string;

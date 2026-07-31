@@ -1,12 +1,13 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import type { Config } from "../config.js";
-import type { StateDb } from "../state/db.js";
+import type { EmbeddingRow, StateDb } from "../state/db.js";
+import { cosineSimilarity } from "./embedder.js";
 import {
-  cosineSimilarity,
-  embed,
-  isOllamaAvailable,
-} from "./embedder.js";
+  resolveEmbeddingProvider,
+  type EmbeddingProvider,
+} from "./provider.js";
+import { thresholdsFor } from "./thresholds.js";
 
 const SKIP_FILES = new Set(["index.md", "log.md"]);
 // Directories the TF-IDF walk must never index: derived period summaries
@@ -50,7 +51,7 @@ export interface ScoredCandidate {
   content: string;
 }
 
-const MIN_EMBEDDING_SCORE = 0.3;
+// Resolved per-model from thresholds.ts — see MODEL_THRESHOLDS.
 
 // Notes a user has approved via `vir review` carry `verified: true` in their
 // frontmatter. They get a flat ranking boost so human-verified knowledge floats
@@ -74,6 +75,14 @@ export interface SearchOutcome {
   // caller can surface it instead of the old empty-catch discard.
   degraded: boolean;
   embedError: string | null;
+  // Rows refused because their stored vector came from a different embedding
+  // model than the active one (mid-migration state). Never silent: callers
+  // surface this so an unfinished re-embed is visible.
+  excludedMismatched: number;
+  // True when no embedding provider resolved at all (no Ollama, no local
+  // install, or configured "none") — a supported mode, distinct from a
+  // provider that failed. Callers label the two differently.
+  noProvider: boolean;
 }
 
 // Verified notes get +VERIFIED_BOOST, pushing human-approved knowledge to the
@@ -93,8 +102,9 @@ export async function searchWithOutcome(
   query: string,
   topK = 8,
 ): Promise<SearchOutcome> {
-  if (await isOllamaAvailable()) {
-    const attempt = await searchByEmbedding(cfg, db, query, topK);
+  const provider = await resolveEmbeddingProvider(cfg.embeddingProvider);
+  if (provider) {
+    const attempt = await searchByEmbedding(cfg, db, query, topK, provider);
     // If embeddings produced at least one match above the floor, take it.
     // Otherwise fall through to TF-IDF: low cosine on every doc means the
     // query is semantically off; lexical overlap might still find a match.
@@ -104,6 +114,8 @@ export async function searchWithOutcome(
         method: "embedding",
         degraded: false,
         embedError: null,
+        excludedMismatched: attempt.excluded,
+        noProvider: false,
       };
     }
     return {
@@ -111,14 +123,31 @@ export async function searchWithOutcome(
       method: "tfidf",
       degraded: attempt.error !== null,
       embedError: attempt.error,
+      excludedMismatched: attempt.excluded,
+      noProvider: false,
     };
   }
+  // TF-IDF is the supported floor, not a degraded state — but the caller must
+  // be able to say "no provider" rather than "embeddings failed".
   return {
     hits: searchByTfIdf(cfg, query, topK),
     method: "tfidf",
     degraded: false,
     embedError: null,
+    excludedMismatched: 0,
+    noProvider: true,
   };
+}
+
+// Splits an embedding pool into rows comparable with the active model and a
+// count of refusals. Cosine between vectors from different models (or different
+// dimensionalities) is meaningless, so those rows must never enter the ranking.
+export function partitionByEmbeddingModel(
+  rows: EmbeddingRow[],
+  activeModel: string,
+): { compatible: EmbeddingRow[]; excluded: number } {
+  const compatible = rows.filter((r) => r.embeddingModel === activeModel);
+  return { compatible, excluded: rows.length - compatible.length };
 }
 
 async function searchByEmbedding(
@@ -126,34 +155,43 @@ async function searchByEmbedding(
   db: StateDb,
   query: string,
   topK: number,
-): Promise<{ hits: SearchHit[]; error: string | null }> {
+  provider: EmbeddingProvider,
+): Promise<{ hits: SearchHit[]; error: string | null; excluded: number }> {
   let queryVec: number[];
   try {
-    queryVec = await embed(query);
+    queryVec = await provider.embedQuery(query);
   } catch (err) {
-    return { hits: [], error: (err as Error).message };
+    return { hits: [], error: (err as Error).message, excluded: 0 };
   }
 
   const root = vaultRoot(cfg);
   // Sessions, articles, topics, and PDFs are embedded into the same vector
   // space; concat all four so semantic search covers every layer. No layer gets
   // a ranking boost — they compete on cosine like everything else.
-  const rows = [
+  const allRows = [
     ...db.getEmbeddings(root),
     ...db.getArticleEmbeddings(),
     ...db.getTopicEmbeddings(root, cfg.topicsDir),
     ...db.getPdfEmbeddings(),
   ];
-  if (rows.length === 0) return { hits: [], error: null };
+  // Vectors from another model are geometric nonsense against this query —
+  // refuse to compare them. Excluded rows are counted, never silently dropped;
+  // they re-enter search once re-embedded under the active model.
+  const { compatible: rows, excluded } = partitionByEmbeddingModel(
+    allRows,
+    provider.modelName,
+  );
+  if (rows.length === 0) return { hits: [], error: null, excluded };
 
   // Read each candidate's content once, here, so the verified boost can be
   // applied BEFORE the topK slice — a verified note must be able to outrank an
   // unverified one just outside the window. Reads are bounded to docs above the
   // cosine floor (a personal-scale vault), and the content is reused for hits.
+  const minScore = thresholdsFor(provider.modelName).minEmbeddingScore;
   const enriched: Array<{ row: (typeof rows)[number]; content: string; score: number }> = [];
   for (const r of rows) {
     const s = cosineSimilarity(queryVec, r.embedding);
-    if (s < MIN_EMBEDDING_SCORE) continue;
+    if (s < minScore) continue;
     let content = "";
     try {
       content = existsSync(r.filePath) ? readFileSync(r.filePath, "utf8") : "";
@@ -191,7 +229,7 @@ async function searchByEmbedding(
       method: "embedding" as const,
     };
   });
-  return { hits, error: null };
+  return { hits, error: null, excluded };
 }
 
 // Maximal Marginal Relevance: greedily reranks a candidate pool to trade off
@@ -307,7 +345,11 @@ export function searchTfIdf(
       if (tf === 0) continue;
       const df = dfMap.get(term) ?? 0;
       if (df === 0) continue;
-      const idf = Math.log(totalDocs / df);
+      // Smoothed: log(1 + N/df), never zero. Bare log(N/df) is 0 whenever
+      // df === N — which is EVERY term in a single-note vault, making the
+      // first note a new user creates unfindable. log(1+x) → log(x) for
+      // large x, so established-vault rankings are essentially unchanged.
+      const idf = Math.log(1 + totalDocs / df);
       // Normalize TF by doc length so long docs don't dominate.
       const tfNorm = tf / Math.max(1, d.tokens.length);
       score += tfNorm * idf;

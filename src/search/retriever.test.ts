@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadIndex, mmrRerank, search, searchWithOutcome, type ScoredCandidate } from "./retriever.js";
+import { loadIndex, mmrRerank, partitionByEmbeddingModel, search, searchTfIdf, searchWithOutcome, type ScoredCandidate } from "./retriever.js";
 import type { Config } from "../config.js";
 import type { EmbeddingRow, StateDb } from "../state/db.js";
 
@@ -16,6 +16,16 @@ vi.mock("./embedder.js", async (importOriginal) => {
     ...actual,
     isOllamaAvailable: vi.fn(async () => true),
     embed: vi.fn(async () => [1, 0, 0]),
+  };
+});
+
+// Hermetic: never let provider resolution see a real ~/.vir/embedder install
+// on the machine running the tests.
+vi.mock("./localProvider.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./localProvider.js")>();
+  return {
+    ...actual,
+    isLocalProviderInstalled: vi.fn(() => false),
   };
 });
 
@@ -152,6 +162,8 @@ describe("search — topic embeddings are first-class in the pool", () => {
       project: "",
       filePath: topicPath,
       embedding: [1, 0, 0], // identical to the stubbed query vec → cosine 1.0
+      embeddingModel: "nomic-embed-text",
+      embeddingDim: 768,
     };
     const db = {
       getEmbeddings: () => [],
@@ -190,6 +202,8 @@ describe("search — topic embeddings are first-class in the pool", () => {
       project: "",
       filePath: pdfPath,
       embedding: [1, 0, 0], // identical to the stubbed query vec → cosine 1.0
+      embeddingModel: "nomic-embed-text",
+      embeddingDim: 768,
     };
     const db = {
       getEmbeddings: () => [],
@@ -318,5 +332,68 @@ describe("loadIndex — rejected and archived notes never enter the TF-IDF index
     expect(rels).toContain("patterns/live-note.md");
     expect(rels.some((r) => r.startsWith(".rejected/"))).toBe(false);
     expect(rels.some((r) => r.startsWith("archived/"))).toBe(false);
+  });
+});
+
+describe("partitionByEmbeddingModel", () => {
+  const mk = (model: string, dim: number, path: string): EmbeddingRow => ({
+    sessionId: path,
+    topic: "t",
+    category: "pattern",
+    project: "p",
+    filePath: path,
+    embedding: Array.from({ length: dim }, () => 0.1),
+    embeddingModel: model,
+    embeddingDim: dim,
+  });
+
+  it("refuses to compare vectors from a different model", () => {
+    const rows = [
+      mk("nomic-embed-text", 768, "/a.md"),
+      mk("bge-small-en-v1.5", 384, "/b.md"),
+      mk("nomic-embed-text", 768, "/c.md"),
+    ];
+    const { compatible, excluded } = partitionByEmbeddingModel(
+      rows,
+      "nomic-embed-text",
+    );
+    expect(compatible.map((r) => r.filePath)).toEqual(["/a.md", "/c.md"]);
+    expect(excluded).toBe(1);
+  });
+
+  it("excludes everything when the active model matches nothing", () => {
+    const rows = [mk("nomic-embed-text", 768, "/a.md")];
+    const { compatible, excluded } = partitionByEmbeddingModel(
+      rows,
+      "bge-small-en-v1.5",
+    );
+    expect(compatible).toEqual([]);
+    expect(excluded).toBe(1);
+  });
+});
+
+describe("TF-IDF idf smoothing", () => {
+  const tmps: string[] = [];
+  afterEach(() => {
+    for (const p of tmps) rmSync(p, { recursive: true, force: true });
+    tmps.length = 0;
+  });
+
+  it("a single-note vault returns that note for a term it contains", () => {
+    const vault = mkdtempSync(join(tmpdir(), "vir-tfidf-"));
+    tmps.push(vault);
+    mkdirSync(join(vault, "vir", "decisions"), { recursive: true });
+    writeFileSync(
+      join(vault, "vir", "decisions", "only-note.md"),
+      "---\ntopic: thesis-plan\n---\n\n## Summary\n\nDecided the thesis doubles as the launch material.\n",
+    );
+    const cfg = { vaultPath: vault, outputDir: "vir" } as unknown as Config;
+
+    const docs = loadIndex(cfg);
+    const hits = searchTfIdf(docs, "thesis launch");
+
+    expect(docs).toHaveLength(1);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.relPath).toBe("decisions/only-note.md");
   });
 });

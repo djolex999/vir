@@ -67,7 +67,7 @@ describe("StateDb — pdfs table", () => {
     expect(targets.map((t) => t.path)).toEqual(["/papers/attention.pdf"]);
     expect(db.getPdfEmbeddings()).toEqual([]);
 
-    db.storePdfEmbedding("/papers/attention.pdf", [0.1, 0.2, 0.3]);
+    db.storePdfEmbedding("/papers/attention.pdf", [0.1, 0.2, 0.3], { model: "nomic-embed-text", dim: 768 });
 
     // After embedding: no longer a target, and it surfaces in getPdfEmbeddings.
     expect(db.listPdfEmbeddingTargets()).toEqual([]);

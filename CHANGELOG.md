@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.15.0 — 2026-07-31
+
+**Embeddings are now optional and provider-agnostic.** A new user needs only
+an API key: semantic search activates on demand, and keyword search is a
+supported floor, never an error state. Schema migration (additive), a new
+provider, and new command surface.
+
+- **Embedding model provenance.** Every embedding row stores the model and
+  dimension that produced it (`embedding_model` / `embedding_dim` on all four
+  tables; additive migration, existing rows backfill to `nomic-embed-text`/768).
+  Retrieval refuses to compare vectors from different models — cosine across
+  incompatible geometries is confident nonsense — and reports the excluded
+  count instead of silently mixing them.
+- **`EmbeddingProvider` interface** (`embedDoc`/`embedQuery`, `modelName`,
+  `dimensions`, `maxInputChars`). Ollama is now one implementation, not the
+  assumption.
+- **Local provider: `vir embed --setup`.** Installs fastembed +
+  bge-small-en-v1.5 (384d) into `~/.vir/embedder` on demand — never a package
+  dependency (the CLI tarball stays ~212 kB). States the disk cost (~233 MB +
+  ~128 MB model) and asks before touching disk or network. No node-gyp, no
+  build step, ~190 ms cold start.
+- **Provider resolution**: configured (`embeddingProvider` in config, optional)
+  > Ollama detected > local installed > none. `vir init` asks no embedding
+  question; when nothing resolves, `vir run` prints a one-line offer once per
+  run and continues on keyword search.
+- **Per-model similarity thresholds** (`RELATED_MIN_SIM`, the candidate floor)
+  moved into a per-model table. bge values calibrated against a real 389-note
+  vault by quantile-matching nomic's floors (doc-doc distributions are
+  near-identical across the two models; bge query scores run ~0.15 hotter).
+- **Honest labeling.** `via: tfidf (no provider)` is distinct from
+  `via: tfidf (embeddings failed)` — different states, different fixes.
+  `vir doctor` reports the active provider, model, dimension, alternatives
+  with their costs, and the count of notes embedded under a different model
+  (non-zero means an unfinished migration; `vir embed --force` finishes it).
+- **Model-boundary re-embeds require consent.** `vir embed --force` across a
+  model boundary states the note count and estimated time first; plain
+  `vir embed` fills same-model gaps only. The index stays queryable at every
+  point mid-migration.
+- **Context-limit fix.** Ollama serves nomic at num_ctx 2048; notes over ~8k
+  chars used to 500 and silently NULL their embedding forever. `embedText`
+  now truncates at the model limit (recorded, not silent) with reactive
+  halving, and `EmbedderError` carries a typed kind
+  (`context-limit` / `http` / `network`) so daemon.log distinguishes a
+  too-big note from a down Ollama.
+- **TF-IDF idf smoothing** (`log(1 + N/df)`): a single-note vault can now
+  find its own note (bare `log(N/df)` zeroed every term when df = N).
+  Established-vault rankings shift minimally (top-3 changes limited to
+  adjacent swaps on a 412-note corpus).
+- `OLLAMA_HOST` env var overrides the Ollama base URL (Ollama's own
+  convention).
+
 ## 0.14.0 — 2026-07-31
 
 **Project-level and transcript-category distillation filtering.** Every

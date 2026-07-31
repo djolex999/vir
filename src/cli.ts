@@ -73,9 +73,9 @@ import {
   type Period,
 } from "./pipeline/periodSummary.js";
 import {
-  embeddingForNote,
-  isOllamaAvailable,
-} from "./search/embedder.js";
+  embedNoteWithProvider,
+  resolveEmbeddingProvider,
+} from "./search/provider.js";
 import { acquireLock, LockHeldError, releaseLock } from "./pipeline/lock.js";
 import { search, searchWithOutcome, vaultRoot } from "./search/retriever.js";
 import { buildQueryResults, errorPayload } from "./output/json.js";
@@ -85,6 +85,7 @@ import { runReview } from "./cli/review.js";
 import { runAction } from "./cli/runAction.js";
 import { buildInitConfig } from "./cli/initConfig.js";
 import { runReconcile } from "./cli/reconcile.js";
+import { runEmbedSetup } from "./cli/embedSetup.js";
 import {
   installToClaudeCode,
   isClaudeAvailable,
@@ -916,27 +917,81 @@ program
 
 program
   .command("embed")
-  .description("Generate Ollama embeddings for distilled notes")
+  .description("Generate embeddings for distilled notes")
   .option("--force", "Regenerate even if embedding already exists")
+  .option(
+    "--setup",
+    "Install the local embedding provider (fastembed + bge-small) on demand",
+  )
+  .option("--yes", "Skip the --setup disk-cost confirmation")
   .action(
-    runAction(async (opts: { force?: boolean }) => {
+    runAction(async (opts: { force?: boolean; setup?: boolean; yes?: boolean }) => {
+    if (opts.setup) {
+      await runEmbedSetup(opts.yes === true);
+      return;
+    }
     const cfg = loadConfig();
     ui.header("embed");
     ui.blank();
-    if (!(await isOllamaAvailable())) {
-      ui.row(ui.errorColor(ui.CROSS), ui.text("Ollama not running"));
-      ui.line(ui.dim("  brew install ollama"));
-      ui.line(ui.dim("  ollama pull nomic-embed-text"));
-      ui.line(ui.dim("  ollama serve"));
+    const provider = await resolveEmbeddingProvider(cfg.embeddingProvider);
+    if (!provider) {
+      ui.row(ui.errorColor(ui.CROSS), ui.text("no embedding provider available"));
+      ui.line(ui.dim("  vir embed --setup      # local provider, no Ollama needed (~233 MB)"));
+      ui.line(ui.dim("  or: brew install ollama && ollama pull nomic-embed-text && ollama serve"));
       process.exitCode = 1;
       return;
     }
+    const provenance = provider.provenance();
     const db = new StateDb();
     try {
       const rows = db.listDistilled();
       const root = join(cfg.vaultPath, cfg.outputDir);
+      const embeddedRows = [
+        ...db.getEmbeddings(root),
+        ...db.getArticleEmbeddings(),
+        ...db.getTopicEmbeddings(root, cfg.topicsDir),
+        ...db.getPdfEmbeddings(),
+      ];
+      // Crossing a model boundary is an index invalidation, not a gap fill —
+      // it needs --force AND explicit consent, with the cost stated first.
+      // Without --force, mismatched rows stay excluded from vector search
+      // (counted, reported) and only NULL-embedding gaps are filled.
+      const mismatched = embeddedRows.filter(
+        (r) => r.embeddingModel !== provider.modelName,
+      ).length;
+      if (mismatched > 0 && !opts.force) {
+        ui.row(
+          ui.warn(ui.WARN_GLYPH),
+          ui.text(
+            `${mismatched} note(s) are embedded under a different model than the active one (${provider.modelName})`,
+          ),
+        );
+        ui.line(ui.dim("they are excluded from vector search until re-embedded"));
+        ui.line(ui.dim("run `vir embed --force` to re-embed the whole index"));
+      }
+      if (mismatched > 0 && opts.force) {
+        const estSecs = Math.max(1, Math.round(rows.length * 0.15));
+        ui.row(
+          ui.warn(ui.WARN_GLYPH),
+          ui.text(
+            `model boundary: re-embedding ${rows.length} note(s) under ${provider.modelName} (~${estSecs}s), replacing vectors from other models`,
+          ),
+        );
+        if (!opts.yes) {
+          const rl = createInterface({ input: stdin, output: stdout });
+          const answer = (await rl.question("Proceed? [y/N] ")).trim().toLowerCase();
+          rl.close();
+          if (answer !== "y" && answer !== "yes") {
+            ui.line(ui.dim("aborted — index unchanged"));
+            return;
+          }
+        }
+      }
       const existing = new Set(
-        db.getEmbeddings(root).map((r) => r.sessionId),
+        db
+          .getEmbeddings(root)
+          .filter((r) => r.embeddingModel === provider.modelName)
+          .map((r) => r.sessionId),
       );
       const target = opts.force
         ? rows
@@ -986,12 +1041,12 @@ program
           skipped += 1;
           continue;
         }
-        const vec = await embeddingForNote(r.content);
+        const vec = await embedNoteWithProvider(provider, r.content);
         if (!vec) {
           errors += 1;
           continue;
         }
-        db.storeEmbedding(r.sessionId, vec);
+        db.storeEmbedding(r.sessionId, vec, provenance);
         embedded += 1;
         sp.text = ui.dim(`embedding notes (${embedded}/${total})`);
       }
@@ -1000,12 +1055,12 @@ program
           skipped += 1;
           continue;
         }
-        const vec = await embeddingForNote(t.content);
+        const vec = await embedNoteWithProvider(provider, t.content);
         if (!vec) {
           errors += 1;
           continue;
         }
-        db.storeTopicEmbedding(t.id, vec);
+        db.storeTopicEmbedding(t.id, vec, provenance);
         embedded += 1;
         sp.text = ui.dim(`embedding notes (${embedded}/${total})`);
       }
@@ -1014,12 +1069,12 @@ program
           skipped += 1;
           continue;
         }
-        const vec = await embeddingForNote(a.content);
+        const vec = await embedNoteWithProvider(provider, a.content);
         if (!vec) {
           errors += 1;
           continue;
         }
-        db.storeArticleEmbedding(a.path, vec);
+        db.storeArticleEmbedding(a.path, vec, provenance);
         embedded += 1;
         sp.text = ui.dim(`embedding notes (${embedded}/${total})`);
       }
@@ -1028,12 +1083,12 @@ program
           skipped += 1;
           continue;
         }
-        const vec = await embeddingForNote(p.content);
+        const vec = await embedNoteWithProvider(provider, p.content);
         if (!vec) {
           errors += 1;
           continue;
         }
-        db.storePdfEmbedding(p.path, vec);
+        db.storePdfEmbedding(p.path, vec, provenance);
         embedded += 1;
         sp.text = ui.dim(`embedding notes (${embedded}/${total})`);
       }
@@ -1137,6 +1192,21 @@ program
             `embedding search failed — results are TF-IDF fallback (${outcome.embedError})`,
           ),
         );
+      } else if (outcome.noProvider) {
+        // A supported mode with a one-line pointer, not a warning — different
+        // state than a failed provider, different fix.
+        ui.line(ui.dim("no embedding provider — using keyword search"));
+        ui.line(
+          ui.dim("  semantic search: `vir embed --setup` (one command, ~1 min, 233 MB), or install Ollama"),
+        );
+      }
+      if (outcome.excludedMismatched > 0) {
+        ui.row(
+          ui.warn(ui.WARN_GLYPH),
+          ui.text(
+            `${outcome.excludedMismatched} note(s) embedded under a different model were excluded — run \`vir embed\` to re-embed them`,
+          ),
+        );
       }
 
       if (hits.length === 0) {
@@ -1161,7 +1231,11 @@ program
       ui.summary({
         sources: { value: relevant.length, color: ui.info },
         via: {
-          value: outcome.degraded ? "tfidf (embeddings failed)" : method,
+          value: outcome.degraded
+            ? "tfidf (embeddings failed)"
+            : outcome.noProvider
+              ? "tfidf (no provider)"
+              : method,
           color: outcome.degraded ? ui.warn : ui.accent,
         },
         searched: { value: totalNotes, color: ui.muted },

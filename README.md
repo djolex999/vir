@@ -345,6 +345,7 @@ with your distro, init system, and Node version.
 | `vir review`                | free  | Walk new notes: approve/edit/reject       |
 | `vir sync-claude`           | free  | Inject top knowledge into CLAUDE.md       |
 | `vir embed`                 | free  | Generate embeddings for semantic search   |
+| `vir embed --setup`         | free  | Install the local embedding provider (no Ollama needed) |
 | `vir schedule install`      | free  | Register the background daemon            |
 | `vir status`                | free  | Knowledge base breakdown + daemon status  |
 | `vir doctor`                | cheap | 13 install/config checks                  |
@@ -377,7 +378,18 @@ To unregister: `vir mcp uninstall`.
 
 ## Semantic search (optional)
 
-Vir uses TF-IDF by default. For semantic search via embeddings:
+Vir works out of the box with keyword search (TF-IDF). No embedding setup is
+required, ever. For semantic search, pick one of two providers; vir detects
+whichever is present:
+
+**One command, no Ollama:**
+
+```bash
+vir embed --setup      # installs fastembed + bge-small-en-v1.5 into ~/.vir
+                       # (~233 MB + ~128 MB model; states cost, asks first)
+```
+
+**Or Ollama** (768d, slightly larger model):
 
 ```bash
 brew install ollama
@@ -385,16 +397,19 @@ ollama pull nomic-embed-text
 ollama serve
 ```
 
-Then in a new terminal:
+Then:
 
 ```bash
 vir embed
 vir query "how do I handle rate limiting in Next.js"
 ```
 
-Falls back to TF-IDF automatically if Ollama is not running. MMR reranking
-balances relevance against diversity, tunable via `retrievalDiversity`
-(default 0.3, range 0.0 to 1.0).
+Every stored vector records the model that produced it. Vectors from
+different models are never compared; if you switch providers,
+`vir embed --force` re-embeds the index after telling you what it costs.
+Falls back to keyword search automatically when no provider is available,
+and says so: `via tfidf (no provider)`. MMR reranking balances relevance
+against diversity, tunable via `retrievalDiversity` (default 0.3).
 
 ## Config reference
 
@@ -417,6 +432,7 @@ Located at `~/.vir/config.json`.
 | `projects`          | (unset)                     | Per-project `include`/`exclude` map; absent = undecided    |
 | `filterToolCalls`   | `moderate`                  | Tool-output filtering: `aggressive` \| `moderate` \| `off` |
 | `retrievalDiversity`| `0.3`                       | MMR diversity (0..1)                                       |
+| `embeddingProvider` | (unset)                     | `ollama` \| `local` \| `none`; unset = auto-detect         |
 | `models.classify`   | `claude-haiku-4-5-20251001` | Classify model                                             |
 | `models.distill`    | `claude-sonnet-5`           | Distill model for decision-heavy and large sessions        |
 | `models.distillFast`| (unset)                     | Cheap model for routine sessions; set → hybrid routing on  |

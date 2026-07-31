@@ -1,30 +1,105 @@
-const OLLAMA_BASE = "http://localhost:11434";
+import type { EmbeddingProvenance } from "../state/db.js";
+
+// OLLAMA_HOST is Ollama's own standard override; honoring it also lets tests
+// and fresh-install simulations point detection at a dead port.
+const OLLAMA_BASE = (
+  process.env["OLLAMA_HOST"] ?? "http://localhost:11434"
+).replace(/\/$/, "");
 export const EMBED_MODEL = "nomic-embed-text";
+export const EMBED_DIM = 768;
+
+// Provenance stamped on every vector this embedder writes. Retrieval partitions
+// on it, so it must always describe the model that actually produced the vector.
+export const OLLAMA_PROVENANCE: EmbeddingProvenance = {
+  model: EMBED_MODEL,
+  dim: EMBED_DIM,
+};
 const EMBED_TIMEOUT_MS = 10_000;
 const PING_TIMEOUT_MS = 3_000;
 
+// context-limit: input exceeded the model's context window (truncation retries
+// exhausted). http: Ollama answered with a non-context error. network: fetch
+// itself failed (daemon down, timeout). Distinct kinds so callers can log a
+// failure that truncation could fix differently from one that needs Ollama up.
+export type EmbedFailureKind = "context-limit" | "http" | "network";
+
 export class EmbedderError extends Error {
-  constructor(message: string) {
+  readonly kind: EmbedFailureKind;
+  constructor(message: string, kind: EmbedFailureKind = "http") {
     super(message);
     this.name = "EmbedderError";
+    this.kind = kind;
   }
 }
 
-export async function embed(text: string): Promise<number[]> {
+// Ollama serves nomic-embed-text at num_ctx 2048; longer inputs are a hard 500
+// ("input length exceeds the context length"), not a silent truncation. 2048
+// tokens × the codebase chars/4 heuristic gives the proactive cap; the reactive
+// halving in embedText covers text that tokenizes denser than 4 chars/token.
+export const EMBED_MAX_CHARS = 8192;
+const EMBED_MIN_CHARS = 512;
+
+// Structural subset of fetch so tests can inject a fake without a DOM Response.
+export type FetchImpl = (
+  url: string,
+  init: {
+    method: string;
+    headers: Record<string, string>;
+    body: string;
+    signal: AbortSignal;
+  },
+) => Promise<{
+  ok: boolean;
+  status: number;
+  json(): Promise<unknown>;
+  text(): Promise<string>;
+}>;
+
+export interface EmbedResult {
+  embedding: number[];
+  sentChars: number;
+  truncated: boolean;
+}
+
+function isContextLengthError(message: string): boolean {
+  return /context length/i.test(message);
+}
+
+async function embedOnce(
+  text: string,
+  fetchImpl: FetchImpl,
+): Promise<number[]> {
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), EMBED_TIMEOUT_MS);
   try {
-    const resp = await fetch(`${OLLAMA_BASE}/api/embeddings`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: EMBED_MODEL, prompt: text }),
-      signal: ac.signal,
-    });
+    let resp: Awaited<ReturnType<FetchImpl>>;
+    try {
+      resp = await fetchImpl(`${OLLAMA_BASE}/api/embeddings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: EMBED_MODEL, prompt: text }),
+        signal: ac.signal,
+      });
+    } catch (err) {
+      throw new EmbedderError(
+        `Ollama unreachable: ${(err as Error).message}`,
+        "network",
+      );
+    }
     if (!resp.ok) {
-      throw new EmbedderError(`Ollama ${resp.status}: ${await resp.text().catch(() => "")}`);
+      const body = await resp.text().catch(() => "");
+      throw new EmbedderError(
+        `Ollama ${resp.status}: ${body}`,
+        isContextLengthError(body) ? "context-limit" : "http",
+      );
     }
     const data = (await resp.json()) as { embedding?: unknown; error?: string };
-    if (data.error) throw new EmbedderError(`Ollama error: ${data.error}`);
+    if (data.error) {
+      throw new EmbedderError(
+        `Ollama error: ${data.error}`,
+        isContextLengthError(data.error) ? "context-limit" : "http",
+      );
+    }
     if (!Array.isArray(data.embedding) || data.embedding.length === 0) {
       throw new EmbedderError("Ollama returned no embedding");
     }
@@ -32,6 +107,35 @@ export async function embed(text: string): Promise<number[]> {
   } finally {
     clearTimeout(t);
   }
+}
+
+// fetchImpl is injectable for tests only — production callers pass nothing.
+export async function embedText(
+  text: string,
+  fetchImpl: FetchImpl = fetch as unknown as FetchImpl,
+): Promise<EmbedResult> {
+  let sendChars = Math.min(text.length, EMBED_MAX_CHARS);
+  for (;;) {
+    try {
+      const embedding = await embedOnce(text.slice(0, sendChars), fetchImpl);
+      return { embedding, sentChars: sendChars, truncated: sendChars < text.length };
+    } catch (err) {
+      const contextLimit =
+        err instanceof EmbedderError && err.kind === "context-limit";
+      if (contextLimit && sendChars > EMBED_MIN_CHARS) {
+        sendChars = Math.floor(sendChars / 2);
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+export async function embed(
+  text: string,
+  fetchImpl?: FetchImpl,
+): Promise<number[]> {
+  return (await embedText(text, fetchImpl)).embedding;
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {
@@ -92,10 +196,30 @@ export async function probeEmbedding(): Promise<string | null> {
   }
 }
 
-export async function embeddingForNote(text: string): Promise<number[] | null> {
+// Best-effort embed for the write/sweep paths: never throws, returns null on
+// failure. The optional `log` receives one line per noteworthy event — a
+// truncation (text was cut to fit the model context) or a failure with its
+// kind — so a context-limit failure is distinguishable from Ollama being down
+// in daemon.log. fetchImpl is injectable for tests only.
+export async function embeddingForNote(
+  text: string,
+  log?: (msg: string) => void,
+  fetchImpl?: FetchImpl,
+): Promise<number[] | null> {
   try {
-    return await embed(text);
-  } catch {
+    const result = await embedText(
+      text,
+      fetchImpl ?? (fetch as unknown as FetchImpl),
+    );
+    if (result.truncated) {
+      log?.(
+        `embedding truncated: sent ${result.sentChars} of ${text.length} chars (model context limit)`,
+      );
+    }
+    return result.embedding;
+  } catch (err) {
+    const kind = err instanceof EmbedderError ? err.kind : "network";
+    log?.(`embed failed (${kind}): ${(err as Error).message}`);
     return null;
   }
 }

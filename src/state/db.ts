@@ -44,6 +44,22 @@ const GATED_SKIP_REASONS: ReadonlySet<string> = new Set([
   "agent-transcript",
 ]);
 
+// Which embedder produced a stored vector. Vectors from different models live
+// in incompatible geometries — cosine across them is confident nonsense — so
+// every embedding row carries its provenance and retrieval partitions on it.
+export interface EmbeddingProvenance {
+  model: string;
+  dim: number;
+}
+
+// Every embedding written before provenance existed came from Ollama's
+// nomic-embed-text (the only embedder any vir binary ever had), so legacy rows
+// backfill to this on migration.
+export const LEGACY_EMBEDDING_PROVENANCE: EmbeddingProvenance = {
+  model: "nomic-embed-text",
+  dim: 768,
+};
+
 export interface EmbeddingRow {
   sessionId: string;
   topic: string;
@@ -51,6 +67,8 @@ export interface EmbeddingRow {
   project: string;
   filePath: string;
   embedding: number[];
+  embeddingModel: string;
+  embeddingDim: number;
 }
 
 // A distilled session that still has no embedding — the backfill set for the
@@ -321,6 +339,43 @@ export class StateDb {
     for (const col of ADDED_COLUMNS) {
       if (!existing.has(col.name)) this.db.exec(col.ddl);
     }
+    // Embedding provenance, all four embedding-bearing tables. Backfill is safe
+    // and idempotent: rows embedded before provenance existed can only have come
+    // from nomic (the sole embedder in every prior release), and the WHERE
+    // clause never touches rows that already carry provenance.
+    for (const table of ["sessions", "articles", "pdfs", "topics"]) {
+      const cols = new Set(
+        (
+          this.db.prepare(`PRAGMA table_info(${table})`).all() as ColumnInfo[]
+        ).map((r) => r.name),
+      );
+      if (!cols.has("embedding_model")) {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN embedding_model TEXT`);
+      }
+      if (!cols.has("embedding_dim")) {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN embedding_dim INTEGER`);
+      }
+      this.db.exec(
+        `UPDATE ${table}
+         SET embedding_model = '${LEGACY_EMBEDDING_PROVENANCE.model}',
+             embedding_dim = ${LEGACY_EMBEDDING_PROVENANCE.dim}
+         WHERE embedding IS NOT NULL AND embedding_model IS NULL`,
+      );
+    }
+  }
+
+  // True when `table` carries the provenance columns. The read-only MCP path
+  // skips migrations, so an upgraded-but-never-written DB may lack them; read
+  // paths must degrade to legacy provenance instead of erroring.
+  private provenanceCache = new Map<string, boolean>();
+  private hasProvenance(table: string): boolean {
+    const cached = this.provenanceCache.get(table);
+    if (cached !== undefined) return cached;
+    const has = (
+      this.db.prepare(`PRAGMA table_info(${table})`).all() as ColumnInfo[]
+    ).some((r) => r.name === "embedding_model");
+    this.provenanceCache.set(table, has);
+    return has;
   }
 
   getByPath(path: string): SessionRow | undefined {
@@ -727,16 +782,28 @@ export class StateDb {
   // Embedding storage is keyed by sessionId (the JSONL basename), since callers
   // typically have that handy and not the full path. Match suffix-anchored:
   // `path LIKE '%/<sessionId>.jsonl'`.
-  storeEmbedding(sessionId: string, embedding: number[]): void {
+  storeEmbedding(
+    sessionId: string,
+    embedding: number[],
+    provenance: EmbeddingProvenance,
+  ): void {
     this.db
-      .prepare("UPDATE sessions SET embedding = ? WHERE path LIKE ?")
-      .run(JSON.stringify(embedding), `%/${sessionId}.jsonl`);
+      .prepare(
+        "UPDATE sessions SET embedding = ?, embedding_model = ?, embedding_dim = ? WHERE path LIKE ?",
+      )
+      .run(
+        JSON.stringify(embedding),
+        provenance.model,
+        provenance.dim,
+        `%/${sessionId}.jsonl`,
+      );
   }
 
   getEmbeddings(vaultRoot: string): EmbeddingRow[] {
+    const prov = this.hasProvenance("sessions");
     const rows = this.db
       .prepare(
-        `SELECT path, embedding, topic, category, project
+        `SELECT path, embedding, topic, category, project${prov ? ", embedding_model, embedding_dim" : ""}
          FROM sessions
          WHERE skipped = 0
            AND error IS NULL
@@ -751,6 +818,8 @@ export class StateDb {
       topic: string;
       category: string;
       project: string | null;
+      embedding_model?: string | null;
+      embedding_dim?: number | null;
     }>;
 
     const out: EmbeddingRow[] = [];
@@ -774,6 +843,8 @@ export class StateDb {
         project: r.project ?? "",
         filePath,
         embedding: vec,
+        embeddingModel: r.embedding_model ?? LEGACY_EMBEDDING_PROVENANCE.model,
+        embeddingDim: r.embedding_dim ?? vec.length,
       });
     }
     return out;
@@ -791,7 +862,7 @@ export class StateDb {
   updateContent(path: string, content: string): void {
     this.db
       .prepare(
-        "UPDATE sessions SET content = ?, embedding = NULL WHERE path = ?",
+        "UPDATE sessions SET content = ?, embedding = NULL, embedding_model = NULL, embedding_dim = NULL WHERE path = ?",
       )
       .run(content, path);
   }
@@ -943,10 +1014,16 @@ export class StateDb {
       .all() as ArticleEmbeddingTargetRow[];
   }
 
-  storeArticleEmbedding(path: string, embedding: number[]): void {
+  storeArticleEmbedding(
+    path: string,
+    embedding: number[],
+    provenance: EmbeddingProvenance,
+  ): void {
     this.db
-      .prepare("UPDATE articles SET embedding = ? WHERE path = ?")
-      .run(JSON.stringify(embedding), path);
+      .prepare(
+        "UPDATE articles SET embedding = ?, embedding_model = ?, embedding_dim = ? WHERE path = ?",
+      )
+      .run(JSON.stringify(embedding), provenance.model, provenance.dim, path);
   }
 
   // Article embeddings, shaped like session EmbeddingRow so the retriever can
@@ -954,9 +1031,10 @@ export class StateDb {
   // (articles have no project), category is the article taxonomy.
   getArticleEmbeddings(): EmbeddingRow[] {
     if (!this.hasArticlesTable()) return [];
+    const prov = this.hasProvenance("articles");
     const rows = this.db
       .prepare(
-        `SELECT note_path, embedding, title, category
+        `SELECT note_path, embedding, title, category${prov ? ", embedding_model, embedding_dim" : ""}
          FROM articles
          WHERE skipped = 0
            AND error IS NULL
@@ -968,6 +1046,8 @@ export class StateDb {
       embedding: string;
       title: string | null;
       category: string | null;
+      embedding_model?: string | null;
+      embedding_dim?: number | null;
     }>;
 
     const out: EmbeddingRow[] = [];
@@ -988,6 +1068,8 @@ export class StateDb {
         project: "",
         filePath: r.note_path,
         embedding: vec,
+        embeddingModel: r.embedding_model ?? LEGACY_EMBEDDING_PROVENANCE.model,
+        embeddingDim: r.embedding_dim ?? vec.length,
       });
     }
     return out;
@@ -1120,10 +1202,16 @@ export class StateDb {
       .all() as PdfEmbeddingTargetRow[];
   }
 
-  storePdfEmbedding(path: string, embedding: number[]): void {
+  storePdfEmbedding(
+    path: string,
+    embedding: number[],
+    provenance: EmbeddingProvenance,
+  ): void {
     this.db
-      .prepare("UPDATE pdfs SET embedding = ? WHERE path = ?")
-      .run(JSON.stringify(embedding), path);
+      .prepare(
+        "UPDATE pdfs SET embedding = ?, embedding_model = ?, embedding_dim = ? WHERE path = ?",
+      )
+      .run(JSON.stringify(embedding), provenance.model, provenance.dim, path);
   }
 
   // PDF embeddings, shaped like session/article EmbeddingRow so the retriever can
@@ -1131,9 +1219,10 @@ export class StateDb {
   // have no project), category is the pdf taxonomy.
   getPdfEmbeddings(): EmbeddingRow[] {
     if (!this.hasPdfsTable()) return [];
+    const prov = this.hasProvenance("pdfs");
     const rows = this.db
       .prepare(
-        `SELECT note_path, embedding, title, category
+        `SELECT note_path, embedding, title, category${prov ? ", embedding_model, embedding_dim" : ""}
          FROM pdfs
          WHERE skipped = 0
            AND error IS NULL
@@ -1145,6 +1234,8 @@ export class StateDb {
       embedding: string;
       title: string | null;
       category: string | null;
+      embedding_model?: string | null;
+      embedding_dim?: number | null;
     }>;
 
     const out: EmbeddingRow[] = [];
@@ -1165,6 +1256,8 @@ export class StateDb {
         project: "",
         filePath: r.note_path,
         embedding: vec,
+        embeddingModel: r.embedding_model ?? LEGACY_EMBEDDING_PROVENANCE.model,
+        embeddingDim: r.embedding_dim ?? vec.length,
       });
     }
     return out;
@@ -1178,13 +1271,20 @@ export class StateDb {
   // project is empty. Guards a missing topics table like the article getter.
   getTopicEmbeddings(vaultRoot: string, topicsDir: string): EmbeddingRow[] {
     if (!this.hasTopicsTable()) return [];
+    const prov = this.hasProvenance("topics");
     const rows = this.db
       .prepare(
-        `SELECT id, embedding, title
+        `SELECT id, embedding, title${prov ? ", embedding_model, embedding_dim" : ""}
          FROM topics
          WHERE embedding IS NOT NULL`,
       )
-      .all() as Array<{ id: string; embedding: string; title: string }>;
+      .all() as Array<{
+      id: string;
+      embedding: string;
+      title: string;
+      embedding_model?: string | null;
+      embedding_dim?: number | null;
+    }>;
 
     const out: EmbeddingRow[] = [];
     for (const r of rows) {
@@ -1204,6 +1304,8 @@ export class StateDb {
         project: "",
         filePath: join(vaultRoot, topicsDir, `${r.id}.md`),
         embedding: vec,
+        embeddingModel: r.embedding_model ?? LEGACY_EMBEDDING_PROVENANCE.model,
+        embeddingDim: r.embedding_dim ?? vec.length,
       });
     }
     return out;
@@ -1316,10 +1418,16 @@ export class StateDb {
   // Future-proofing for v0.7.3 (topic-aware retrieval). Stored now so topics
   // are searchable then without a backfill; the retriever does not read these
   // yet — keeping topics out of `vir query` per the plugin-compat contract.
-  storeTopicEmbedding(id: string, embedding: number[]): void {
+  storeTopicEmbedding(
+    id: string,
+    embedding: number[],
+    provenance: EmbeddingProvenance,
+  ): void {
     this.db
-      .prepare("UPDATE topics SET embedding = ? WHERE id = ?")
-      .run(JSON.stringify(embedding), id);
+      .prepare(
+        "UPDATE topics SET embedding = ?, embedding_model = ?, embedding_dim = ? WHERE id = ?",
+      )
+      .run(JSON.stringify(embedding), provenance.model, provenance.dim, id);
   }
 
   close(): void {

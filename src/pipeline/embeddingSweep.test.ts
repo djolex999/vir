@@ -14,21 +14,29 @@ import {
   sweepEmbeddings,
 } from "./embeddingSweep.js";
 
-// Mock the embedder so the sweep never touches Ollama/network. Each test sets
-// the availability + embed behavior it needs.
-vi.mock("../search/embedder.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../search/embedder.js")>();
-  return {
-    ...actual,
-    isOllamaAvailableCached: vi.fn(async () => true),
-    embeddingForNote: vi.fn(async () => [0.1, 0.2, 0.3]),
-  };
-});
+import type { EmbeddingProvider } from "../search/provider.js";
 
-import {
-  embeddingForNote,
-  isOllamaAvailableCached,
-} from "../search/embedder.js";
+// The sweep takes its provider explicitly — tests pass a fake so nothing ever
+// touches Ollama, fastembed, or the network.
+function fakeProvider(
+  overrides: Partial<EmbeddingProvider> = {},
+): EmbeddingProvider {
+  return {
+    name: "ollama",
+    modelName: "nomic-embed-text",
+    dimensions: 768,
+    maxInputChars: 8192,
+    available: async () => true,
+    embedDoc: async (text: string) => ({
+      embedding: [0.1, 0.2, 0.3],
+      sentChars: text.length,
+      truncated: false,
+    }),
+    embedQuery: async () => [0.1, 0.2, 0.3],
+    provenance: () => ({ model: "nomic-embed-text", dim: 768 }),
+    ...overrides,
+  };
+}
 
 function row(overrides: Partial<EmbeddingTargetRow>): EmbeddingTargetRow {
   return {
@@ -228,51 +236,68 @@ function fakeDb(
 describe("sweepEmbeddings", () => {
   afterEach(() => vi.clearAllMocks());
 
-  it("skips entirely (no-op, no error) when Ollama is down — retries next run", async () => {
-    vi.mocked(isOllamaAvailableCached).mockResolvedValueOnce(false);
+  it("skips entirely (no-op, no error) when no provider resolved — retries next run", async () => {
     const { db, stored } = fakeDb([row({ path: "/p1.jsonl" }), row({ path: "/p2.jsonl" })]);
 
-    const res = await sweepEmbeddings(db);
+    const res = await sweepEmbeddings(db, undefined, null);
 
     expect(res).toEqual({ ran: false, embedded: 0, errors: 0, pending: 2 });
-    expect(embeddingForNote).not.toHaveBeenCalled();
     expect(stored).toEqual([]);
   });
 
   it("backfills NULL-embedding notes when Ollama is up", async () => {
-    vi.mocked(isOllamaAvailableCached).mockResolvedValue(true);
     const { db, stored } = fakeDb([
       row({
         path: "/Users/x/.claude/projects/p/11111111-2222-3333-4444-555555555555.jsonl",
       }),
     ]);
 
-    const res = await sweepEmbeddings(db);
+    const res = await sweepEmbeddings(db, undefined, fakeProvider());
 
     expect(res).toEqual({ ran: true, embedded: 1, errors: 0, pending: 0 });
     expect(stored).toHaveLength(1);
     expect(stored[0]?.sessionId).toBe("11111111-2222-3333-4444-555555555555");
   });
 
+  it("reports a failed embed through the log callback with its kind", async () => {
+    const { db } = fakeDb([row({})]);
+    const logged: string[] = [];
+    const failing = fakeProvider({
+      embedDoc: async () => {
+        throw new TypeError("fetch failed");
+      },
+    });
+
+    const res = await sweepEmbeddings(db, (m) => logged.push(m), failing);
+
+    expect(res.errors).toBe(1);
+    expect(logged.join(" ")).toMatch(/embed failed \(network\)/);
+  });
+
   it("counts an embedding failure as pending, not stored", async () => {
-    vi.mocked(isOllamaAvailableCached).mockResolvedValue(true);
-    vi.mocked(embeddingForNote).mockResolvedValueOnce(null);
     const { db, stored } = fakeDb([row({ path: "/fail.jsonl" })]);
 
-    const res = await sweepEmbeddings(db);
+    const res = await sweepEmbeddings(
+      db,
+      undefined,
+      fakeProvider({
+        embedDoc: async () => {
+          throw new Error("boom");
+        },
+      }),
+    );
 
     expect(res).toEqual({ ran: true, embedded: 0, errors: 1, pending: 1 });
     expect(stored).toEqual([]);
   });
 
   it("backfills a NULL-embedding topic when Ollama is up (by topic id)", async () => {
-    vi.mocked(isOllamaAvailableCached).mockResolvedValue(true);
     const { db, stored, topicStored } = fakeDb(
       [],
       [trow({ id: "auth-flow-patterns" })],
     );
 
-    const res = await sweepEmbeddings(db);
+    const res = await sweepEmbeddings(db, undefined, fakeProvider());
 
     expect(res).toEqual({ ran: true, embedded: 1, errors: 0, pending: 0 });
     expect(topicStored).toEqual([
@@ -281,14 +306,13 @@ describe("sweepEmbeddings", () => {
     expect(stored).toEqual([]);
   });
 
-  it("counts pending topics (alongside sessions) when Ollama is down", async () => {
-    vi.mocked(isOllamaAvailableCached).mockResolvedValueOnce(false);
+  it("counts pending topics (alongside sessions) when no provider resolved", async () => {
     const { db, topicStored } = fakeDb(
       [row({ path: "/s.jsonl" })],
       [trow({ id: "t" })],
     );
 
-    const res = await sweepEmbeddings(db);
+    const res = await sweepEmbeddings(db, undefined, null);
 
     // 1 session target + 1 topic target, neither embedded — retries next run.
     expect(res).toEqual({ ran: false, embedded: 0, errors: 0, pending: 2 });
@@ -296,14 +320,13 @@ describe("sweepEmbeddings", () => {
   });
 
   it("backfills a NULL-embedding article when Ollama is up (by article path)", async () => {
-    vi.mocked(isOllamaAvailableCached).mockResolvedValue(true);
     const { db, articleStored } = fakeDb(
       [],
       [],
       [arow({ path: "/Users/x/vault/raw/llm-routing.md" })],
     );
 
-    const res = await sweepEmbeddings(db);
+    const res = await sweepEmbeddings(db, undefined, fakeProvider());
 
     expect(res).toEqual({ ran: true, embedded: 1, errors: 0, pending: 0 });
     expect(articleStored).toEqual([
@@ -312,25 +335,26 @@ describe("sweepEmbeddings", () => {
   });
 
   it("counts an article embedding failure as pending, not stored", async () => {
-    vi.mocked(isOllamaAvailableCached).mockResolvedValue(true);
-    vi.mocked(embeddingForNote).mockResolvedValueOnce(null);
     const { db, articleStored } = fakeDb([], [], [arow({ path: "/fail.md" })]);
 
-    const res = await sweepEmbeddings(db);
+    const res = await sweepEmbeddings(db, undefined, fakeProvider({
+        embedDoc: async () => {
+          throw new Error("boom");
+        },
+      }));
 
     expect(res).toEqual({ ran: true, embedded: 0, errors: 1, pending: 1 });
     expect(articleStored).toEqual([]);
   });
 
-  it("counts pending articles (alongside sessions + topics) when Ollama is down", async () => {
-    vi.mocked(isOllamaAvailableCached).mockResolvedValueOnce(false);
+  it("counts pending articles (alongside sessions + topics) when no provider resolved", async () => {
     const { db, articleStored } = fakeDb(
       [row({ path: "/s.jsonl" })],
       [trow({ id: "t" })],
       [arow({ path: "/a.md" })],
     );
 
-    const res = await sweepEmbeddings(db);
+    const res = await sweepEmbeddings(db, undefined, null);
 
     // 1 session + 1 topic + 1 article target, none embedded — retries next run.
     expect(res).toEqual({ ran: false, embedded: 0, errors: 0, pending: 3 });
@@ -338,7 +362,6 @@ describe("sweepEmbeddings", () => {
   });
 
   it("backfills a NULL-embedding pdf when Ollama is up (by pdf path)", async () => {
-    vi.mocked(isOllamaAvailableCached).mockResolvedValue(true);
     const { db, pdfStored } = fakeDb(
       [],
       [],
@@ -346,7 +369,7 @@ describe("sweepEmbeddings", () => {
       [prow({ path: "/Users/x/papers/transformer.pdf" })],
     );
 
-    const res = await sweepEmbeddings(db);
+    const res = await sweepEmbeddings(db, undefined, fakeProvider());
 
     expect(res).toEqual({ ran: true, embedded: 1, errors: 0, pending: 0 });
     expect(pdfStored).toEqual([
@@ -355,18 +378,19 @@ describe("sweepEmbeddings", () => {
   });
 
   it("counts a pdf embedding failure as pending, not stored", async () => {
-    vi.mocked(isOllamaAvailableCached).mockResolvedValue(true);
-    vi.mocked(embeddingForNote).mockResolvedValueOnce(null);
     const { db, pdfStored } = fakeDb([], [], [], [prow({ path: "/fail.pdf" })]);
 
-    const res = await sweepEmbeddings(db);
+    const res = await sweepEmbeddings(db, undefined, fakeProvider({
+        embedDoc: async () => {
+          throw new Error("boom");
+        },
+      }));
 
     expect(res).toEqual({ ran: true, embedded: 0, errors: 1, pending: 1 });
     expect(pdfStored).toEqual([]);
   });
 
-  it("counts pending pdfs (alongside sessions + topics + articles) when Ollama is down", async () => {
-    vi.mocked(isOllamaAvailableCached).mockResolvedValueOnce(false);
+  it("counts pending pdfs (alongside sessions + topics + articles) when no provider resolved", async () => {
     const { db, pdfStored } = fakeDb(
       [row({ path: "/s.jsonl" })],
       [trow({ id: "t" })],
@@ -374,7 +398,7 @@ describe("sweepEmbeddings", () => {
       [prow({ path: "/p.pdf" })],
     );
 
-    const res = await sweepEmbeddings(db);
+    const res = await sweepEmbeddings(db, undefined, null);
 
     // 1 session + 1 topic + 1 article + 1 pdf target, none embedded.
     expect(res).toEqual({ ran: false, embedded: 0, errors: 0, pending: 4 });

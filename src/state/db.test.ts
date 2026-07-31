@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { makeSlug } from "../pipeline/writer.js";
+import Database from "better-sqlite3";
 import { StateDb } from "./db.js";
 
 const LONG_TOPIC =
@@ -35,7 +36,7 @@ describe("StateDb.getEmbeddings path reconstruction", () => {
       confidence: 0.9,
       startedAt: "2026-05-01T10:00:00.000Z",
     });
-    db.storeEmbedding(sessionId, [0.1, 0.2, 0.3]);
+    db.storeEmbedding(sessionId, [0.1, 0.2, 0.3], { model: "nomic-embed-text", dim: 768 });
 
     const rows = db.getEmbeddings("/vault/vir");
 
@@ -421,7 +422,7 @@ describe("StateDb.updateContent embedding reset", () => {
       confidence: 0.9,
       startedAt: "2026-05-01T10:00:00.000Z",
     });
-    db.storeEmbedding(sessionId, [0.1, 0.2, 0.3]);
+    db.storeEmbedding(sessionId, [0.1, 0.2, 0.3], { model: "nomic-embed-text", dim: 768 });
     expect(db.listEmbeddingTargets()).toHaveLength(0);
 
     db.updateContent(`/proj/${sessionId}.jsonl`, "merged body");
@@ -429,5 +430,137 @@ describe("StateDb.updateContent embedding reset", () => {
     const targets = db.listEmbeddingTargets();
     expect(targets).toHaveLength(1);
     expect(targets[0]?.content).toBe("merged body");
+  });
+});
+
+describe("embedding model provenance", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vir-db-"));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("backfills nomic provenance for legacy embedded session rows on migration", () => {
+    const p = join(dir, "vir.db");
+    // A pre-provenance DB: sessions table without embedding_model/embedding_dim,
+    // one row already embedded (only nomic ever wrote embeddings historically).
+    const raw = new Database(p);
+    raw.exec(
+      `CREATE TABLE sessions (
+         path TEXT PRIMARY KEY, hash TEXT NOT NULL, processed_at TEXT NOT NULL,
+         skipped INTEGER NOT NULL DEFAULT 0, note_paths TEXT NOT NULL DEFAULT '[]',
+         error TEXT, embedding TEXT)`,
+    );
+    raw
+      .prepare(
+        "INSERT INTO sessions (path, hash, processed_at, embedding) VALUES (?, ?, ?, ?)",
+      )
+      .run("/proj/a.jsonl", "h", "2026-01-01T00:00:00.000Z", "[0.1,0.2]");
+    raw
+      .prepare(
+        "INSERT INTO sessions (path, hash, processed_at, embedding) VALUES (?, ?, ?, ?)",
+      )
+      .run("/proj/b.jsonl", "h2", "2026-01-01T00:00:00.000Z", null);
+    raw.close();
+
+    new StateDb(p).close();
+
+    const check = new Database(p, { readonly: true });
+    const embedded = check
+      .prepare("SELECT embedding_model, embedding_dim FROM sessions WHERE path = '/proj/a.jsonl'")
+      .get() as { embedding_model: string | null; embedding_dim: number | null };
+    const bare = check
+      .prepare("SELECT embedding_model, embedding_dim FROM sessions WHERE path = '/proj/b.jsonl'")
+      .get() as { embedding_model: string | null; embedding_dim: number | null };
+    check.close();
+    expect(embedded).toEqual({ embedding_model: "nomic-embed-text", embedding_dim: 768 });
+    expect(bare).toEqual({ embedding_model: null, embedding_dim: null });
+  });
+
+  it("backfills provenance on a legacy topics table too", () => {
+    const p = join(dir, "vir.db");
+    const raw = new Database(p);
+    raw.exec(
+      `CREATE TABLE topics (
+         id TEXT PRIMARY KEY, topic_text TEXT NOT NULL, title TEXT NOT NULL,
+         content TEXT NOT NULL, source_note_ids TEXT NOT NULL, confidence REAL,
+         model TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+         embedding TEXT)`,
+    );
+    raw
+      .prepare(
+        `INSERT INTO topics (id, topic_text, title, content, source_note_ids, model, created_at, updated_at, embedding)
+         VALUES ('t', 'auth', 'Auth', 'body', '[]', 'sonnet', '2026-01-01', '2026-01-01', '[0.5]')`,
+      )
+      .run();
+    raw.close();
+
+    new StateDb(p).close();
+
+    const check = new Database(p, { readonly: true });
+    const row = check
+      .prepare("SELECT embedding_model, embedding_dim FROM topics WHERE id = 't'")
+      .get() as { embedding_model: string | null; embedding_dim: number | null };
+    check.close();
+    expect(row).toEqual({ embedding_model: "nomic-embed-text", embedding_dim: 768 });
+  });
+
+  it("storeEmbedding records the model and dimension that produced the vector", () => {
+    const db = new StateDb(join(dir, "vir.db"));
+    const sessionId = "dddd4444-eeee-ffff";
+    db.record({
+      path: `/proj/${sessionId}.jsonl`,
+      hash: "h1",
+      skipped: false,
+      notePaths: ["/vault/vir/patterns/x.md"],
+      content: "note body",
+      category: "pattern",
+      topic: "provenance topic",
+      project: "demo",
+      confidence: 0.9,
+      startedAt: "2026-05-01T10:00:00.000Z",
+    });
+
+    db.storeEmbedding(sessionId, [0.1, 0.2], {
+      model: "bge-small-en-v1.5",
+      dim: 384,
+    });
+
+    const rows = db.getEmbeddings("/vault/vir");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.embeddingModel).toBe("bge-small-en-v1.5");
+    expect(rows[0]?.embeddingDim).toBe(384);
+    db.close();
+  });
+
+  it("updateContent nulls provenance together with the embedding", () => {
+    const db = new StateDb(join(dir, "vir.db"));
+    const sessionId = "eeee5555-ffff-0000";
+    db.record({
+      path: `/proj/${sessionId}.jsonl`,
+      hash: "h1",
+      skipped: false,
+      notePaths: ["/vault/vir/gotchas/x.md"],
+      content: "original",
+      category: "gotcha",
+      topic: "t",
+      project: "demo",
+      confidence: 0.9,
+      startedAt: "2026-05-01T10:00:00.000Z",
+    });
+    db.storeEmbedding(sessionId, [0.1], { model: "nomic-embed-text", dim: 768 });
+
+    db.updateContent(`/proj/${sessionId}.jsonl`, "merged");
+
+    const check = new Database(join(dir, "vir.db"), { readonly: true });
+    const row = check
+      .prepare("SELECT embedding, embedding_model, embedding_dim FROM sessions")
+      .get() as { embedding: null; embedding_model: null; embedding_dim: null };
+    check.close();
+    expect(row).toEqual({ embedding: null, embedding_model: null, embedding_dim: null });
+    db.close();
   });
 });

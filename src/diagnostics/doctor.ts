@@ -31,6 +31,7 @@ import {
   isOllamaAvailable,
   probeEmbedding,
 } from "../search/embedder.js";
+import { resolveEmbeddingProvider } from "../search/provider.js";
 import { isClaudeAvailable, isInstalled } from "../mcp/install.js";
 import { gatherProjectsReport } from "../cli/projects.js";
 import { StateDb } from "../state/db.js";
@@ -518,6 +519,69 @@ async function checkOllama(): Promise<CheckResult> {
   return ollamaCheck(reachable, reachable ? await probeEmbedding() : null);
 }
 
+// ── 8b. embedding provider ────────────────────────────────────────────────────
+// Pure so the states are unit-testable. Human table ONLY — never serialized
+// into doctor --json (the 8-field VirDoctorResult is a cross-repo contract).
+export function embeddingProviderCheck(
+  providerName: "ollama" | "local" | "none",
+  model: string | null,
+  dim: number | null,
+  mismatched: number,
+): CheckResult {
+  if (providerName === "none") {
+    return warn(
+      "embedding provider",
+      "none — search is keyword-only (TF-IDF), a supported mode\n" +
+        "semantic search: `vir embed --setup` (fastembed, ~233 MB + ~128 MB model, 384d)\n" +
+        "or install Ollama + nomic-embed-text (768d)",
+    );
+  }
+  if (mismatched > 0) {
+    return warn(
+      "embedding provider",
+      `${providerName} · ${model} (${dim}d) — but ${mismatched} note(s) are embedded under a different model\n` +
+        "that is an unfinished migration: they are excluded from vector search\n" +
+        "finish it: `vir embed --force`",
+    );
+  }
+  return ok(
+    "embedding provider",
+    `${providerName} · ${model} (${dim}d) · all embedded notes match`,
+  );
+}
+
+async function checkEmbeddingProvider(
+  cfg: Config | null,
+): Promise<CheckResult> {
+  const provider = await resolveEmbeddingProvider(cfg?.embeddingProvider);
+  if (!provider) return embeddingProviderCheck("none", null, null, 0);
+  let mismatched = 0;
+  if (cfg) {
+    try {
+      const db = new StateDb();
+      const root = join(expandHome(cfg.vaultPath), cfg.outputDir);
+      const rows = [
+        ...db.getEmbeddings(root),
+        ...db.getArticleEmbeddings(),
+        ...db.getTopicEmbeddings(root, cfg.topicsDir),
+        ...db.getPdfEmbeddings(),
+      ];
+      mismatched = rows.filter(
+        (r) => r.embeddingModel !== provider.modelName,
+      ).length;
+      db.close();
+    } catch {
+      // provenance count is best-effort; the provider report alone is useful
+    }
+  }
+  return embeddingProviderCheck(
+    provider.name,
+    provider.modelName,
+    provider.dimensions,
+    mismatched,
+  );
+}
+
 // ── 9. Claude Code CLI ────────────────────────────────────────────────────────
 async function checkClaudeCli(): Promise<{ result: CheckResult; available: boolean }> {
   const available = await isClaudeAvailable();
@@ -578,6 +642,7 @@ export async function runDoctor(): Promise<void> {
   if (backup) record(backup);
 
   record(await checkOllama());
+  record(await checkEmbeddingProvider(cfg));
 
   const claude = await checkClaudeCli();
   record(claude.result);

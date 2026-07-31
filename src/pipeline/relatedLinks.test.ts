@@ -5,12 +5,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Config } from "../config.js";
 import type { DistilledNote, ParsedSession } from "./types.js";
 
-vi.mock("../search/embedder.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../search/embedder.js")>();
+vi.mock("../search/provider.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../search/provider.js")>();
+  const fakeProvider = {
+    name: "ollama" as const,
+    modelName: "nomic-embed-text",
+    dimensions: 768,
+    maxInputChars: 8192,
+    available: async () => true,
+    embedDoc: async (text: string) => ({
+      embedding: [0.5, 0.5],
+      sentChars: text.length,
+      truncated: false,
+    }),
+    embedQuery: async () => [0.5, 0.5],
+    provenance: () => ({ model: "nomic-embed-text", dim: 768 }),
+  };
   return {
     ...actual,
-    isOllamaAvailableCached: vi.fn(async () => true),
-    embeddingForNote: vi.fn(async (text: string) => {
+    resolveEmbeddingProvider: vi.fn(async () => fakeProvider),
+    embedNoteWithProvider: vi.fn(async (_p: unknown, text: string) => {
       if (text.includes("Alpha Backoff Tuning")) return [0.95, 0.05];
       if (text.includes("Alpha Retry Strategy")) return [1, 0];
       if (text.includes("Beta Frontmatter Parsing")) return [0, 1];

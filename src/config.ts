@@ -92,6 +92,11 @@ export const ConfigSchema = z
     filterToolCalls: z
       .enum(["aggressive", "moderate", "off"])
       .default("moderate"),
+    // Embedding backend override. ABSENT = auto-detect (Ollama if running,
+    // else the on-demand local provider if installed, else none/TF-IDF).
+    // `vir init` never asks — a new user has no basis to choose; detection +
+    // the once-per-run offer handle it.
+    embeddingProvider: z.enum(["ollama", "local", "none"]).optional(),
     // MMR diversity weight for `vir query` / `vir_query` retrieval. Applied in
     // the embedding path only (TF-IDF is too sparse to benefit).
     retrievalDiversity: z

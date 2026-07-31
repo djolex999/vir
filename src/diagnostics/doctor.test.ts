@@ -3,6 +3,7 @@ import {
   agentTranscriptsCheck,
   backupCheck,
   daemonCheck,
+  embeddingProviderCheck,
   ollamaCheck,
   pendingProjectsCheck,
 } from "./doctor.js";
@@ -197,5 +198,30 @@ describe("agentTranscriptsCheck — informational, never a warning", () => {
     const r = agentTranscriptsCheck({});
     expect(r.status).toBe("ok");
     expect(r.detail).toMatch(/none/i);
+  });
+});
+
+describe("embeddingProviderCheck", () => {
+  it("reports the active provider with model and dimension", () => {
+    const r = embeddingProviderCheck("ollama", "nomic-embed-text", 768, 0);
+    expect(r.status).toBe("ok");
+    expect(r.detail).toMatch(/nomic-embed-text/);
+    expect(r.detail).toMatch(/768/);
+  });
+
+  it("no provider is a warn with both alternatives and their costs", () => {
+    const r = embeddingProviderCheck("none", null, null, 0);
+    expect(r.status).toBe("warn");
+    expect(r.detail).toMatch(/vir embed --setup/);
+    expect(r.detail).toMatch(/233 MB/);
+    expect(r.detail).toMatch(/[Oo]llama/);
+  });
+
+  it("mismatched-model notes surface as an unfinished migration", () => {
+    const r = embeddingProviderCheck("local", "bge-small-en-v1.5", 384, 14);
+    expect(r.status).toBe("warn");
+    expect(r.detail).toMatch(/14/);
+    expect(r.detail).toMatch(/different model/);
+    expect(r.detail).toMatch(/vir embed --force/);
   });
 });

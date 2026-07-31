@@ -7,9 +7,10 @@ import {
   type TopicEmbeddingTargetRow,
 } from "../state/db.js";
 import {
-  embeddingForNote,
-  isOllamaAvailableCached,
-} from "../search/embedder.js";
+  embedNoteWithProvider,
+  resolveEmbeddingProvider,
+  type EmbeddingProvider,
+} from "../search/provider.js";
 
 // Pure selector mirroring db.listEmbeddingTargets's SQL filter, for unit tests
 // against fixture rows. A note needs embedding when it was distilled
@@ -104,12 +105,22 @@ export interface EmbedSweepResult {
 // pending, so the caller can log it. Same failure class as the Kie-200 and
 // content-null silent failures: a best-effort step must record its skip so a
 // reconcile pass can find it later.
-export async function sweepEmbeddings(db: StateDb): Promise<EmbedSweepResult> {
+export async function sweepEmbeddings(
+  db: StateDb,
+  log?: (msg: string) => void,
+  provider?: EmbeddingProvider | null,
+): Promise<EmbedSweepResult> {
   const targets = db.listEmbeddingTargets();
   const topicTargets = db.listTopicEmbeddingTargets();
   const articleTargets = db.listArticleEmbeddingTargets();
   const pdfTargets = db.listPdfEmbeddingTargets();
-  if (!(await isOllamaAvailableCached())) {
+  // `undefined` = caller didn't resolve one (legacy call shape) → auto-detect.
+  // `null` = caller resolved to none. Either way, no provider → no-op sweep.
+  const active =
+    provider !== undefined
+      ? provider
+      : await resolveEmbeddingProvider(undefined);
+  if (!active) {
     return {
       ran: false,
       embedded: 0,
@@ -121,16 +132,17 @@ export async function sweepEmbeddings(db: StateDb): Promise<EmbedSweepResult> {
         pdfTargets.length,
     };
   }
+  const provenance = active.provenance();
   let embedded = 0;
   let errors = 0;
   for (const t of targets) {
     if (!t.content || t.content.trim().length === 0) continue;
-    const vec = await embeddingForNote(t.content);
+    const vec = await embedNoteWithProvider(active, t.content, log);
     if (!vec) {
       errors += 1;
       continue;
     }
-    db.storeEmbedding(deriveSessionId(t.path), vec);
+    db.storeEmbedding(deriveSessionId(t.path), vec, provenance);
     embedded += 1;
   }
   // Topics live in a separate table but heal the same way: a `vir compose` while
@@ -139,12 +151,12 @@ export async function sweepEmbeddings(db: StateDb): Promise<EmbedSweepResult> {
   // re-introduce the exact NULL-embedding blind spot the 0.8.2 sweep closed.
   for (const t of topicTargets) {
     if (!t.content || t.content.trim().length === 0) continue;
-    const vec = await embeddingForNote(t.content);
+    const vec = await embedNoteWithProvider(active, t.content, log);
     if (!vec) {
       errors += 1;
       continue;
     }
-    db.storeTopicEmbedding(t.id, vec);
+    db.storeTopicEmbedding(t.id, vec, provenance);
     embedded += 1;
   }
   // Articles heal the same way (their own table). A clip distilled while Ollama
@@ -154,12 +166,12 @@ export async function sweepEmbeddings(db: StateDb): Promise<EmbedSweepResult> {
   // sweep closed for the topics table.
   for (const a of articleTargets) {
     if (!a.content || a.content.trim().length === 0) continue;
-    const vec = await embeddingForNote(a.content);
+    const vec = await embedNoteWithProvider(active, a.content, log);
     if (!vec) {
       errors += 1;
       continue;
     }
-    db.storeArticleEmbedding(a.path, vec);
+    db.storeArticleEmbedding(a.path, vec, provenance);
     embedded += 1;
   }
   // PDFs heal the same way (their own table). A paper distilled while Ollama was
@@ -168,12 +180,12 @@ export async function sweepEmbeddings(db: StateDb): Promise<EmbedSweepResult> {
   // pdfs table can't reopen the NULL-embedding blind spot (the 0.8.2/0.8.3 trap).
   for (const p of pdfTargets) {
     if (!p.content || p.content.trim().length === 0) continue;
-    const vec = await embeddingForNote(p.content);
+    const vec = await embedNoteWithProvider(active, p.content, log);
     if (!vec) {
       errors += 1;
       continue;
     }
-    db.storePdfEmbedding(p.path, vec);
+    db.storePdfEmbedding(p.path, vec, provenance);
     embedded += 1;
   }
   return { ran: true, embedded, errors, pending: errors };
