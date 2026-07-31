@@ -389,3 +389,45 @@ describe("StateDb agent-transcript rows", () => {
     expect(db.getByPath("/p/d.jsonl")?.entrypoint).toBe("sdk-py");
   });
 });
+
+// updateContent is the dedupe merger's write path: the merged body replaces the
+// stored content, so the old vector no longer describes the row. Leaving it in
+// place is the 0.8.2-class blind spot on the UPDATE path — the NULL-only sweep
+// can never heal a stale (non-NULL) embedding, so the reset must happen here.
+describe("StateDb.updateContent embedding reset", () => {
+  let dir: string;
+  let db: StateDb;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vir-db-"));
+    db = new StateDb(join(dir, "vir.db"));
+  });
+  afterEach(() => {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("nulls the embedding so the sweep re-fills it", () => {
+    const sessionId = "cccc3333-dddd-eeee";
+    db.record({
+      path: `/proj/${sessionId}.jsonl`,
+      hash: "h1",
+      skipped: false,
+      notePaths: ["/vault/vir/gotchas/x.md"],
+      content: "original body",
+      category: "gotcha",
+      topic: "some topic",
+      project: "demo",
+      confidence: 0.9,
+      startedAt: "2026-05-01T10:00:00.000Z",
+    });
+    db.storeEmbedding(sessionId, [0.1, 0.2, 0.3]);
+    expect(db.listEmbeddingTargets()).toHaveLength(0);
+
+    db.updateContent(`/proj/${sessionId}.jsonl`, "merged body");
+
+    const targets = db.listEmbeddingTargets();
+    expect(targets).toHaveLength(1);
+    expect(targets[0]?.content).toBe("merged body");
+  });
+});

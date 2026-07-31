@@ -785,9 +785,14 @@ export class StateDb {
       .run(path);
   }
 
+  // New content invalidates the stored vector — NULL it so the self-heal sweep
+  // re-embeds. The sweep only fills NULLs, so a stale non-NULL embedding here
+  // would never heal (the 0.8.2-class blind spot, on the UPDATE path).
   updateContent(path: string, content: string): void {
     this.db
-      .prepare("UPDATE sessions SET content = ? WHERE path = ?")
+      .prepare(
+        "UPDATE sessions SET content = ?, embedding = NULL WHERE path = ?",
+      )
       .run(content, path);
   }
 
