@@ -6,6 +6,7 @@ import type { Config } from "../config.js";
 import { readCostLog } from "../cost/log.js";
 import { computeCost } from "../cost/pricing.js";
 import { Distiller, normalizeModelName, resolveModelShorthand } from "../pipeline/distiller.js";
+import { ClaudeCliLimitError } from "../pipeline/claudeCli.js";
 import { scoreSession } from "../pipeline/filter.js";
 import { acquireLock, LockHeldError, releaseLock } from "../pipeline/lock.js";
 import { parseSession } from "../pipeline/parser.js";
@@ -92,7 +93,8 @@ export function summarizeReconcileTargets(
     if (hadCostRecord) collateralCount += 1;
 
     let estimatedCost = 0;
-    if (existsSync(t.path)) {
+    // Subscription path: retries cost quota, not dollars — estimate stays 0.
+    if (cfg.provider !== "claude-cli" && existsSync(t.path)) {
       try {
         const parsed = parseSession(t.path, t.hash);
         const classifyIn = Math.ceil(
@@ -192,7 +194,12 @@ export async function runReconcile(
     // no content from.
     const costSessionIds = new Set<string>();
     for (const r of readCostLog()) {
-      if (r.stage === "distill" && r.session && r.estimated_cost_usd > 0) {
+      if (
+        r.stage === "distill" &&
+        r.session &&
+        r.estimated_cost_usd !== null &&
+        r.estimated_cost_usd > 0
+      ) {
         costSessionIds.add(r.session);
       }
     }
@@ -333,6 +340,14 @@ export async function runReconcile(
         // Same pacing as run.ts — let the provider breathe between calls.
         await new Promise((r) => setTimeout(r, 2000));
       } catch (err) {
+        // A subscription limit halts reconcile exactly like the run loop:
+        // one wall, not N failures — and force-retries against it would burn
+        // quota for nothing. Remaining targets stay eligible for the next pass.
+        if (err instanceof ClaudeCliLimitError) {
+          ui.row(ui.errorColor(ui.CROSS), ui.text(err.message));
+          process.exitCode = 1;
+          break;
+        }
         // A retry that fails again must leave the row as-is (content still
         // null/empty) so the next reconcile pass can catch it. Do NOT mark
         // it processed-with-empty.

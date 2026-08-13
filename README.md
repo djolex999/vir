@@ -253,13 +253,28 @@ sources 4 · via embedding · searched 126
 - Node.js 20+
 - Claude Code (sessions at `~/.claude/projects/`)
 - Obsidian vault
-- Anthropic API key **or** Kie.ai API key (~72% cheaper, same models)
+- A distill provider — any one of:
+  - Anthropic API key (predictable per-session cost, no effect on your Claude Code limits)
+  - Your Claude Code subscription (`provider: "claude-cli"` — free and keyless; distills consume your Claude Code usage limits)
+  - Kie.ai API key (~72% cheaper API, third-party proxy)
 - Optional: Ollama + `nomic-embed-text` for semantic search
 
 ## Cost
 
 Vir runs two API calls per session: a Haiku classify (cheap) and a distill
 (the main cost). Cost depends on session size and your provider.
+
+### The zero-dollar option: `claude-cli`
+
+With `provider: "claude-cli"` vir shells out to your installed `claude`
+binary instead of calling an API — no key, no per-session dollars. The
+trade: every distill consumes your Claude Code subscription quota (the same
+limits your interactive sessions use), and that quota has no meter. vir
+therefore caps claude-cli runs at 25 sessions per run (the rest are picked
+up next cycle), halts immediately if your subscription limit is hit (with
+the reset time; nothing is retried against the wall), and records these
+calls in `cost.log` with cost marked not-applicable — never a fake $0.00.
+The API path remains the default.
 
 ### Real cost shape (measured on 226 historical sessions via Kie)
 
@@ -422,7 +437,7 @@ Located at `~/.vir/config.json`.
 | `outputDir`         | `vir`                       | Subdir inside vault                                        |
 | `claudeProjectsDir` | `~/.claude/projects`        | Claude Code sessions                                       |
 | `cadenceHours`      | `3`                         | Daemon run frequency (hours)                               |
-| `provider`          | `anthropic`                 | `anthropic` or `kie`                                       |
+| `provider`          | `anthropic`                 | `anthropic` \| `claude-cli` (subscription, keyless) \| `kie` |
 | `anthropicApiKey`   | (unset)                     | Required if `provider=anthropic`                           |
 | `kieApiKey`         | (unset)                     | Required if `provider=kie`                                 |
 | `filterThreshold`   | `0.4`                       | Heuristic pre-filter (0..1)                                |

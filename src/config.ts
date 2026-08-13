@@ -19,7 +19,11 @@ export const ConfigSchema = z
     topicsDir: z.string().min(1).default("topics"),
     claudeProjectsDir: z.string().min(1),
     cadenceHours: z.number().positive().default(3),
-    provider: z.enum(["anthropic", "kie"]).default("anthropic"),
+    // "claude-cli" shells out to the user's Claude Code CLI (subscription
+    // path, zero credential, consumes Claude Code usage limits). It is an
+    // OPTION in this release — anthropic stays the default for new and
+    // existing installs until claude-cli has real mileage.
+    provider: z.enum(["anthropic", "kie", "claude-cli"]).default("anthropic"),
     anthropicApiKey: z.string().optional(),
     kieApiKey: z.string().optional(),
     // Kie top-up tier. High-tier top-ups grant +10% bonus credits, so effective

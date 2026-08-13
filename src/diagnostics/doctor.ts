@@ -36,6 +36,7 @@ import {
   QUERY_LOG_FAIL_MARKER_PATH,
   QUERY_LOG_PATH,
 } from "../search/queryLog.js";
+import { CLAUDE_CLI_LIMIT_MARKER_PATH } from "../pipeline/claudeCli.js";
 import { isClaudeAvailable, isInstalled } from "../mcp/install.js";
 import { gatherProjectsReport } from "../cli/projects.js";
 import { StateDb } from "../state/db.js";
@@ -115,9 +116,37 @@ function checkConfig(): { result: CheckResult; cfg: Config | null } {
   };
 }
 
-// ── 2. api key ──────────────────────────────────────────────────────────────
+// ── 2. api key / provider auth ──────────────────────────────────────────────
 async function checkApiKey(cfg: Config): Promise<CheckResult> {
   const provider = cfg.provider;
+  if (provider === "claude-cli") {
+    // Keyless by design — the check is: claude on PATH, and a live one-word
+    // ping through the same callLLM path distills use. Reuses isClaudeAvailable
+    // (the existing CLI detector), never a second detection scheme.
+    if (!(await isClaudeAvailable())) {
+      return fail(
+        "provider auth",
+        "claude CLI not found — install Claude Code or switch provider",
+      );
+    }
+    try {
+      await withTimeout(
+        callLLM(cfg, null, {
+          prompt: "ping",
+          model: normalizeModelName(cfg.models.classify, provider),
+          maxTokens: 5,
+        }),
+        // CLI cold start + model call runs ~6s; give it real headroom.
+        30_000,
+      );
+      return ok(
+        "provider auth",
+        "claude-cli · authenticated (subscription — distills consume your Claude Code limits)",
+      );
+    } catch (err) {
+      return fail("provider auth", `claude-cli · ${truncate((err as Error).message)}`);
+    }
+  }
   if (provider === "anthropic") {
     const key = cfg.anthropicApiKey ?? "";
     if (!key.startsWith("sk-ant-")) {
@@ -542,6 +571,32 @@ function checkQueryLog(cfg: Config | null): CheckResult {
   );
 }
 
+// ── 7c. claude-cli limit pattern ─────────────────────────────────────────────
+// The limit-detection regex is DOCS-SOURCED and unverified until a real limit
+// hit stamps CLAUDE_CLI_LIMIT_MARKER_PATH. This row tells the user which state
+// they're in — silence here would leave "is detection even real?" unanswerable.
+// Human table only, never doctor --json. Pure; null when provider ≠ claude-cli.
+export function claudeCliLimitPatternCheck(
+  providerIsClaudeCli: boolean,
+  markerLine: string | null,
+): CheckResult | null {
+  if (!providerIsClaudeCli) return null;
+  if (markerLine === null) {
+    return ok(
+      "limit detection",
+      "never matched yet — the rate-limit pattern is docs-sourced and unverified; first real hit will confirm it (evidence logs to daemon.log)",
+    );
+  }
+  return ok("limit detection", `confirmed against a real limit hit: ${truncate(markerLine)}`);
+}
+
+function checkClaudeCliLimitPattern(cfg: Config | null): CheckResult | null {
+  return claudeCliLimitPatternCheck(
+    cfg?.provider === "claude-cli",
+    readTrimmed(CLAUDE_CLI_LIMIT_MARKER_PATH),
+  );
+}
+
 // ── 8. Ollama (optional) ──────────────────────────────────────────────────────
 // Exported for tests: pure mapping from (reachability, probe result) to a
 // verdict. probedModel is the result of a one-shot embed("ping") — a daemon
@@ -693,6 +748,8 @@ export async function runDoctor(): Promise<void> {
   const backup = checkBackup();
   if (backup) record(backup);
   record(checkQueryLog(cfg));
+  const limitPattern = checkClaudeCliLimitPattern(cfg);
+  if (limitPattern) record(limitPattern);
 
   record(await checkOllama());
   record(await checkEmbeddingProvider(cfg));

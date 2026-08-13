@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.17.0 — 2026-08-13
+
+**New distill provider: your Claude Code subscription.** `provider:
+"claude-cli"` shells out to the installed `claude` binary in print mode —
+zero per-session dollars, zero credentials. The API path (anthropic) stays
+the default for new and existing installs; this ships as an option until it
+has real mileage. Existing configs are untouched.
+
+- **`claude-cli` provider** behind the existing `callLLM` seam, alongside
+  anthropic and kie. Spawns `claude -p` with arg arrays (never a shell
+  string), prompt on stdin, JSON envelope out, per-invocation `--model`
+  pinning — hybrid routing survives. Two structural correctness
+  requirements, enforced by tests rather than convention:
+  `--no-session-persistence` always (vir never writes transcripts into
+  `~/.claude/projects` — no self-scanning, no disk bloat) and a fixed
+  neutral spawn cwd (`~/.vir`, so no project's CLAUDE.md can leak into
+  distill context). Neither has a config path that could omit it.
+- **Subscription limits are a wall, not a 429.** A detected limit
+  (`ClaudeCliLimitError`) is never retried, halts `vir run` and
+  `vir reconcile` with one message carrying the reset time, and burns no
+  per-session attempt counters — one environmental fact, not N failures
+  (the preflight-probe lesson). The detection regex is docs-sourced and
+  honestly labeled UNVERIFIED: any unrecognized error envelope is written
+  raw to daemon.log once per run as evidence, unknown errors fail safe
+  (no retry chains), the first real match stamps
+  `~/.vir/claude-cli-limit.confirmed`, and a new `vir doctor` "limit
+  detection" row reports whether the pattern has ever been confirmed.
+- **Batch cap: 25 sessions per run** on claude-cli only. Subscription quota
+  has no meter, so a big backlog is bounded per cycle (~50 CLI calls ≈ one
+  heavy interactive session); the cap is stated before the loop starts and
+  the deferred remainder is reported and picked up next run. API providers
+  are never capped.
+- **Cost honesty.** claude-cli calls land in cost.log with
+  `estimated_cost_usd: null` — cost not-applicable, never a fake $0.00
+  that would corrupt dollar aggregates. `vir cost` reports them as a
+  separate subscription-calls count, excluded from total/median/p90;
+  dry-run estimates label "subscription quota (no $)".
+- **`vir init` presents the choice honestly**, one line each: API key =
+  predictable per-session cost, no effect on Claude Code limits;
+  subscription = free and keyless, consumes your Claude Code usage limits.
+  claude-cli asks for no key. `vir doctor` authenticates it with the
+  existing claude-CLI detector plus a live ping.
+- **Re-init key survival is now enforced by schema enumeration.**
+  `buildInitConfig` had silently dropped a config key three times (bug #5,
+  the projects map, logQueries); a new test enumerates `ConfigSchema`
+  itself, so any future key must declare a survival sample and be carried
+  over — by construction, not by remembering. The test immediately caught
+  a FOURTH live drop: `embeddingProvider` (never carried since 0.15.0 — a
+  configured provider silently reset to auto-detect on re-init). Fixed.
+
 ## 0.16.0 — 2026-08-13
 
 **Retrieval logging.** Every `vir query` and MCP `vir_query` retrieval now

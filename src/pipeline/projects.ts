@@ -287,13 +287,16 @@ const MAX_DISTILL_INPUT_TOKENS = 150_000;
 const MAX_CLASSIFY_INPUT_TOKENS = 30_000;
 
 export function estimateSessionCost(
-  provider: "anthropic" | "kie",
+  provider: "anthropic" | "kie" | "claude-cli",
   classifyModel: string,
   distillModel: string,
   sizeBytes: number,
   pricing?: PricingOverrides,
   kieTopUpTier?: "standard" | "high",
 ): number {
+  // Subscription path: the dollar estimate is genuinely $0 — the real cost is
+  // Claude Code quota, which has no meter to estimate against.
+  if (provider === "claude-cli") return 0;
   const classifyIn = Math.min(
     Math.ceil(sizeBytes / CLASSIFY_BYTES_PER_TOKEN),
     MAX_CLASSIFY_INPUT_TOKENS,

@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { appendFileSync, readFileSync, mkdirSync } from "node:fs";
-import type { Provider } from "./pricing.js";
+import type { CostProvider } from "./pricing.js";
 
 export const COST_LOG_PATH = join(homedir(), ".vir", "cost.log");
 
@@ -11,11 +11,14 @@ export interface CostRecord {
   project: string | null;
   stage: string;
   model: string;
-  provider: Provider;
+  provider: CostProvider;
   input_tokens: number;
   output_tokens: number;
   token_source: "real" | "estimated";
-  estimated_cost_usd: number;
+  // null = cost not applicable (claude-cli: subscription quota, not dollars).
+  // NEVER logged as $0.00 — a zero would silently corrupt every dollar
+  // aggregate the way a missing DEFAULT_PRICING row would have for sonnet-5.
+  estimated_cost_usd: number | null;
 }
 
 export function appendCostRecord(rec: CostRecord): void {

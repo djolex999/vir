@@ -23,6 +23,9 @@ import {
   decideProject,
   groupByProject,
   estimateSessionCost,
+} from "./projects.js";
+import { ClaudeCliLimitError } from "./claudeCli.js";
+import {
   readTranscriptHead,
   sniffAgentEntrypoint,
   type ProjectDecision,
@@ -117,7 +120,20 @@ export interface RunSummary {
   pdfsDistilled: number;
   pdfsSkipped: number;
   pdfsErrored: number;
+  // claude-cli only: sessions deferred by the per-run batch cap (they stay
+  // unprocessed and re-enter next cycle), and the one-line reason when a
+  // subscription limit halted the loop (null = no halt).
+  capDeferred: number;
+  limitHalted: string | null;
 }
+
+// Max sessions distilled per run on the claude-cli provider. A 74-session
+// backlog through the API is a dollar decision the cost prompt covers; through
+// the subscription it is unmetered quota the user cannot see. 25 sessions ≈
+// 50 CLI calls ≈ a heavy interactive coding session — enough to drain a
+// typical backlog in 2–3 daemon cycles (~8–12h) without risking a whole
+// 5-hour window in one sweep. API providers are never capped.
+export const CLAUDE_CLI_SESSION_CAP = 25;
 
 // Per-document distill cost estimate for the article/PDF dry-run paths. Both run
 // a Haiku classify + Sonnet distill with input bounded by the distiller's 24k
@@ -128,6 +144,8 @@ export function estimatePerDocDistillCost(
   classifyModel: string,
   distillModel: string,
 ): number {
+  // Subscription path: zero dollars, unmetered quota.
+  if (cfg.provider === "claude-cli") return 0;
   const CPT = 3;
   return (
     computeCost(
@@ -196,6 +214,8 @@ export async function runPipeline(
     pdfsDistilled: 0,
     pdfsSkipped: 0,
     pdfsErrored: 0,
+    capDeferred: 0,
+    limitHalted: null,
   };
 
   const interactive = !opts.quiet;
@@ -660,23 +680,26 @@ export async function runPipeline(
         scrub(filterToolCalls(parsed.transcriptText, cfg.filterToolCalls).filtered)
           .length / CHARS_PER_TOKEN,
       );
+      // Subscription path: dollars are zero; the dry-run still shows tokens.
       const cost =
-        computeCost(
-          cfg.provider,
-          classifyModel,
-          classifyIn,
-          CLASSIFY_OUTPUT_TOKENS,
-          cfg.pricing,
-          cfg.kieTopUpTier,
-        ) +
-        computeCost(
-          cfg.provider,
-          distillModel,
-          distillIn,
-          DISTILL_OUTPUT_TOKENS,
-          cfg.pricing,
-          cfg.kieTopUpTier,
-        );
+        cfg.provider === "claude-cli"
+          ? 0
+          : computeCost(
+              cfg.provider,
+              classifyModel,
+              classifyIn,
+              CLASSIFY_OUTPUT_TOKENS,
+              cfg.pricing,
+              cfg.kieTopUpTier,
+            ) +
+            computeCost(
+              cfg.provider,
+              distillModel,
+              distillIn,
+              DISTILL_OUTPUT_TOKENS,
+              cfg.pricing,
+              cfg.kieTopUpTier,
+            );
       totalCost += cost;
       estimated += 1;
       if (interactive) {
@@ -781,6 +804,16 @@ export async function runPipeline(
         `provider ${cfg.provider} unreachable (preflight probe failed): ${msg}`,
       );
     }
+  }
+
+  // Batch cap for the subscription path only — stated up front, enforced at
+  // the paid-call boundary, remainder reported (and picked up next cycle).
+  const cliCapActive = cfg.provider === "claude-cli";
+  let distillsStarted = 0;
+  if (cliCapActive && preflightNew > CLAUDE_CLI_SESSION_CAP) {
+    const capMsg = `claude-cli: capping at ${CLAUDE_CLI_SESSION_CAP} sessions this run (${preflightNew} eligible — subscription quota has no meter; the rest run next cycle)`;
+    if (interactive) ui.line(ui.dim(`  ${capMsg}`));
+    fileLog(capMsg);
   }
 
   for (const found of sessionsInScope) {
@@ -903,6 +936,15 @@ export async function runPipeline(
       }
       const scrubbedContent = scrub(toolFilter.filtered);
 
+      // Cap check sits at the paid-call boundary: everything above is free
+      // bookkeeping. A deferred session records NOTHING, so it stays
+      // unprocessed and re-enters on the next run.
+      if (cliCapActive && distillsStarted >= CLAUDE_CLI_SESSION_CAP) {
+        summary.capDeferred += 1;
+        continue;
+      }
+      distillsStarted += 1;
+
       const note = await distiller.run(parsed, scrubbedSummary, scrubbedContent);
       if (!note) {
         summary.lowConfidence += 1;
@@ -949,6 +991,19 @@ export async function runPipeline(
       }
       await new Promise((r) => setTimeout(r, 2000));
     } catch (err) {
+      // A subscription limit is ONE environmental fact, not N per-session
+      // failures (the preflight-probe lesson): halt the loop, record no
+      // error rows, burn no attempt counters — the wall persists for hours
+      // and every remaining session would hit it identically. Unprocessed
+      // sessions re-enter on the next run.
+      if (err instanceof ClaudeCliLimitError) {
+        summary.limitHalted = err.message;
+        if (interactive) {
+          ui.row(ui.errorColor(ui.CROSS), ui.text(err.message));
+        }
+        fileLog(`run halted: ${err.message}`);
+        break;
+      }
       summary.errored += 1;
       const msg = (err as Error).message ?? String(err);
       if (interactive) ui.row(ui.errorColor(ui.CROSS), ui.text(`error: ${msg}`));
@@ -960,6 +1015,18 @@ export async function runPipeline(
       } catch {
         // ignore record errors
       }
+    }
+  }
+  if (summary.capDeferred > 0) {
+    fileLog(
+      `claude-cli cap reached: ${distillsStarted} distilled, ${summary.capDeferred} deferred to next run`,
+    );
+    if (interactive) {
+      ui.line(
+        ui.dim(
+          `  cap reached — ${summary.capDeferred} session(s) deferred to next run`,
+        ),
+      );
     }
   }
 

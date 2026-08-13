@@ -5,7 +5,7 @@ export interface InitAnswers {
   outputDir: string;
   claudeProjectsDir: string;
   cadenceHours: number;
-  provider: "anthropic" | "kie";
+  provider: "anthropic" | "kie" | "claude-cli";
   anthropicApiKey: string | undefined;
   kieApiKey: string | undefined;
   filterThreshold: number;
@@ -49,6 +49,14 @@ export function buildInitConfig(
     distillPdfs: existing?.distillPdfs,
     filterToolCalls: existing?.filterToolCalls,
     retrievalDiversity: existing?.retrievalDiversity,
+    // Caught by the schema-enumerated survival test — the FOURTH silently
+    // dropped key (after bug #5, projects, logQueries). Never carried since
+    // 0.15.0: a configured embedding provider was reset to auto-detect on
+    // every re-init.
+    embeddingProvider: existing?.embeddingProvider,
+    // Wizard-silent key (0.16.0): without this carry-over a re-init would
+    // silently reset a user's logQueries:false back to the zod default.
+    logQueries: existing?.logQueries,
     projects: { ...existing?.projects, ...a.projects },
     notifications: existing?.notifications,
     workflowTranscripts: existing?.workflowTranscripts,
@@ -58,11 +66,12 @@ export function buildInitConfig(
       distill: a.distillModel,
       // New installs get hybrid routing out of the box: route routine sessions
       // to Haiku, keep the chosen distill model for decision/large ones.
+      // claude-cli shares the anthropic id set (full ids pin via --model).
       distillFast:
         existing?.models?.distillFast ??
-        (a.provider === "anthropic"
-          ? "claude-haiku-4-5-20251001"
-          : "claude-haiku-4-5"),
+        (a.provider === "kie"
+          ? "claude-haiku-4-5"
+          : "claude-haiku-4-5-20251001"),
       ...(existing?.models?.distillThreshold != null
         ? { distillThreshold: existing.models.distillThreshold }
         : {}),

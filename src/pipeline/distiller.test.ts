@@ -1,14 +1,41 @@
 import { describe, it, expect } from "vitest";
 import {
   callKie,
+  costForRecord,
   HttpError,
   isRetryable,
   KieTimeoutError,
   kieResponseError,
+  maybeAnthropicClient,
   parseClassification,
   selectDistillModel,
 } from "./distiller.js";
+import { ClaudeCliError, ClaudeCliLimitError } from "./claudeCli.js";
 import type { Category, Classification } from "./types.js";
+import type { Config } from "../config.js";
+
+describe("claude-cli provider plumbing", () => {
+  it("a subscription limit is a WALL, never retried — retrying burns quota against a closed door", () => {
+    expect(isRetryable(new ClaudeCliLimitError("session", "3:45pm"))).toBe(false);
+    expect(isRetryable(new ClaudeCliLimitError("weekly", null))).toBe(false);
+  });
+
+  it("ordinary claude-cli errors are not retried either — fail safe when unsure", () => {
+    expect(isRetryable(new ClaudeCliError("boom", 1, 500))).toBe(false);
+  });
+
+  it("maybeAnthropicClient returns null for claude-cli (the SDK is never instantiated)", () => {
+    const cfg = { provider: "claude-cli" } as unknown as Config;
+    expect(maybeAnthropicClient(cfg)).toBeNull();
+  });
+
+  it("costForRecord marks claude-cli calls cost-not-applicable, never $0.00", () => {
+    expect(costForRecord("claude-cli", "claude-sonnet-5", 1000, 500, undefined, "standard")).toBeNull();
+    expect(
+      costForRecord("anthropic", "claude-sonnet-5", 1000, 500, undefined, "standard"),
+    ).toBeGreaterThan(0);
+  });
+});
 
 describe("isRetryable", () => {
   it("retries on 429", () => {

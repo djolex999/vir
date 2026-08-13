@@ -4,6 +4,7 @@ import {
   backupCheck,
   daemonCheck,
   embeddingProviderCheck,
+  claudeCliLimitPatternCheck,
   ollamaCheck,
   pendingProjectsCheck,
   queryLogCheck,
@@ -31,6 +32,31 @@ describe("ollamaCheck", () => {
 
   it("unreachable → warn (Ollama is optional)", () => {
     expect(ollamaCheck(false, null).status).toBe("warn");
+  });
+});
+
+// The claude-cli limit-detection regex is docs-sourced and unverified until a
+// real limit hit stamps the marker. Doctor reports which state we're in so the
+// user learns when the shape is confirmed.
+describe("claudeCliLimitPatternCheck", () => {
+  it("emits no row when the provider is not claude-cli", () => {
+    expect(claudeCliLimitPatternCheck(false, null)).toBeNull();
+  });
+
+  it("states plainly that the pattern is unverified before the first real hit", () => {
+    const r = claudeCliLimitPatternCheck(true, null);
+    expect(r?.status).toBe("ok");
+    expect(r?.detail).toMatch(/unverified|never matched/i);
+  });
+
+  it("reports confirmation once the marker exists", () => {
+    const r = claudeCliLimitPatternCheck(
+      true,
+      "2026-08-14T02:00:00Z weekly limit matched: You've hit your weekly limit",
+    );
+    expect(r?.status).toBe("ok");
+    expect(r?.detail).toMatch(/confirmed/i);
+    expect(r?.detail).toContain("2026-08-14");
   });
 });
 

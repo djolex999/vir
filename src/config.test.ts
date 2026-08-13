@@ -84,6 +84,29 @@ describe("provider/model defaults (0.14.0: anthropic + claude-sonnet-5)", () => 
   });
 });
 
+describe("provider claude-cli (subscription path, no credential)", () => {
+  it("parses with NO api key of any kind — the whole point is zero setup", async () => {
+    const { ConfigSchema } = await import("./config.js");
+    const parsed = ConfigSchema.safeParse({
+      vaultPath: "/tmp/v",
+      claudeProjectsDir: "/tmp/p",
+      provider: "claude-cli",
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("still requires keys for anthropic and kie", async () => {
+    const { ConfigSchema } = await import("./config.js");
+    expect(
+      ConfigSchema.safeParse({
+        vaultPath: "/tmp/v",
+        claudeProjectsDir: "/tmp/p",
+        provider: "anthropic",
+      }).success,
+    ).toBe(false);
+  });
+});
+
 describe("logQueries (retrieval logging to ~/.vir/queries.jsonl)", () => {
   const base = {
     vaultPath: "/tmp/v",

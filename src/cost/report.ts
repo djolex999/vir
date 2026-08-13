@@ -16,29 +16,38 @@ export interface CostReport {
   median: number;
   p90: number;
   bySession: SessionCost[];
+  // claude-cli calls: subscription quota, no dollars. Excluded from every
+  // dollar aggregate above (a silent $0.00 would corrupt total/median/p90),
+  // surfaced as their own count instead.
+  subscriptionCalls: number;
 }
 
 export function buildReport(records: CostRecord[]): CostReport {
   if (records.length === 0) {
-    return { total: 0, recordCount: 0, sessionCount: 0, median: 0, p90: 0, bySession: [] };
+    return { total: 0, recordCount: 0, sessionCount: 0, median: 0, p90: 0, bySession: [], subscriptionCalls: 0 };
   }
+
+  const subscriptionCalls = records.filter(
+    (r) => r.estimated_cost_usd === null,
+  ).length;
+  const priced = records.filter((r) => r.estimated_cost_usd !== null);
 
   const groups = new Map<string, SessionCost>();
 
-  for (const rec of records) {
+  for (const rec of priced) {
     const key = rec.session ?? rec.stage;
     const existing = groups.get(key);
     if (existing === undefined) {
       groups.set(key, {
         session: key,
         project: rec.project,
-        cost: rec.estimated_cost_usd,
+        cost: rec.estimated_cost_usd ?? 0,
         calls: 1,
         inputTokens: rec.input_tokens,
         outputTokens: rec.output_tokens,
       });
     } else {
-      existing.cost         += rec.estimated_cost_usd;
+      existing.cost         += rec.estimated_cost_usd ?? 0;
       existing.calls        += 1;
       existing.inputTokens  += rec.input_tokens;
       existing.outputTokens += rec.output_tokens;
@@ -50,7 +59,7 @@ export function buildReport(records: CostRecord[]): CostReport {
   }
 
   const bySession = Array.from(groups.values()).sort((a, b) => b.cost - a.cost);
-  const total     = records.reduce((acc, r) => acc + r.estimated_cost_usd, 0);
+  const total     = priced.reduce((acc, r) => acc + (r.estimated_cost_usd ?? 0), 0);
 
   const sums = bySession.map((s) => s.cost).sort((a, b) => a - b);
   const n    = sums.length;
@@ -65,6 +74,7 @@ export function buildReport(records: CostRecord[]): CostReport {
     median,
     p90,
     bySession,
+    subscriptionCalls,
   };
 }
 

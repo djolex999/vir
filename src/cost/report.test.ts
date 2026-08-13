@@ -74,6 +74,45 @@ describe("buildReport", () => {
   });
 });
 
+describe("buildReport — claude-cli records carry no dollars", () => {
+  it("null-cost records are excluded from every dollar aggregate and counted separately", () => {
+    const records: CostRecord[] = [
+      makeRecord({ session: "paid", stage: "distill", estimated_cost_usd: 0.1 }),
+      makeRecord({
+        session: "sub-1",
+        stage: "distill",
+        estimated_cost_usd: null,
+        provider: "claude-cli",
+        input_tokens: 5000,
+        output_tokens: 600,
+      }),
+      makeRecord({
+        session: "sub-1",
+        stage: "classify",
+        estimated_cost_usd: null,
+        provider: "claude-cli",
+      }),
+    ];
+    const r = buildReport(records);
+
+    // Dollar math sees ONLY the paid record — a silent $0.00 for the
+    // subscription calls would corrupt total/median/p90.
+    expect(r.total).toBeCloseTo(0.1);
+    expect(r.sessionCount).toBe(1);
+    expect(r.median).toBeCloseTo(0.1);
+    // The subscription calls are still visible, as their own count.
+    expect(r.subscriptionCalls).toBe(2);
+    expect(r.recordCount).toBe(3);
+  });
+
+  it("reports zero subscriptionCalls when every record is priced", () => {
+    const r = buildReport([
+      makeRecord({ session: "a", stage: "distill", estimated_cost_usd: 0.05 }),
+    ]);
+    expect(r.subscriptionCalls).toBe(0);
+  });
+});
+
 describe("parseDuration", () => {
   it("7d", () => expect(parseDuration("7d")).toBe(7 * 86_400_000));
   it("24h", () => expect(parseDuration("24h")).toBe(86_400_000));

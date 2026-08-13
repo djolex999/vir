@@ -1,5 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Config } from "../config.js";
+import {
+  ClaudeCliError,
+  ClaudeCliLimitError,
+  callClaudeCli,
+} from "./claudeCli.js";
 import { computeCost } from "../cost/pricing.js";
 import { appendCostRecord } from "../cost/log.js";
 import type {
@@ -47,10 +52,11 @@ export function buildAnthropicClient(config: Config): Anthropic {
   return new Anthropic({ apiKey: config.anthropicApiKey ?? "" });
 }
 
-// Returns null on the Kie path — that path uses native fetch (callKie) and
-// never touches the Anthropic SDK, so don't allocate a client there.
+// Returns null on the Kie and claude-cli paths — Kie uses native fetch
+// (callKie) and claude-cli spawns the `claude` binary; neither touches the
+// Anthropic SDK, so don't allocate a client (claude-cli has no key at all).
 export function maybeAnthropicClient(config: Config): Anthropic | null {
-  return config.provider === "kie" ? null : buildAnthropicClient(config);
+  return config.provider === "anthropic" ? buildAnthropicClient(config) : null;
 }
 
 // Canonical model IDs accepted by Kie's /claude/v1/messages endpoint.
@@ -264,6 +270,21 @@ function estimateTokens(s: string): number {
   return Math.ceil(s.length / 4);
 }
 
+// claude-cli distills cost zero DOLLARS and some subscription quota — record
+// the provider with cost marked not-applicable (null), never $0.00, so dollar
+// aggregates in `vir cost` stay honest. Exported for tests.
+export function costForRecord(
+  provider: Config["provider"],
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+  overrides: Config["pricing"],
+  tier: Config["kieTopUpTier"],
+): number | null {
+  if (provider === "claude-cli") return null;
+  return computeCost(provider, model, inputTokens, outputTokens, overrides, tier);
+}
+
 // Best-effort: a cost-log failure must never fail a distill. Real usage when the
 // provider reported it, else a chars/4 estimate of prompt + response.
 function recordCost(
@@ -288,7 +309,7 @@ function recordCost(
       input_tokens: inputTokens,
       output_tokens: outputTokens,
       token_source: real ? "real" : "estimated",
-      estimated_cost_usd: computeCost(
+      estimated_cost_usd: costForRecord(
         config.provider,
         opts.model,
         inputTokens,
@@ -308,7 +329,10 @@ export async function callLLM(
   opts: LlmCallOpts,
 ): Promise<string> {
   let result: LlmResult;
-  if (config.provider === "kie") {
+  if (config.provider === "claude-cli") {
+    const cli = await callClaudeCli({ prompt: opts.prompt, model: opts.model });
+    result = { text: cli.text, usage: cli.usage };
+  } else if (config.provider === "kie") {
     result = await callKie({
       apiKey: config.kieApiKey ?? "",
       model: opts.model,
@@ -489,6 +513,13 @@ const KIE_RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
 export function isRetryable(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
+  // A subscription limit is a wall that persists for HOURS — the opposite of
+  // a transient 429. Retrying burns quota against a closed door; the run loop
+  // halts on it instead. Ordinary claude-cli failures also stay non-retryable
+  // (fail safe: a limit the docs-sourced regex misclassified must never enter
+  // a retry chain).
+  if (err instanceof ClaudeCliLimitError) return false;
+  if (err instanceof ClaudeCliError) return false;
   // A client-side timeout is a transient stall, same family as a 5xx.
   if (err instanceof KieTimeoutError) return true;
   // Node's fetch (undici) surfaces network-level failures (ECONNREFUSED,

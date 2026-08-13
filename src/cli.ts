@@ -269,13 +269,38 @@ program
         if (
           summary.errored > 0 ||
           summary.articlesErrored > 0 ||
-          summary.pdfsErrored > 0
+          summary.pdfsErrored > 0 ||
+          // A limit halt is an incomplete run — schedulers must not read it
+          // as success. The message itself already printed from the loop.
+          summary.limitHalted !== null
         ) {
           process.exitCode = 1;
         }
       },
     ),
   );
+
+// Dollar-estimate label for the ACTIVE provider. On the subscription path the
+// honest label is quota, never "$0.00" — a zero would read as "free API call"
+// and hide that the run consumes the user's Claude Code limits.
+function estCostLabel(
+  cfg: Config,
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+): string {
+  if (cfg.provider === "claude-cli") return "subscription quota (no $)";
+  return ui.formatUsd(
+    computeCost(
+      cfg.provider,
+      model,
+      inputTokens,
+      outputTokens,
+      cfg.pricing,
+      cfg.kieTopUpTier,
+    ),
+  );
+}
 
 async function confirmCostIfNeeded(
   cfg: Config,
@@ -331,6 +356,12 @@ program
       const report = buildReport(records);
       ui.stat("window", since);
       ui.stat("llm calls", report.recordCount);
+      if (report.subscriptionCalls > 0) {
+        ui.stat(
+          "subscription",
+          `${report.subscriptionCalls} claude-cli calls (quota, no $ — excluded from totals)`,
+        );
+      }
       ui.stat("sessions", report.sessionCount);
       ui.stat("total", ui.formatUsd(report.total), ui.warn);
       ui.stat("median/session", ui.formatUsd(report.median));
@@ -888,19 +919,12 @@ program
             const counts = countByCategory(notes);
             const prompt = buildPeriodPrompt(label, notes, counts);
             const { inputTokens, outputTokens } = estimatePeriodCostTokens(prompt);
-            const estCost = computeCost(
-              cfg.provider,
-              model,
-              inputTokens,
-              outputTokens,
-              cfg.pricing,
-              cfg.kieTopUpTier,
-            );
+            const estCost = estCostLabel(cfg, model, inputTokens, outputTokens);
 
             ui.summary({
               notes: { value: notes.length, color: ui.info },
               model: { value: model, color: ui.accent },
-              "est. cost": { value: ui.formatUsd(estCost), color: ui.warn },
+              "est. cost": { value: estCost, color: ui.warn },
             });
             ui.divider();
 
@@ -913,7 +937,7 @@ program
 
             if (opts.yes !== true) {
               const proceed = await confirm({
-                message: `synthesize with ${model} (~${ui.formatUsd(estCost)})?`,
+                message: `synthesize with ${model} (~${estCost})?`,
                 default: true,
               });
               if (!proceed) {
@@ -1404,19 +1428,12 @@ program
           topic,
           sources,
         );
-        const estCost = computeCost(
-          cfg.provider,
-          model,
-          inputTokens,
-          outputTokens,
-          cfg.pricing,
-          cfg.kieTopUpTier,
-        );
+        const estCost = estCostLabel(cfg, model, inputTokens, outputTokens);
 
         ui.summary({
           sources: { value: sources.length, color: ui.info },
           model: { value: model, color: ui.accent },
-          "est. cost": { value: ui.formatUsd(estCost), color: ui.warn },
+          "est. cost": { value: estCost, color: ui.warn },
         });
         ui.divider();
 
@@ -1429,7 +1446,7 @@ program
 
         if (opts.yes !== true) {
           const proceed = await confirm({
-            message: `synthesize with ${model} (~${ui.formatUsd(estCost)})?`,
+            message: `synthesize with ${model} (~${estCost})?`,
             default: true,
           });
           if (!proceed) {
@@ -1463,7 +1480,7 @@ program
           title: { value: result.title, color: ui.text },
           sources: { value: result.sourceCount, color: ui.info },
           confidence: { value: result.confidence.toFixed(2), color: ui.info },
-          ...(rec
+          ...(rec && rec.estimated_cost_usd !== null
             ? { cost: { value: ui.formatUsd(rec.estimated_cost_usd), color: ui.warn } }
             : {}),
         });
@@ -2001,15 +2018,19 @@ async function cmdInit(): Promise<void> {
     default: existing?.provider ?? "anthropic",
     choices: [
       {
-        name: "Anthropic  (direct + reliable, official pricing — recommended)",
+        name: "Anthropic    (API key — predictable per-session cost, no effect on your Claude Code limits)",
         value: "anthropic" as const,
       },
       {
-        name: "Kie.ai     (~72% cheaper, third-party proxy — you trade reliability for cost)",
+        name: "Claude Code  (subscription — free and keyless; distills consume your Claude Code usage limits)",
+        value: "claude-cli" as const,
+      },
+      {
+        name: "Kie.ai       (~72% cheaper API, third-party proxy — you trade reliability for cost)",
         value: "kie" as const,
       },
     ],
-  })) as "anthropic" | "kie";
+  })) as "anthropic" | "kie" | "claude-cli";
 
   // Secret prompt discipline: mask while typing, echo only a masked
   // confirmation (maskSecret), and NEVER render the existing key as the
@@ -2039,17 +2060,20 @@ async function cmdInit(): Promise<void> {
       existing?.anthropicApiKey ?? process.env.ANTHROPIC_API_KEY ?? undefined,
       (v) => (v.startsWith("sk-ant-") ? true : "key should start with sk-ant-"),
     );
-  } else {
+  } else if (provider === "kie") {
     kieApiKey = await promptSecret(
       "Kie.ai API key",
       existing?.kieApiKey ?? process.env.KIE_API_KEY ?? undefined,
       (v) => (v.length > 10 ? true : "enter a valid Kie.ai API key"),
     );
   }
+  // claude-cli: no credential of any kind — it uses the `claude` login.
 
   // ── model pickers (provider-aware) ──────────────────────────────────────
+  // claude-cli accepts the same full Anthropic model ids (and pins them per
+  // invocation via --model), so it shares the anthropic id set.
   const classifyChoices =
-    provider === "anthropic"
+    provider !== "kie"
       ? [
           {
             name: "claude-haiku-4-5-20251001  (recommended)",
@@ -2070,7 +2094,7 @@ async function cmdInit(): Promise<void> {
   });
 
   const distillChoices =
-    provider === "anthropic"
+    provider !== "kie"
       ? [
           {
             name: "claude-sonnet-5  (recommended)",
