@@ -92,6 +92,11 @@ export const ConfigSchema = z
     filterToolCalls: z
       .enum(["aggressive", "moderate", "off"])
       .default("moderate"),
+    // Log every `vir query` / `vir_query` retrieval outcome to
+    // ~/.vir/queries.jsonl (local-only, never transmitted). Default on:
+    // the log is the baseline for ranking calibration, and usage that isn't
+    // captured now can't be recovered later.
+    logQueries: z.boolean().default(true),
     // Embedding backend override. ABSENT = auto-detect (Ollama if running,
     // else the on-demand local provider if installed, else none/TF-IDF).
     // `vir init` never asks — a new user has no basis to choose; detection +

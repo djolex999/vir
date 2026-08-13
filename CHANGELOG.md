@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.16.0 — 2026-08-13
+
+**Retrieval logging.** Every `vir query` and MCP `vir_query` retrieval now
+appends one record to a local, append-only `~/.vir/queries.jsonl` — which
+notes surfaced, at what rank and score, by which method, and how fast. The
+log is the ground truth for which notes earn their place in retrieval, and
+the baseline for future ranking work. Local-only, never transmitted; the
+synthesized answer is never recorded. Additive release: ranking, thresholds,
+and retrieval behavior are unchanged.
+
+- **Query log** (`~/.vir/queries.jsonl`, JSONL, not SQLite — the read-only
+  MCP facade must never write the DB, and file appends don't contend with
+  the daemon's SQLite lock). One record per query, written after retrieval
+  resolves and before synthesis: timestamp, source (`cli`/`mcp`), query
+  text, type filter, method (`embedding`/`tfidf`), degraded flag + reason,
+  provider provenance (name/model/dim, null on tfidf), candidate count
+  above the floor, model-mismatch exclusions, search latency, and per-hit
+  `{slug, rank, score, verified}` — `verified` per hit is how the flat
+  +0.2 `VERIFIED_BOOST` eventually gets calibrated instead of guessed.
+- **Best-effort, never silent.** A log write failure can never fail a
+  query (outer guard, unit-tested), but it emits one stderr line (stderr
+  only — MCP stdout is the JSON-RPC channel) and stamps
+  `~/.vir/queries.failed`, which the new `vir doctor` "query log" check
+  surfaces when a failure post-dates the last successful write within 7
+  days. Human table only; the 8-field `doctor --json` contract is unchanged.
+- **Rotation.** The log caps at 5 MB; at the cap it rolls to
+  `queries.jsonl.1` (one generation kept, ~10 MB bound total). Readers
+  merge both generations in order.
+- **`vir queries` (+ `--json`).** The payoff: total queries, method split,
+  degraded rate, most-surfaced notes with mean rank, and the dead-weight
+  list — notes that never surfaced in any logged query, the prune target.
+  Dead weight is suppressed (JSON: `null`, never `[]`) below 20 logged
+  queries: with a small sample "never surfaced" means unasked, not unused,
+  and the report refuses to dress noise as signal.
+- **Config: `logQueries`** (default `true`). Documented in the README:
+  logged locally, never transmitted, delete anytime, `"logQueries": false`
+  to disable.
+- `SearchOutcome` gained `candidates` and `provider` provenance fields
+  (additive, telemetry-only — never a ranking input).
+
 ## 0.15.0 — 2026-07-31
 
 **Embeddings are now optional and provider-agnostic.** A new user needs only

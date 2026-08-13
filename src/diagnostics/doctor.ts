@@ -32,6 +32,10 @@ import {
   probeEmbedding,
 } from "../search/embedder.js";
 import { resolveEmbeddingProvider } from "../search/provider.js";
+import {
+  QUERY_LOG_FAIL_MARKER_PATH,
+  QUERY_LOG_PATH,
+} from "../search/queryLog.js";
 import { isClaudeAvailable, isInstalled } from "../mcp/install.js";
 import { gatherProjectsReport } from "../cli/projects.js";
 import { StateDb } from "../state/db.js";
@@ -490,6 +494,54 @@ function checkBackup(): CheckResult | null {
   );
 }
 
+// ── 7b. query log ─────────────────────────────────────────────────────────────
+// appendQueryLog is best-effort (a log failure must never fail a query), so
+// the queries.failed marker is its only durable failure signal. Surface
+// "queries are happening but the log isn't being written" here — a silent
+// best-effort is a blind spot. Human table ONLY, never doctor --json.
+const QUERY_LOG_FAIL_RECENT_MS = 7 * 86_400_000;
+
+export interface QueryLogState {
+  logQueries: boolean;
+  lastWriteMs: number | null; // mtime of queries.jsonl
+  lastFailMs: number | null; // mtime of the queries.failed marker
+}
+
+export function queryLogCheck(s: QueryLogState, now: number): CheckResult {
+  if (!s.logQueries) return ok("query log", "disabled (logQueries: false)");
+  const failedSinceLastWrite =
+    s.lastFailMs !== null && (s.lastWriteMs === null || s.lastFailMs > s.lastWriteMs);
+  // A stale marker with no writes since could just mean no queries at all —
+  // only a RECENT failure proves queries are happening while the log isn't
+  // being written.
+  if (failedSinceLastWrite && now - s.lastFailMs! <= QUERY_LOG_FAIL_RECENT_MS) {
+    return warn(
+      "query log",
+      `query log writes are failing (last failure ${ageH(s.lastFailMs!, now)}h ago) — queries run but ${collapseHome(QUERY_LOG_PATH)} is not being written`,
+    );
+  }
+  if (s.lastWriteMs === null) return ok("query log", "no queries logged yet");
+  return ok("query log", `last query ${ageH(s.lastWriteMs, now)}h ago`);
+}
+
+function checkQueryLog(cfg: Config | null): CheckResult {
+  const mtime = (p: string): number | null => {
+    try {
+      return statSync(p).mtimeMs;
+    } catch {
+      return null;
+    }
+  };
+  return queryLogCheck(
+    {
+      logQueries: cfg?.logQueries ?? true,
+      lastWriteMs: mtime(QUERY_LOG_PATH),
+      lastFailMs: mtime(QUERY_LOG_FAIL_MARKER_PATH),
+    },
+    Date.now(),
+  );
+}
+
 // ── 8. Ollama (optional) ──────────────────────────────────────────────────────
 // Exported for tests: pure mapping from (reachability, probe result) to a
 // verdict. probedModel is the result of a one-shot embed("ping") — a daemon
@@ -640,6 +692,7 @@ export async function runDoctor(): Promise<void> {
   record(await checkDaemon(cfg));
   const backup = checkBackup();
   if (backup) record(backup);
+  record(checkQueryLog(cfg));
 
   record(await checkOllama());
   record(await checkEmbeddingProvider(cfg));

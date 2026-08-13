@@ -337,6 +337,7 @@ with your distro, init system, and Node version.
 | `vir projects exclude <p>`  | free  | Stop tracking (existing notes untouched)  |
 | `vir cost`                  | free  | API cost report (total/median/p90/top)    |
 | `vir query "<question>"`    | cheap | Semantic search your vault                |
+| `vir queries`               | free  | Retrieval report: method split, degraded rate, dead-weight notes |
 | `vir compose "<topic>"`     | $$    | Synthesize a topic page from related notes |
 | `vir summarize <project>`   | cheap | Cross-session project synthesis           |
 | `vir summarize --week`      | cheap | Period summary of the week's notes        |
@@ -432,6 +433,7 @@ Located at `~/.vir/config.json`.
 | `projects`          | (unset)                     | Per-project `include`/`exclude` map; absent = undecided    |
 | `filterToolCalls`   | `moderate`                  | Tool-output filtering: `aggressive` \| `moderate` \| `off` |
 | `retrievalDiversity`| `0.3`                       | MMR diversity (0..1)                                       |
+| `logQueries`        | `true`                      | Log retrievals to `~/.vir/queries.jsonl`; `false` = off    |
 | `embeddingProvider` | (unset)                     | `ollama` \| `local` \| `none`; unset = auto-detect         |
 | `models.classify`   | `claude-haiku-4-5-20251001` | Classify model                                             |
 | `models.distill`    | `claude-sonnet-5`           | Distill model for decision-heavy and large sessions        |
@@ -464,7 +466,21 @@ vault/vir/
 ~/.vir/vir.db        # SQLite (hashes, embeddings, content)
 ~/.vir/cost.log      # per-call cost records (JSONL)
 ~/.vir/daemon.log    # daemon run log
+~/.vir/queries.jsonl # retrieval log (JSONL, rotates at 5 MB, one .1 kept)
 ```
+
+### Query logging
+
+Every `vir query` and MCP `vir_query` retrieval appends one record to
+`~/.vir/queries.jsonl`: the query text, which notes surfaced at what rank and
+score, the search method (embedding vs TF-IDF fallback), and latency. It never
+records the synthesized answer.
+
+This log stays on your machine — it is **never transmitted anywhere**. It
+exists so `vir queries` can tell you which notes actually earn their place in
+retrieval (and which never surface), and it is the baseline for future ranking
+improvements. Delete it any time; disable it with `"logQueries": false` in
+`~/.vir/config.json`.
 
 ## Project status
 

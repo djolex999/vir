@@ -77,7 +77,13 @@ import {
   resolveEmbeddingProvider,
 } from "./search/provider.js";
 import { acquireLock, LockHeldError, releaseLock } from "./pipeline/lock.js";
-import { search, searchWithOutcome, vaultRoot } from "./search/retriever.js";
+import { loadIndex, searchWithOutcome, vaultRoot } from "./search/retriever.js";
+import {
+  QUERY_LOG_PATH,
+  readQueryLog,
+  recordQueryEvent,
+} from "./search/queryLog.js";
+import { MIN_DEAD_WEIGHT_SAMPLE, buildQueriesReport } from "./cli/queries.js";
 import { buildQueryResults, errorPayload } from "./output/json.js";
 import { synthesize } from "./search/synthesizer.js";
 import { runMcpServer } from "./mcp/server.js";
@@ -348,6 +354,77 @@ program
         ui.line(
           `  ${ui.dim(ui.BULLET)} ${ui.text(label.padEnd(42))} ${ui.dim(`${s.calls}×`)}  ${ui.warn(ui.formatUsd(s.cost))}`,
         );
+      }
+    }),
+  );
+
+program
+  .command("queries")
+  .description("Report on logged retrievals from ~/.vir/queries.jsonl")
+  .option("--json", "Emit the full report as JSON for scripting")
+  .option("--top <n>", "How many top-surfaced notes to show (default 10)", "10")
+  .action(
+    runAction(async (opts: { json?: boolean; top?: string }) => {
+      const cfg = loadConfig();
+      const topN = Math.max(1, Number(opts.top ?? "10") || 10);
+      const records = readQueryLog();
+      // loadIndex walks exactly the retrievable notes (skips summaries/,
+      // .rejected/, archived/, index/log) — the honest denominator for
+      // dead weight.
+      const allSlugs = loadIndex(cfg).map((d) => d.relPath.replace(/\.md$/, ""));
+      const report = buildQueriesReport(records, allSlugs, topN);
+
+      if (opts.json) {
+        // NOT a plugin contract — scripting output like `vir projects --json`.
+        process.stdout.write(JSON.stringify(report) + "\n");
+        return;
+      }
+
+      ui.header("queries");
+      ui.blank();
+      if (report.total === 0) {
+        ui.row(ui.warn(ui.WARN_GLYPH), ui.text("no logged queries yet"));
+        ui.line(ui.dim(`  ${QUERY_LOG_PATH} fills as you run \`vir query\` or use the MCP tools`));
+        return;
+      }
+      ui.stat("queries", report.total);
+      ui.stat(
+        "method",
+        `${report.byMethod.embedding} embedding · ${report.byMethod.tfidf} tfidf`,
+      );
+      ui.stat(
+        "degraded",
+        `${report.degraded} (${Math.round(report.degradedRate * 100)}%)`,
+        report.degraded > 0 ? ui.warn : undefined,
+      );
+      ui.blank();
+
+      ui.line(ui.dim(`  top ${Math.min(topN, report.topNotes.length)} surfaced notes`));
+      for (const n of report.topNotes) {
+        ui.line(
+          `  ${ui.dim(ui.BULLET)} ${ui.text(n.slug.padEnd(52))} ${ui.dim(`${n.count}× · avg rank ${n.avgRank}`)}`,
+        );
+      }
+      ui.blank();
+
+      if (report.deadWeight === null) {
+        ui.line(
+          ui.dim(
+            `  dead weight: suppressed — ${report.total} quer${report.total === 1 ? "y" : "ies"} logged, ${MIN_DEAD_WEIGHT_SAMPLE} needed before "never surfaced" means unused rather than unasked`,
+          ),
+        );
+      } else {
+        ui.line(
+          ui.dim(
+            `  dead weight: ${report.deadWeight.length} of ${allSlugs.length} notes never surfaced`,
+          ),
+        );
+        for (const slug of report.deadWeight.slice(0, topN)) {
+          ui.line(`  ${ui.dim(ui.BULLET)} ${ui.muted(slug)}`);
+        }
+        if (report.deadWeight.length > topN) {
+          ui.line(ui.dim(`  … ${report.deadWeight.length - topN} more (\`vir queries --json\` for all)`));
+        }
       }
     }),
   );
@@ -1137,8 +1214,18 @@ async function runQueryJson(question: string, limit: number): Promise<void> {
   }
   const db = new StateDb();
   try {
-    const hits = await search(cfg, db, question, limit);
-    const results = buildQueryResults(hits, vaultRoot(cfg), cfg.topicsDir);
+    const t0 = Date.now();
+    const outcome = await searchWithOutcome(cfg, db, question, limit);
+    recordQueryEvent({
+      logQueries: cfg.logQueries,
+      source: "cli",
+      query: question,
+      type: "all",
+      hits: outcome.hits,
+      search: outcome,
+      latencyMs: Date.now() - t0,
+    });
+    const results = buildQueryResults(outcome.hits, vaultRoot(cfg), cfg.topicsDir);
     process.stdout.write(JSON.stringify(results) + "\n");
   } catch (err) {
     process.stderr.write(
@@ -1177,6 +1264,7 @@ program
       // served the hits.
       const sp = ui.spinner("searching vault").start();
       let outcome;
+      const t0 = Date.now();
       try {
         outcome = await searchWithOutcome(cfg, db, question, 8);
         sp.stop();
@@ -1184,6 +1272,15 @@ program
         sp.fail(ui.errorColor((err as Error).message));
         return;
       }
+      recordQueryEvent({
+        logQueries: cfg.logQueries,
+        source: "cli",
+        query: question,
+        type: "all",
+        hits: outcome.hits,
+        search: outcome,
+        latencyMs: Date.now() - t0,
+      });
       const hits = outcome.hits;
       if (outcome.degraded) {
         ui.row(

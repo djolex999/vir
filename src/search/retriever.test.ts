@@ -297,6 +297,96 @@ describe("searchWithOutcome — embed failure degrades to TF-IDF, loudly", () =>
   });
 });
 
+describe("searchWithOutcome — candidates + provider provenance for the query log", () => {
+  const tmps: string[] = [];
+  afterEach(() => {
+    vi.clearAllMocks();
+    for (const p of tmps) rmSync(p, { recursive: true, force: true });
+    tmps.length = 0;
+  });
+
+  it("embedding path reports the provider and how many rows passed the floor before topK", async () => {
+    const vault = mkdtempSync(join(tmpdir(), "vir-cand-"));
+    const noteHome = mkdtempSync(join(tmpdir(), "vir-cand-notes-"));
+    tmps.push(vault, noteHome);
+    const mkNote = (name: string): string => {
+      const p = join(noteHome, `${name}.md`);
+      writeFileSync(p, `---\ntopic: ${name}\n---\nbody of ${name}`);
+      return p;
+    };
+    const row = (id: string, embedding: number[]): EmbeddingRow => ({
+      sessionId: id,
+      topic: id,
+      category: "pattern",
+      project: "",
+      filePath: mkNote(id),
+      embedding,
+      embeddingModel: "nomic-embed-text",
+      embeddingDim: 768,
+    });
+    const db = {
+      // Query vec is stubbed to [1,0,0]: two rows above the 0.3 floor, one at
+      // cosine 0 below it.
+      getEmbeddings: () => [row("a", [1, 0, 0]), row("b", [0.8, 0.6, 0]), row("c", [0, 1, 0])],
+      getArticleEmbeddings: () => [],
+      getTopicEmbeddings: () => [],
+      getPdfEmbeddings: () => [],
+    } as unknown as StateDb;
+    const cfg = {
+      vaultPath: vault,
+      outputDir: "vir",
+      topicsDir: "topics",
+      retrievalDiversity: 0.3,
+    } as unknown as Config;
+
+    const out = await searchWithOutcome(cfg, db, "anything", 1);
+
+    expect(out.method).toBe("embedding");
+    expect(out.hits).toHaveLength(1);
+    // 2 passed the floor even though topK kept only 1.
+    expect(out.candidates).toBe(2);
+    expect(out.provider).toEqual({
+      name: "ollama",
+      model: "nomic-embed-text",
+      dim: 768,
+    });
+  });
+
+  it("tfidf fallback reports a null provider and its own pre-topK match count", async () => {
+    const vault = mkdtempSync(join(tmpdir(), "vir-cand-"));
+    tmps.push(vault);
+    mkdirSync(join(vault, "vir", "patterns"), { recursive: true });
+    writeFileSync(
+      join(vault, "vir", "patterns", "widget-one.md"),
+      "---\ntopic: w1\n---\nA durable widget pattern.",
+    );
+    writeFileSync(
+      join(vault, "vir", "patterns", "widget-two.md"),
+      "---\ntopic: w2\n---\nAnother widget writeup entirely.",
+    );
+    writeFileSync(
+      join(vault, "vir", "patterns", "other.md"),
+      "---\ntopic: other\n---\nUnrelated gadget lore.",
+    );
+    vi.mocked(embed).mockRejectedValueOnce(new EmbedderError("Ollama down"));
+    const db = {} as unknown as StateDb;
+    const cfg = {
+      vaultPath: vault,
+      outputDir: "vir",
+      topicsDir: "topics",
+      retrievalDiversity: 0.3,
+    } as unknown as Config;
+
+    const out = await searchWithOutcome(cfg, db, "widget", 1);
+
+    expect(out.method).toBe("tfidf");
+    expect(out.provider).toBeNull();
+    expect(out.hits).toHaveLength(1);
+    // Both widget docs matched lexically; topK kept one.
+    expect(out.candidates).toBe(2);
+  });
+});
+
 describe("loadIndex — rejected and archived notes never enter the TF-IDF index", () => {
   const tmps: string[] = [];
   afterEach(() => {

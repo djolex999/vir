@@ -39,6 +39,7 @@ function sampleConfig(): Config {
     distillPdfs: true,
     filterToolCalls: "moderate",
     retrievalDiversity: 0.3,
+    logQueries: true,
     projects: {},
     notifications: true,
     workflowTranscripts: "exclude",
@@ -80,6 +81,29 @@ describe("provider/model defaults (0.14.0: anthropic + claude-sonnet-5)", () => 
     if (parsed.success) {
       expect(parsed.data.models.distill).toBe("claude-sonnet-5");
     }
+  });
+});
+
+describe("logQueries (retrieval logging to ~/.vir/queries.jsonl)", () => {
+  const base = {
+    vaultPath: "/tmp/v",
+    claudeProjectsDir: "/tmp/p",
+    provider: "anthropic",
+    anthropicApiKey: "sk-ant-test",
+  };
+
+  it("defaults to true so existing configs start accumulating on upgrade", async () => {
+    const { ConfigSchema } = await import("./config.js");
+    const parsed = ConfigSchema.safeParse(base);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.logQueries).toBe(true);
+  });
+
+  it("can be disabled explicitly", async () => {
+    const { ConfigSchema } = await import("./config.js");
+    const parsed = ConfigSchema.safeParse({ ...base, logQueries: false });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.logQueries).toBe(false);
   });
 });
 

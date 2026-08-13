@@ -6,6 +6,7 @@ import {
   embeddingProviderCheck,
   ollamaCheck,
   pendingProjectsCheck,
+  queryLogCheck,
 } from "./doctor.js";
 
 // The doctor Ollama check must be probe-based, not reachability-based: a
@@ -30,6 +31,65 @@ describe("ollamaCheck", () => {
 
   it("unreachable → warn (Ollama is optional)", () => {
     expect(ollamaCheck(false, null).status).toBe("warn");
+  });
+});
+
+// appendQueryLog is best-effort by contract, so its only durable failure
+// signal is the queries.failed marker. Doctor must surface "queries are
+// happening but the log isn't being written" — otherwise best-effort is a
+// blind spot (the lesson the 0.8.2 NULL-embedding sweep already taught).
+describe("queryLogCheck", () => {
+  const DAY = 86_400_000;
+  const NOW = Date.parse("2026-08-13T12:00:00Z");
+
+  it("logging disabled → ok, stating it is off by choice", () => {
+    const r = queryLogCheck(
+      { logQueries: false, lastWriteMs: null, lastFailMs: null },
+      NOW,
+    );
+    expect(r.status).toBe("ok");
+    expect(r.detail).toMatch(/disabled|off/i);
+  });
+
+  it("no failures, no writes yet → ok (nothing has queried yet)", () => {
+    const r = queryLogCheck(
+      { logQueries: true, lastWriteMs: null, lastFailMs: null },
+      NOW,
+    );
+    expect(r.status).toBe("ok");
+  });
+
+  it("healthy writes, no failure marker → ok", () => {
+    const r = queryLogCheck(
+      { logQueries: true, lastWriteMs: NOW - DAY, lastFailMs: null },
+      NOW,
+    );
+    expect(r.status).toBe("ok");
+  });
+
+  it("a recent failure with no successful write since → warn", () => {
+    const r = queryLogCheck(
+      { logQueries: true, lastWriteMs: NOW - 3 * DAY, lastFailMs: NOW - DAY },
+      NOW,
+    );
+    expect(r.status).toBe("warn");
+    expect(r.detail).toMatch(/fail/i);
+  });
+
+  it("a failure followed by a successful write → recovered, ok", () => {
+    const r = queryLogCheck(
+      { logQueries: true, lastWriteMs: NOW - DAY, lastFailMs: NOW - 3 * DAY },
+      NOW,
+    );
+    expect(r.status).toBe("ok");
+  });
+
+  it("a stale failure (>7d) with nothing since → ok; no evidence queries still run", () => {
+    const r = queryLogCheck(
+      { logQueries: true, lastWriteMs: null, lastFailMs: NOW - 10 * DAY },
+      NOW,
+    );
+    expect(r.status).toBe("ok");
   });
 });
 

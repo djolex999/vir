@@ -60,7 +60,9 @@ export interface ScoredCandidate {
 const VERIFIED_BOOST = 0.2;
 
 // Cheap frontmatter check — true only when the YAML block has `verified: true`.
-function isVerified(raw: string): boolean {
+// Exported so the query log records per-hit verified status without a second
+// drift-prone reimplementation (the kebabLite lesson).
+export function isVerified(raw: string): boolean {
   const m = raw.match(/^---\n([\s\S]*?)\n---/);
   if (!m?.[1]) return false;
   return /(^|\n)\s*verified:\s*true\s*(\r?\n|$)/i.test(m[1]);
@@ -83,6 +85,13 @@ export interface SearchOutcome {
   // install, or configured "none") — a supported mode, distinct from a
   // provider that failed. Callers label the two differently.
   noProvider: boolean;
+  // How many docs survived the relevance floor BEFORE the topK slice —
+  // embedding: rows above the cosine floor; tfidf: docs with lexical overlap.
+  // Telemetry for the query log, never a ranking input.
+  candidates: number;
+  // Provenance of the vectors that served the hits; null whenever TF-IDF did
+  // (including degraded fallback — the failed provider served nothing).
+  provider: { name: string; model: string; dim: number } | null;
 }
 
 // Verified notes get +VERIFIED_BOOST, pushing human-approved knowledge to the
@@ -116,26 +125,38 @@ export async function searchWithOutcome(
         embedError: null,
         excludedMismatched: attempt.excluded,
         noProvider: false,
+        candidates: attempt.candidates,
+        provider: {
+          name: provider.name,
+          model: provider.modelName,
+          dim: provider.dimensions,
+        },
       };
     }
+    const fallback = searchByTfIdf(cfg, query, topK);
     return {
-      hits: searchByTfIdf(cfg, query, topK),
+      hits: fallback.hits,
       method: "tfidf",
       degraded: attempt.error !== null,
       embedError: attempt.error,
       excludedMismatched: attempt.excluded,
       noProvider: false,
+      candidates: fallback.candidates,
+      provider: null,
     };
   }
   // TF-IDF is the supported floor, not a degraded state — but the caller must
   // be able to say "no provider" rather than "embeddings failed".
+  const floor = searchByTfIdf(cfg, query, topK);
   return {
-    hits: searchByTfIdf(cfg, query, topK),
+    hits: floor.hits,
     method: "tfidf",
     degraded: false,
     embedError: null,
     excludedMismatched: 0,
     noProvider: true,
+    candidates: floor.candidates,
+    provider: null,
   };
 }
 
@@ -156,12 +177,17 @@ async function searchByEmbedding(
   query: string,
   topK: number,
   provider: EmbeddingProvider,
-): Promise<{ hits: SearchHit[]; error: string | null; excluded: number }> {
+): Promise<{
+  hits: SearchHit[];
+  error: string | null;
+  excluded: number;
+  candidates: number;
+}> {
   let queryVec: number[];
   try {
     queryVec = await provider.embedQuery(query);
   } catch (err) {
-    return { hits: [], error: (err as Error).message, excluded: 0 };
+    return { hits: [], error: (err as Error).message, excluded: 0, candidates: 0 };
   }
 
   const root = vaultRoot(cfg);
@@ -181,7 +207,8 @@ async function searchByEmbedding(
     allRows,
     provider.modelName,
   );
-  if (rows.length === 0) return { hits: [], error: null, excluded };
+  if (rows.length === 0)
+    return { hits: [], error: null, excluded, candidates: 0 };
 
   // Read each candidate's content once, here, so the verified boost can be
   // applied BEFORE the topK slice — a verified note must be able to outrank an
@@ -229,7 +256,7 @@ async function searchByEmbedding(
       method: "embedding" as const,
     };
   });
-  return { hits, error: null, excluded };
+  return { hits, error: null, excluded, candidates: enriched.length };
 }
 
 // Maximal Marginal Relevance: greedily reranks a candidate pool to trade off
@@ -273,17 +300,24 @@ export function mmrRerank(
   return selected;
 }
 
-function searchByTfIdf(cfg: Config, query: string, topK: number): SearchHit[] {
+function searchByTfIdf(
+  cfg: Config,
+  query: string,
+  topK: number,
+): { hits: SearchHit[]; candidates: number } {
   const docs = loadIndex(cfg);
-  const scored = searchTfIdf(docs, query, topK);
+  // Score everything, slice here: the full match count is the `candidates`
+  // telemetry for the query log. Same sort, same slice — ranking unchanged.
+  const scored = searchTfIdf(docs, query, docs.length);
   const root = vaultRoot(cfg);
-  return scored.map((d) => ({
+  const hits = scored.slice(0, topK).map((d) => ({
     filePath: join(root, d.relPath),
     title: d.title,
     content: d.raw,
     score: d.score,
     method: "tfidf" as const,
   }));
+  return { hits, candidates: scored.length };
 }
 
 export function vaultRoot(cfg: Config): string {

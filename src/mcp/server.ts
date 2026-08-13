@@ -31,7 +31,8 @@ import { STATE_PATH, type Config } from "../config.js";
 import { composeSlug, TOPICS_SUBDIR } from "../pipeline/composer.js";
 import type { Category } from "../pipeline/types.js";
 import { kebab, makeSlug } from "../pipeline/writer.js";
-import { search, type SearchHit } from "../search/retriever.js";
+import { searchWithOutcome, type SearchHit } from "../search/retriever.js";
+import { recordQueryEvent } from "../search/queryLog.js";
 import { synthesize } from "../search/synthesizer.js";
 import { StateDb } from "../state/db.js";
 
@@ -272,8 +273,10 @@ export async function runMcpServer(cfg: Config): Promise<void> {
         const fetchK = hasFilter ? Math.min(30, topK * 5) : topK;
         const projSlug = project ? kebab(project) : null;
 
-        const hits = await search(cfg, db, query, fetchK);
-        const selected = hits
+        const t0 = Date.now();
+        const outcome = await searchWithOutcome(cfg, db, query, fetchK);
+        const latencyMs = Date.now() - t0;
+        const selected = outcome.hits
           .filter((h) => {
             const meta = hitMeta(h);
             if (typeFilter !== "all" && meta.type !== typeFilter) return false;
@@ -283,6 +286,19 @@ export async function runMcpServer(cfg: Config): Promise<void> {
             return true;
           })
           .slice(0, topK);
+        // Logged after results resolve (zero-hit queries included — a miss is
+        // signal too), before synthesis: latency and hits describe retrieval,
+        // never the answer. appendQueryLog reports failures on stderr only, so
+        // the JSON-RPC stdout channel is never touched.
+        recordQueryEvent({
+          logQueries: cfg.logQueries,
+          source: "mcp",
+          query,
+          type: typeFilter,
+          hits: selected,
+          search: outcome,
+          latencyMs,
+        });
 
         if (selected.length === 0) {
           return ok({
