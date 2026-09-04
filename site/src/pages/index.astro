@@ -2,6 +2,8 @@
 import Base from "../layouts/Base.astro";
 import Nav from "../components/Nav.astro";
 import Hero from "../components/Hero.astro";
+import Problem from "../components/Problem.astro";
+import LoopDiagram from "../components/LoopDiagram.astro";
 import { fetchStats } from "../lib/stats";
 import { MEASURE } from "../consts";
 
@@ -18,5 +20,7 @@ if (MEASURE.length > 0) {
   <Nav />
   <main id="main">
     <Hero stats={stats} />
+    <Problem />
+    <LoopDiagram />
   </main>
 </Base>

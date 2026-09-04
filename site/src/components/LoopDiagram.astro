@@ -1,0 +1,53 @@
+---
+import { Loop } from "../islands/Loop";
+import { LOOP_NODES } from "../consts";
+---
+<section id="how" class="section container">
+  <p class="eyebrow reveal">How it works</p>
+  <h2 class="reveal mt-3 font-display text-4xl leading-tight md:text-5xl">A loop, not a pipeline.</h2>
+  <p class="prose reveal mt-5 text-ink-muted">
+    Sessions become notes. Notes feed the next session. The daemon keeps it turning while you work.
+  </p>
+  <div class="reveal mt-12">
+    <Loop client:visible nodes={LOOP_NODES} />
+    <noscript>
+      <ol class="grid gap-4 md:grid-cols-5">
+        {LOOP_NODES.map((n) => (
+          <li class="border border-rule p-4">
+            <strong class="block font-sans text-[0.95rem]">{n.label}</strong>
+            <span class="mt-2 block text-[0.9rem] text-ink-muted">{n.blurb}</span>
+            {n.command && <code class="mt-2 block font-mono text-[0.8rem]">$ {n.command}</code>}
+          </li>
+        ))}
+      </ol>
+    </noscript>
+  </div>
+</section>
+
+<style is:global>
+  .loop { color: var(--ink); }
+  .loop-ring { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; list-style: none; margin: 0; padding: 0; }
+  .loop-item { display: flex; align-items: center; min-width: 0; }
+  .loop-node {
+    flex: 1 1 auto; min-width: 0; text-align: left; padding: 0.85rem 1rem;
+    border: 1px solid var(--rule); background: var(--paper);
+    font-family: var(--font-sans); font-size: 0.95rem; line-height: 1.3; color: var(--ink);
+    cursor: pointer; transition: border-color 150ms ease, background 150ms ease;
+  }
+  .loop-node:hover, .loop-node[data-active] { border-color: var(--accent); background: var(--accent-wash); }
+  .loop-arrow { flex: 0 0 auto; padding-inline: 0.5rem; color: var(--ink-muted); font-family: var(--font-mono); }
+  .loop-item:last-child .loop-arrow { visibility: hidden; }
+  .loop-return { display: block; width: 100%; height: 56px; color: var(--ink-muted); margin-top: -1px; }
+  .loop-panel { min-height: 5.5rem; border-top: 1px solid var(--rule); padding-top: 1rem; }
+  .loop-blurb { max-width: 62ch; color: var(--ink); margin: 0; }
+  .loop-hint { color: var(--ink-muted); }
+  .loop-cmd { display: inline-block; margin-top: 0.6rem; font-family: var(--font-mono); font-size: 0.85rem; padding: 0.3rem 0.6rem; background: var(--paper-2); border: 1px solid var(--rule); }
+  @media (max-width: 767px) {
+    .loop-ring { grid-template-columns: 1fr; gap: 0.25rem; }
+    .loop-item { flex-direction: column; align-items: stretch; }
+    .loop-arrow { text-align: center; transform: rotate(90deg); padding: 0.1rem; }
+    .loop-return { display: none; }
+  }
+  .loop:has(.loop-node:hover) .loop-node:not(:hover)[data-active] { background: var(--paper); border-color: var(--rule); }
+  @media (prefers-reduced-motion: reduce) { .loop-node { transition: none; } }
+</style>
