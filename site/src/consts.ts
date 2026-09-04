@@ -1,6 +1,6 @@
 import pkg from "../../package.json" with { type: "json" };
 
-export const SITE_URL = "https://vir.sh";
+export const SITE_URL = "https://virwiki.dev";
 export const NPM_PKG = "@djolex999/vir-cli";
 export const GITHUB_URL = "https://github.com/djolex999/vir";
 export const NPM_URL = "https://www.npmjs.com/package/@djolex999/vir-cli";
