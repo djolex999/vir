@@ -46,12 +46,12 @@ const showComposition = NUMBERS.vaultNotes !== null && NUMBERS.vaultLinks !== nu
     {proof.map((p) => <li class="px-3 first:pl-0 last:pr-0">{p}</li>)}
   </ul>
   <p class="mt-3 text-center font-mono text-[0.72rem] uppercase tracking-[0.08em] text-ink-muted">
-    <span class="text-ink/60">Works with</span>{" "}
+    <span class="text-ink-muted">Works with</span>{" "}
     {WORKS_WITH.map((w, i) => (<><span class="text-ink">{w}</span>{i < WORKS_WITH.length - 1 && <span aria-hidden="true"> · </span>}</>))}
   </p>
 
   <figure class="mt-12 md:mt-16">
-    <div class="graph-card border border-rule bg-white p-2 shadow-[0_1px_0_var(--rule),0_24px_60px_-30px_rgba(20,19,23,0.35)]">
+    <div class="graph-card border border-rule bg-card p-2 shadow-[0_1px_0_var(--rule),0_24px_60px_-30px_var(--shadow)]">
       <Graph />
       <noscript>
         <Image src={graph_png} alt={alt} widths={[640, 960, 1280]} sizes="(min-width: 1120px) 1120px, 100vw" format="webp" quality={80} loading="eager" class="h-auto w-full" />
