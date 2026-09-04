@@ -9,6 +9,8 @@ const root =
   process.argv[2] ??
   join(JSON.parse(readFileSync(join(process.env.HOME, ".vir/config.json"), "utf8")).vaultPath, "vir");
 const MAX_NODES = 110;
+// Topics that read as security findings stay out of the public sample.
+const EXCLUDE = /leak|bypass|attack|inject|exploit|vuln|self-grant|secur/i;
 const W = 1120, H = 640;
 
 const files = [];
@@ -21,7 +23,7 @@ for (const p of files) {
   const topic = s.match(/^topic: "(.+)"$/m)?.[1];
   const key = basename(p, ".md");
   const cat = s.match(/^category: (\w+)$/m)?.[1];
-  if (!topic || !cat) continue;
+  if (!topic || !cat || EXCLUDE.test(topic) || EXCLUDE.test(key)) continue;
   const links = new Set([...s.matchAll(/\[\[([^\]|#]+)/g)].map((m) => m[1].trim()));
   notes.set(key, { label: topic, cat, links });
 }
