@@ -8,7 +8,7 @@ const pos = new Map(graph.nodes.map((n) => [n.id, n]));
 ---
 <div class="graph" data-graph>
   <svg viewBox={`0 0 ${graph.w} ${graph.h}`} class="graph-svg" role="img" aria-label={`${graph.nodes.length} notes from the author's vault, linked as vir linked them`}>
-    <g class="graph-links" stroke="#141317" stroke-opacity="0.13" stroke-width="1">
+    <g class="graph-links" stroke="#141317" stroke-opacity="0.22" stroke-width="1">
       {graph.links.map(([a, b]) => {
         const p = pos.get(a), q = pos.get(b);
         return p && q ? <line x1={p.x} y1={p.y} x2={q.x} y2={q.y} data-a={a} data-b={b} /> : null;

@@ -58,7 +58,7 @@ const showComposition = NUMBERS.vaultNotes !== null && NUMBERS.vaultLinks !== nu
       </noscript>
     </div>
     <figcaption class="mt-5 flex flex-wrap items-baseline justify-between gap-2 font-mono text-[0.78rem] text-ink-muted">
-      <span>{graph.nodes.length} of the {graph.total.notes} notes in my vault, linked as vir linked them. Hover one.</span>
+      <span>{graph.nodes.length} of the {NUMBERS.vaultNotes} notes in my vault, linked as vir linked them. Hover one.</span>
       <span class="flex gap-4">
         {showComposition && <span>{NUMBERS.vaultNotes} notes · 4 types · {NUMBERS.vaultLinks} links</span>}
         <button type="button" data-open-graph class="text-accent-text underline underline-offset-4">Full graph in Obsidian ↗</button>

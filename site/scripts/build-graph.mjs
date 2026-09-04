@@ -3,7 +3,7 @@
 //   node scripts/build-graph.mjs [vault/vir dir]
 import { readdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
-import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide } from "d3-force";
+import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide, forceX, forceY } from "d3-force";
 
 const root =
   process.argv[2] ??
@@ -43,12 +43,14 @@ for (const a of chosen) for (const l of notes.get(a).links) {
   links.push({ source: a, target: l });
 }
 const sim = forceSimulation(nodes)
-  .force("link", forceLink(links).id((d) => d.id).distance(38).strength(0.6))
-  .force("charge", forceManyBody().strength(-70))
+  .force("link", forceLink(links).id((d) => d.id).distance(46).strength(0.35))
+  .force("charge", forceManyBody().strength(-120).distanceMax(260))
   .force("center", forceCenter(W / 2, H / 2))
-  .force("collide", forceCollide(9))
+  .force("x", forceX(W / 2).strength(0.045))
+  .force("y", forceY(H / 2).strength(0.09))
+  .force("collide", forceCollide(11))
   .stop();
-for (let i = 0; i < 400; i++) sim.tick();
+for (let i = 0; i < 600; i++) sim.tick();
 const xs = nodes.map((n) => n.x), ys = nodes.map((n) => n.y);
 const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
 const pad = 24;
@@ -60,7 +62,7 @@ const out = {
     id: n.id, label: n.label, cat: n.cat,
     x: +(pad + (n.x - minX) * s + ((W - pad * 2) - (maxX - minX) * s) / 2).toFixed(1),
     y: +(pad + (n.y - minY) * s + ((H - pad * 2) - (maxY - minY) * s) / 2).toFixed(1),
-    r: +(3 + Math.min(n.d, 12) * 0.45).toFixed(1),
+    r: +(3.5 + Math.min(n.d, 12) * 0.5).toFixed(1),
   })),
   links: links.map((l) => [l.source.id, l.target.id]),
 };
