@@ -1,8 +1,11 @@
 ---
 import { Image } from "astro:assets";
-import graph from "../assets/graph.png";
+import graph_png from "../assets/graph.png";
 import CopyCommand from "./CopyCommand.astro";
 import Lightbox from "./Lightbox.astro";
+import Graph from "./Graph.astro";
+import LogoAnimated from "./LogoAnimated.astro";
+import graph from "../data/graph.json";
 import { INSTALL_CMD, NUMBERS, VERSION, WORKS_WITH } from "../consts";
 import { formatCount, type Stats } from "../lib/stats";
 
@@ -22,6 +25,7 @@ const alt =
 const showComposition = NUMBERS.vaultNotes !== null && NUMBERS.vaultLinks !== null;
 ---
 <section id="top" class="container pt-16 pb-10 md:pt-24 md:pb-14">
+  <div class="mb-8"><LogoAnimated size={112} /></div>
   <div class="max-w-[46rem]">
     <h1 class="font-display text-[2.75rem] leading-[1.02] tracking-[-0.01em] md:text-[4.5rem]">
       Months of Claude Code sessions you thought were gone.
@@ -47,29 +51,23 @@ const showComposition = NUMBERS.vaultNotes !== null && NUMBERS.vaultLinks !== nu
   </p>
 
   <figure class="mt-12 md:mt-16">
-    <button
-      type="button"
-      data-open-graph
-      class="graph-card block w-full border border-rule bg-white p-2 text-left shadow-[0_1px_0_var(--rule),0_24px_60px_-30px_rgba(20,19,23,0.35)] transition-transform hover:-rotate-0 md:-rotate-[1.2deg]"
-      aria-label="Open the vault graph at full size"
-    >
-      <Image src={graph} alt={alt} widths={[640, 960, 1280]} sizes="(min-width: 1120px) 1120px, 100vw" format="webp" quality={80} loading="eager" decoding="async" fetchpriority="low" class="graph-img h-auto w-full" />
-    </button>
+    <div class="graph-card border border-rule bg-white p-2 shadow-[0_1px_0_var(--rule),0_24px_60px_-30px_rgba(20,19,23,0.35)]">
+      <Graph />
+      <noscript>
+        <Image src={graph_png} alt={alt} widths={[640, 960, 1280]} sizes="(min-width: 1120px) 1120px, 100vw" format="webp" quality={80} loading="eager" class="h-auto w-full" />
+      </noscript>
+    </div>
     <figcaption class="mt-5 flex flex-wrap items-baseline justify-between gap-2 font-mono text-[0.78rem] text-ink-muted">
-      <span>This is my vault. Every node is a markdown file vir wrote.</span>
-      {showComposition && (
-        <span>{NUMBERS.vaultNotes} notes · 4 types · {NUMBERS.vaultLinks} links</span>
-      )}
+      <span>{graph.nodes.length} of the {graph.total.notes} notes in my vault, linked as vir linked them. Hover one.</span>
+      <span class="flex gap-4">
+        {showComposition && <span>{NUMBERS.vaultNotes} notes · 4 types · {NUMBERS.vaultLinks} links</span>}
+        <button type="button" data-open-graph class="text-accent-text underline underline-offset-4">Full graph in Obsidian ↗</button>
+      </span>
     </figcaption>
   </figure>
   <Lightbox alt={alt} />
 </section>
 
 <style>
-  @media (min-width: 768px) {
-    .graph-img { aspect-ratio: 16 / 9; object-fit: cover; object-position: center 40%; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .graph-card { transition: none; }
-  }
+  .graph-card noscript img { display: block; }
 </style>

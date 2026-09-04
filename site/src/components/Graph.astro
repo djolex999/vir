@@ -1,0 +1,89 @@
+---
+// A slice of the author's real vault, laid out at build time
+// (scripts/build-graph.mjs). No layout JS ships; the only client code is
+// the hover highlight below.
+import graph from "../data/graph.json";
+const CAT: Record<string, string> = { pattern: "#7c6af7", gotcha: "#5e8df4", decision: "#40b0f1", tool: "#22d3ee" };
+const pos = new Map(graph.nodes.map((n) => [n.id, n]));
+---
+<div class="graph" data-graph>
+  <svg viewBox={`0 0 ${graph.w} ${graph.h}`} class="graph-svg" role="img" aria-label={`${graph.nodes.length} notes from the author's vault, linked as vir linked them`}>
+    <g class="graph-links" stroke="#141317" stroke-opacity="0.13" stroke-width="1">
+      {graph.links.map(([a, b]) => {
+        const p = pos.get(a), q = pos.get(b);
+        return p && q ? <line x1={p.x} y1={p.y} x2={q.x} y2={q.y} data-a={a} data-b={b} /> : null;
+      })}
+    </g>
+    <g class="graph-nodes">
+      {graph.nodes.map((n, i) => (
+        <g class="graph-node" data-id={n.id} style={`--d:${(i * 37) % 11}s;--x:${n.x}px;--y:${n.y}px`} tabindex="0">
+          <circle cx={n.x} cy={n.y} r={n.r} fill={CAT[n.cat] ?? "#7c6af7"} />
+          <title>{n.label}</title>
+        </g>
+      ))}
+    </g>
+  </svg>
+  <div class="graph-label" data-graph-label aria-live="polite"></div>
+</div>
+
+<style is:global>
+  .graph { position: relative; }
+  .graph-svg { display: block; width: 100%; height: auto; }
+  .graph-node circle { transform-box: fill-box; transform-origin: center; transition: opacity 200ms ease; cursor: default; }
+  .graph-node { outline: none; animation: graph-drift 9s ease-in-out infinite alternate; animation-delay: var(--d); }
+  .graph-node:focus-visible circle { stroke: var(--accent); stroke-width: 3; }
+  .graph-links line { transition: stroke-opacity 200ms ease, stroke 200ms ease; }
+  .graph[data-active] .graph-node:not([data-hot]) circle { opacity: 0.25; }
+  .graph[data-active] .graph-links line:not([data-hot]) { stroke-opacity: 0.05; }
+  .graph[data-active] .graph-links line[data-hot] { stroke: var(--accent); stroke-opacity: 0.6; stroke-width: 1.5; }
+  .graph-label {
+    position: absolute; left: 0.75rem; bottom: 0.75rem; max-width: 60%;
+    font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink);
+    background: var(--paper); border: 1px solid var(--rule); padding: 0.35rem 0.6rem; pointer-events: none;
+  }
+  .graph-label:empty { display: none; }
+  @keyframes graph-drift {
+    from { transform: translate(0, 0); }
+    to { transform: translate(3px, -2px); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .graph-node { animation: none; }
+  }
+</style>
+
+<script>
+  const root = document.querySelector<HTMLElement>("[data-graph]");
+  if (root) {
+    const label = root.querySelector<HTMLElement>("[data-graph-label]");
+    const nodes = root.querySelectorAll<SVGGElement>(".graph-node");
+    const lines = root.querySelectorAll<SVGLineElement>(".graph-links line");
+    const clear = () => {
+      root.removeAttribute("data-active");
+      nodes.forEach((n) => n.removeAttribute("data-hot"));
+      lines.forEach((l) => l.removeAttribute("data-hot"));
+      if (label) label.textContent = "";
+    };
+    const hot = (id: string, text: string) => {
+      clear();
+      root.setAttribute("data-active", "");
+      const near = new Set([id]);
+      lines.forEach((l) => {
+        if (l.dataset.a === id || l.dataset.b === id) {
+          l.setAttribute("data-hot", "");
+          near.add(l.dataset.a ?? "");
+          near.add(l.dataset.b ?? "");
+        }
+      });
+      nodes.forEach((n) => { if (near.has(n.dataset.id ?? "")) n.setAttribute("data-hot", ""); });
+      if (label) label.textContent = text;
+    };
+    nodes.forEach((n) => {
+      const id = n.dataset.id ?? "";
+      const text = n.querySelector("title")?.textContent ?? id;
+      n.addEventListener("mouseenter", () => hot(id, text));
+      n.addEventListener("focus", () => hot(id, text));
+      n.addEventListener("mouseleave", clear);
+      n.addEventListener("blur", clear);
+    });
+  }
+</script>
