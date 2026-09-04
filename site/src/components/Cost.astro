@@ -1,10 +1,10 @@
 ---
 import { NUMBERS } from "../consts";
-const measured = NUMBERS.costRun !== null && NUMBERS.costRunTime !== null && NUMBERS.costOngoing !== null;
+const measured = NUMBERS.costTotal !== null && NUMBERS.costMedian !== null && NUMBERS.costP90 !== null;
 const steps = [
   { when: "60 seconds", what: "npm install -g, then vir init — a wizard: provider, models, vault path.", cost: "Free." },
-  { when: "One run", what: "Months of history become a vault.", cost: `${NUMBERS.costRunTime ?? ""}, ${NUMBERS.costRun ?? ""}. On a Claude subscription via the claude-cli provider: no API spend at all.` },
-  { when: "Ongoing", what: "vir schedule install registers a daemon that keeps the vault current.", cost: `${NUMBERS.costOngoing ?? ""} per new session.` },
+  { when: "One run", what: "Months of history become a vault.", cost: `${NUMBERS.costTotal} for ${NUMBERS.costSessions} sessions over ${NUMBERS.costWindow}, on the Anthropic API. On a Claude subscription via the claude-cli provider: no API spend at all.` },
+  { when: "Ongoing", what: "vir schedule install registers a daemon that keeps the vault current.", cost: `Median ${NUMBERS.costMedian} per session, ${NUMBERS.costP90} at the 90th percentile.` },
 ];
 ---
 {measured && (

@@ -14,16 +14,28 @@ export const INSTALL_CMD = `npm install -g ${NPM_PKG}`;
 
 // Every figure on the page. null = not yet measured; the block that needs it
 // is omitted and the build prints the key. See spec §11.
+// Measured 2026-09-04 on the author's machine. How each was derived:
+//   sessionsRescued  — sessions in ~/.vir/vir.db with a note written whose
+//                      transcript file no longer exists on disk
+//   transcriptsSeen  — rows in the sessions table
+//   transcriptsNoise — skip_reason in (workflow-transcript, agent-transcript, sidechain-transcript)
+//   transcriptsNotes — skipped=0 and note_paths != '[]'
+//   vaultNotes/Links — *.md files under the vault's vir/ dir, [[wikilink]] occurrences
+//   tests            — `npm test` at the repo root
+//   cost*            — `vir cost --since 180d`
 export const NUMBERS = {
-  sessionsRescued: 354,
-  transcriptsTotal: 243,
-  transcriptsMine: 20,
-  tests: null as number | null,
-  vaultNotes: null as number | null,
-  vaultLinks: null as number | null,
-  costRun: null as string | null,
-  costRunTime: null as string | null,
-  costOngoing: null as string | null,
+  sessionsRescued: 396,
+  transcriptsSeen: 1386,
+  transcriptsNoise: 562,
+  transcriptsNotes: 410,
+  tests: 548 as number | null,
+  vaultNotes: 465 as number | null,
+  vaultLinks: 3549 as number | null,
+  costWindow: "six months",
+  costSessions: 295,
+  costTotal: "$20.38" as string | null,
+  costMedian: "$0.004" as string | null,
+  costP90: "$0.13" as string | null,
   measuredOn: "September 2026",
 };
 

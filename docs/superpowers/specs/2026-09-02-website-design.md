@@ -460,6 +460,12 @@ which sells harder, and the GIF is heavy.
 These ship as real figures or the blocks that contain them are cut. No guesses,
 no rounded-up estimates.
 
+Measured 2026-09-04; derivations are documented next to the values in
+`site/src/consts.ts`. Two changes from the draft copy: block 9's second
+figure became "1,386 transcripts → 410 notes" (DB-derived) instead of the
+README's "243 → ~20", and block 10 states money only — wall-clock per run
+was never logged, so it is not claimed.
+
 1. **Vault composition** (block 2 strip): note count, link count, from the
    author's vault.
 2. **Session figures** (block 9): re-run, do not copy from the README.

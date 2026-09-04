@@ -16,8 +16,8 @@ import { NUMBERS } from "../consts";
         <dd class="mt-4 max-w-[40ch] text-ink-muted"><span class="text-ink">sessions.</span> Claude Code would have pruned these. They now exist nowhere else.</dd>
       </div>
       <div>
-        <dt class="font-display text-[5rem] leading-none tracking-[-0.02em] md:text-[7rem]">{NUMBERS.transcriptsTotal}<span class="text-ink-muted"> → </span>~{NUMBERS.transcriptsMine}</dt>
-        <dd class="mt-4 max-w-[40ch] text-ink-muted"><span class="text-ink">transcripts.</span> Only about {NUMBERS.transcriptsMine} were sessions I actually drove. vir skips subagents, workflow phases, and headless runs by default.</dd>
+        <dt class="font-display text-[5rem] leading-none tracking-[-0.02em] md:text-[7rem]">{NUMBERS.transcriptsSeen.toLocaleString("en-US")}<span class="text-ink-muted"> → </span>{NUMBERS.transcriptsNotes}</dt>
+        <dd class="mt-4 max-w-[40ch] text-ink-muted"><span class="text-ink">transcripts, notes.</span> {NUMBERS.transcriptsNoise} were subagent runs, workflow phases, or sidechains — skipped by default. {NUMBERS.transcriptsSeen - NUMBERS.transcriptsNoise - NUMBERS.transcriptsNotes} had nothing durable in them. {NUMBERS.transcriptsNotes} became notes.</dd>
       </div>
     </dl>
     <p class="eyebrow reveal mt-12">Author's machine, {NUMBERS.measuredOn}. Yours will differ.</p>
