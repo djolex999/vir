@@ -10,6 +10,43 @@
   --accent-text: #6252e0; /* 5.2:1 on paper — use for any text in accent */
   --accent-wash: color-mix(in srgb, #7c6af7 8%, transparent);
   --code-bg: #16161f;
+  --card: #ffffff;
+  --shadow: rgba(20, 19, 23, 0.35);
+  --graph-link: #141317;
+  color-scheme: light;
+}
+
+/* Dark: same accent, paper becomes near-black, ink becomes off-white.
+   Applies via system preference, or explicitly via data-theme on <html>. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0f0f14;
+    --paper-2: #16161d;
+    --ink: #e8e8f0;
+    --ink-muted: #9b99a8;
+    --rule: #26262f;
+    --accent-text: #a79dff; /* 7.9:1 on #0f0f14 */
+    --accent-wash: color-mix(in srgb, #7c6af7 14%, transparent);
+    --code-bg: #0a0a0f;
+    --card: #14141a;
+    --shadow: rgba(0, 0, 0, 0.6);
+    --graph-link: #e8e8f0;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0f0f14;
+  --paper-2: #16161d;
+  --ink: #e8e8f0;
+  --ink-muted: #9b99a8;
+  --rule: #26262f;
+  --accent-text: #a79dff;
+  --accent-wash: color-mix(in srgb, #7c6af7 14%, transparent);
+  --code-bg: #0a0a0f;
+  --card: #14141a;
+  --shadow: rgba(0, 0, 0, 0.6);
+  --graph-link: #e8e8f0;
+  color-scheme: dark;
 }
 
 @theme {
@@ -22,6 +59,7 @@
   --color-accent-text: var(--accent-text);
   --color-accent-wash: var(--accent-wash);
   --color-code: var(--code-bg);
+  --color-card: var(--card);
   --font-display: "Instrument Serif", Georgia, serif;
   --font-sans: "Inter Variable", system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
