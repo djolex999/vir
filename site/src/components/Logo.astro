@@ -2,18 +2,10 @@
 interface Props { size?: number; class?: string }
 const { size = 22, class: cls = "" } = Astro.props;
 ---
-<svg
-  width={size}
-  height={size}
-  viewBox="0 0 64 64"
-  fill="none"
-  stroke="currentColor"
-  stroke-linecap="round"
-  aria-hidden="true"
-  class={cls}
->
-  <path d="M32 8a24 24 0 1 1-24 24" stroke-width="4"></path>
-  <path d="M32 18a14 14 0 1 1-14 14" stroke-width="3.5" opacity=".7"></path>
-  <path d="M32 27a5 5 0 1 1-5 5" stroke-width="3" opacity=".45"></path>
-  <circle cx="32" cy="32" r="1.5" fill="currentColor" stroke="none"></circle>
+<svg width={size} height={size} viewBox="0 0 256 256" aria-hidden="true" class={cls}>
+<path d="M128.00 18.00A110.00 110.00 0 1 1 32.74 73.00" fill="none" stroke="#7c6af7" stroke-width="5.00" stroke-linecap="round" opacity="0.70"/>
+  <path d="M176.92 80.75A68.01 68.01 0 1 1 89.97 71.62" fill="none" stroke="#5e8df4" stroke-width="4.40" stroke-linecap="round" opacity="0.80"/>
+  <path d="M170.03 129.47A42.05 42.05 0 1 1 122.15 86.36" fill="none" stroke="#40b0f1" stroke-width="3.80" stroke-linecap="round" opacity="0.90"/>
+  <path d="M145.40 147.32A26.00 26.00 0 1 1 136.03 103.27" fill="none" stroke="#22d3ee" stroke-width="3.20" stroke-linecap="round" opacity="1.00"/>
+  <circle cx="128" cy="128" r="7" fill="#22d3ee"/>
 </svg>
