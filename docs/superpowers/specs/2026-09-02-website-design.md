@@ -20,7 +20,7 @@ understand what vir is in under ten seconds and install it in under sixty.
 - No benchmark claims. See §5, block 9 — the absence is stated as a position.
 - No testimonial wall until real quotes exist. A defined slot, shipped empty.
 - No accounts, no email capture, no newsletter.
-- No dark mode in v1. Light only.
+- Dark mode shipped after v1 (follows the system, nav toggle overrides, persisted). Same accent; link purple lightened to #a79dff for contrast.
 
 ## 3. Landscape
 

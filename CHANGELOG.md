@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.17.1 — 2026-09-04
+
+**Website and brand.** No CLI behavior changes.
+
+- **virwiki.dev.** Single-page site in `site/` (Astro, Preact islands, static
+  on Vercel): live graph of a real vault sample laid out at build time, the
+  note anatomy with the exact `writer.ts` frontmatter, measured numbers
+  instead of a benchmark, cost stated up front, dark mode.
+- **New mark.** The graph-spiral logo replaces the whirlpool across README,
+  the npm package asset, the site, and the Obsidian plugin (vir-obsidian
+  0.2.2 ships the matching ribbon icon).
+- README numbers re-measured: 548 tests, 396 rescued sessions, 1,386 → 410
+  transcripts-to-notes.
+
 ## 0.17.0 — 2026-08-13
 
 **New distill provider: your Claude Code subscription.** `provider:

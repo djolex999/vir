@@ -22,7 +22,7 @@ developer-tools, mcp, local-first, cross-platform, llm-wiki
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/v/@djolex999/vir-cli?color=7c6af7&label=npm" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/dw/@djolex999/vir-cli?color=4fd1a0" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee" alt="license"></a>
-  <a href="#project-status"><img src="https://img.shields.io/badge/tests-441%20passing-22c55e" alt="tests"></a>
+  <a href="#project-status"><img src="https://img.shields.io/badge/tests-548%20passing-22c55e" alt="tests"></a>
   <a href="#project-status"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey" alt="platforms"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-c084fc" alt="mcp"></a>
   <a href="#"><img src="https://img.shields.io/badge/local--first-yes-f59e0b" alt="local-first"></a>
@@ -36,14 +36,17 @@ vault stays yours.
 
 ## Two numbers
 
-**354 sessions.** Claude Code prunes transcripts after about 30 days. 354 of my
-sessions now exist nowhere except this vault. The decisions and gotchas inside
-them would otherwise be gone.
+**396 sessions.** Claude Code prunes transcripts after about 30 days. 396 of my
+distilled sessions now exist nowhere except this vault. The decisions and
+gotchas inside them would otherwise be gone.
 
-**243 transcripts, about 20 mine.** Of the 243 transcripts on my machine, about
-20 were sessions I actually drove. The rest were subagent runs, workflow
-phases, and headless SDK agents. Vir detects all three kinds and skips them by
-default. The vault holds your work, not your tooling's.
+**1,386 transcripts, 410 notes.** Of the 1,386 transcripts vir has read on my
+machine, 562 were subagent runs, workflow phases, or sidechains — skipped by
+default — and 361 had nothing durable in them. 410 became notes. The vault holds
+your work, not your tooling's.
+
+Numbers from my machine, September 2026. Yours will differ. Website:
+[virwiki.dev](https://virwiki.dev).
 
 ## Quick start
 
@@ -501,8 +504,8 @@ improvements. Delete it any time; disable it with `"logQueries": false` in
 
 |                |                                           |
 | -------------- | ----------------------------------------- |
-| Version        | 0.14.1                                    |
-| Tests          | 441 passing                               |
+| Version        | 0.17.1                                    |
+| Tests          | 548 passing                               |
 | Platforms      | macOS (launchd), Linux (systemd/cron)     |
 | Node           | 20+                                       |
 | First-run cost | $1 to $5 (Kie.ai optional, ~72% cheaper)  |
