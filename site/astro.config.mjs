@@ -3,7 +3,7 @@ import preact from "@astrojs/preact";
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
-  site: "https://vir.sh",
+  site: "https://virwiki.dev",
   output: "static",
   integrations: [preact()],
   vite: { plugins: [tailwindcss()] },
