@@ -14,7 +14,7 @@ vir reads the transcripts Claude Code already keeps on your disk and writes type
 - One distill provider (you choose during `vir init`):
   - **Anthropic API key** — predictable per-session cost, no effect on your Claude Code limits.
   - **Your Claude Code subscription** (`claude-cli`) — free and keyless; distills consume your Claude Code usage quota.
-  - **Kie.ai API key** — a third-party proxy at roughly 28% of Anthropic list price.
+  - **Kie.ai API key** — a third-party proxy at roughly 28% of Anthropic list price. Used for cheap testing and calibration runs; not recommended for your real vault.
 
 Semantic search is optional. Without an embedding provider vir falls back to keyword search and says so.
 

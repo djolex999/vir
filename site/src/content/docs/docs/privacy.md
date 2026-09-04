@@ -9,7 +9,7 @@ description: What leaves your machine, what stays, and what you can turn off.
 
 - `anthropic` → Anthropic's API, under your key and their data policy.
 - `claude-cli` → your own Claude Code subscription, through the `claude` binary, same as an interactive session.
-- `kie` → Kie.ai, a third-party proxy. Read their policy before choosing it.
+- `kie` → Kie.ai, a third-party proxy. It's supported for cheap test runs; for a vault you rely on, prefer `anthropic` or `claude-cli` so transcripts go only to Anthropic.
 
 Before sending, vir strips API keys, bearer tokens, absolute filesystem paths, and email addresses. It cannot recognize every secret; if a session contains something you'd never paste into a chat, exclude that project.
 
