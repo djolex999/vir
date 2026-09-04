@@ -1,0 +1,65 @@
+/* Map Starlight's theme onto the landing page tokens (see tokens.css). */
+:root {
+  --sl-font: "Inter Variable", system-ui, sans-serif;
+  --sl-font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+  --sl-font-system: var(--sl-font);
+  --sl-text-body: 16.5px;
+  --sl-line-height: 1.65;
+}
+:root[data-theme="light"] {
+  --sl-color-white: #141317;
+  --sl-color-gray-1: #2a2930;
+  --sl-color-gray-2: #5c5a63;
+  --sl-color-gray-3: #8a8892;
+  --sl-color-gray-4: #c9c6bf;
+  --sl-color-gray-5: #e3e0da;
+  --sl-color-gray-6: #f2f0ec;
+  --sl-color-gray-7: #f7f6f3;
+  --sl-color-black: #faf9f7;
+  --sl-color-accent-low: #ece9fe;
+  --sl-color-accent: #6252e0;
+  --sl-color-accent-high: #4a3bc7;
+  --sl-color-bg: #faf9f7;
+  --sl-color-bg-nav: rgba(250, 249, 247, 0.9);
+  --sl-color-bg-sidebar: #faf9f7;
+  --sl-color-hairline: #e3e0da;
+  --sl-color-hairline-light: #e3e0da;
+  --sl-color-hairline-shade: #e3e0da;
+  --sl-color-text: #141317;
+  --sl-color-text-accent: #6252e0;
+}
+:root[data-theme="dark"] {
+  --sl-color-white: #e8e8f0;
+  --sl-color-gray-1: #d2d1db;
+  --sl-color-gray-2: #9b99a8;
+  --sl-color-gray-3: #6b6977;
+  --sl-color-gray-4: #3a3944;
+  --sl-color-gray-5: #26262f;
+  --sl-color-gray-6: #16161d;
+  --sl-color-gray-7: #121218;
+  --sl-color-black: #0f0f14;
+  --sl-color-accent-low: #262047;
+  --sl-color-accent: #a79dff;
+  --sl-color-accent-high: #c5bdff;
+  --sl-color-bg: #0f0f14;
+  --sl-color-bg-nav: rgba(15, 15, 20, 0.9);
+  --sl-color-bg-sidebar: #0f0f14;
+  --sl-color-hairline: #26262f;
+  --sl-color-hairline-light: #26262f;
+  --sl-color-hairline-shade: #26262f;
+  --sl-color-text: #e8e8f0;
+  --sl-color-text-accent: #a79dff;
+}
+.sl-markdown-content h1, .sl-markdown-content h2, .sl-markdown-content h3, .content-panel h1, h1#_top, .site-title, .hero h1 {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+.sl-markdown-content h1, .content-panel h1, h1#_top { font-size: 2.75rem; line-height: 1.05; }
+.sl-markdown-content h2 { font-size: 1.9rem; line-height: 1.15; }
+.sl-markdown-content h3 { font-size: 1.35rem; }
+.site-title { font-size: 1.4rem; }
+.sl-markdown-content code:not(pre code) { font-size: 0.86em; background: var(--sl-color-gray-6); border: 1px solid var(--sl-color-hairline); padding: 0.05em 0.35em; border-radius: 0; }
+.sl-markdown-content pre, .expressive-code .frame { border-radius: 0 !important; }
+.sl-markdown-content table { font-size: 0.92em; }
+.sidebar-content a { border-radius: 0; }
