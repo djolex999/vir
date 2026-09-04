@@ -9,10 +9,13 @@ import { formatCount, type Stats } from "../lib/stats";
 interface Props { stats: Stats }
 const { stats } = Astro.props;
 
+// Downloads/stars are fetched (see stats.ts) but not shown until they'd mean
+// something to a stranger. Flip SHOW_COUNTERS when they do.
+const SHOW_COUNTERS = false;
 const proof: string[] = [];
-if (stats.downloadsWeek !== null) proof.push(`${formatCount(stats.downloadsWeek)} downloads / week`);
-if (stats.stars !== null) proof.push(`${formatCount(stats.stars)} stars`);
-proof.push("MIT", `v${VERSION}`);
+if (SHOW_COUNTERS && stats.downloadsWeek !== null) proof.push(`${formatCount(stats.downloadsWeek)} downloads / week`);
+if (SHOW_COUNTERS && stats.stars !== null) proof.push(`${formatCount(stats.stars)} stars`);
+proof.push("Open source", "MIT", `v${VERSION}`);
 
 const alt =
   "Obsidian graph view of a vault distilled by vir: session notes, articles, PDFs, and topic pages, cross-linked";

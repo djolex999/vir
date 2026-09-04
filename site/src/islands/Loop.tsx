@@ -1,4 +1,5 @@
-import { useId, useRef, useState, type KeyboardEvent } from "react";
+import { useId, useRef, useState } from "preact/hooks";
+import type { JSX } from "preact";
 import type { LoopNode } from "../consts";
 
 export type NavKey = "ArrowRight" | "ArrowLeft" | "Home" | "End";
@@ -26,7 +27,7 @@ export function Loop({ nodes }: { nodes: LoopNode[] }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const panelId = useId();
 
-  const onKey = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
+  const onKey = (e: JSX.TargetedKeyboardEvent<HTMLButtonElement>, i: number) => {
     if (e.key === "Escape") {
       setActive(null);
       return;
