@@ -25,27 +25,27 @@ const alt =
 const showComposition = NUMBERS.vaultNotes !== null && NUMBERS.vaultLinks !== null;
 ---
 <section id="top" class="container pt-16 pb-10 md:pt-24 md:pb-14">
-  <div class="mb-8"><LogoAnimated size={112} /></div>
-  <div class="max-w-[46rem]">
+  <div class="mb-10 flex justify-center"><LogoAnimated size={168} /></div>
+  <div class="mx-auto max-w-[46rem] text-center">
     <h1 class="font-display text-[2.75rem] leading-[1.02] tracking-[-0.01em] md:text-[4.5rem]">
       Months of Claude Code sessions you thought were gone.
     </h1>
   </div>
-  <p class="prose mt-7 text-[1.15rem] text-ink-muted md:text-[1.25rem]">
+  <p class="prose mx-auto mt-7 text-center text-[1.15rem] text-ink-muted md:text-[1.25rem]">
     Claude Code prunes transcripts after about 30 days. vir reads what's still on disk,
     filters out the noise, and writes typed markdown notes into your Obsidian vault —
     retroactively, in one run.
   </p>
 
-  <div class="mt-9 flex flex-wrap items-center gap-x-6 gap-y-4">
+  <div class="mt-9 flex flex-wrap items-center justify-center gap-x-6 gap-y-4">
     <CopyCommand command={INSTALL_CMD} />
     <a href="#note" class="font-mono text-[0.85rem] text-accent-text underline underline-offset-4">See what it writes ↓</a>
   </div>
 
-  <ul class="mt-10 flex flex-wrap divide-x divide-rule font-mono text-[0.72rem] uppercase tracking-[0.08em] text-ink-muted" aria-label="Project facts">
+  <ul class="mt-10 flex flex-wrap justify-center divide-x divide-rule font-mono text-[0.72rem] uppercase tracking-[0.08em] text-ink-muted" aria-label="Project facts">
     {proof.map((p) => <li class="px-3 first:pl-0 last:pr-0">{p}</li>)}
   </ul>
-  <p class="mt-3 font-mono text-[0.72rem] uppercase tracking-[0.08em] text-ink-muted">
+  <p class="mt-3 text-center font-mono text-[0.72rem] uppercase tracking-[0.08em] text-ink-muted">
     <span class="text-ink/60">Works with</span>{" "}
     {WORKS_WITH.map((w, i) => (<><span class="text-ink">{w}</span>{i < WORKS_WITH.length - 1 && <span aria-hidden="true"> · </span>}</>))}
   </p>
