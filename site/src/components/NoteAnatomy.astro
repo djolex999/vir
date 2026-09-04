@@ -45,7 +45,7 @@ const fallback = NOTES[0];
     <ol class="grid content-start gap-6 sm:grid-cols-2 lg:grid-cols-1">
       {callouts.map((c) => (
         <li class="border-t border-rule pt-4">
-          <span class="block font-mono text-[0.8rem] text-accent">{c.label}</span>
+          <span class="block font-mono text-[0.8rem] text-accent-text">{c.label}</span>
           <p class="mt-1.5 text-[0.95rem] text-ink-muted">{c.text}</p>
         </li>
       ))}
@@ -72,6 +72,6 @@ const fallback = NOTES[0];
   .note-body .fm-block { display: block; margin: -1rem -1.1rem 0.9rem; padding: 0.9rem 1.1rem; background: var(--paper-2); color: var(--ink-muted); }
   .note-body .fence { color: var(--rule); }
   .note-body .fm-key { color: var(--ink); }
-  .note-body .wikilink { color: var(--accent); }
+  .note-body .wikilink { color: var(--accent-text); }
   .note-body .heading { color: var(--ink); font-weight: 500; }
 </style>
