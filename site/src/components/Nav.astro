@@ -1,0 +1,18 @@
+---
+import Logo from "./Logo.astro";
+import { GITHUB_URL, NPM_URL } from "../consts";
+---
+<header class="sticky top-0 z-40 border-b border-rule bg-paper/85 backdrop-blur">
+  <nav class="container flex h-14 items-center justify-between" aria-label="Primary">
+    <a href="#top" class="flex items-center gap-2 text-ink">
+      <Logo class="text-accent" />
+      <span class="font-display text-2xl leading-none">vir</span>
+    </a>
+    <ul class="flex items-center gap-5 font-mono text-[0.8rem] text-ink-muted">
+      <li class="hidden sm:block"><a class="hover:text-ink" href="#how">How it works</a></li>
+      <li><a class="hover:text-ink" href="#install">Install</a></li>
+      <li><a class="hover:text-ink" href={GITHUB_URL}>GitHub</a></li>
+      <li><a class="hover:text-ink" href={NPM_URL}>npm</a></li>
+    </ul>
+  </nav>
+</header>

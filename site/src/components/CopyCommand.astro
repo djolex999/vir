@@ -1,0 +1,34 @@
+---
+interface Props { command: string; class?: string }
+const { command, class: cls = "" } = Astro.props;
+---
+<div class:list={["copy-cmd inline-flex max-w-full items-stretch border border-rule bg-paper-2 font-mono text-[0.95rem]", cls]}>
+  <span class="select-none px-3 py-2.5 text-ink-muted" aria-hidden="true">$</span>
+  <code class="overflow-x-auto whitespace-nowrap py-2.5 pr-3 text-ink">{command}</code>
+  <button
+    type="button"
+    class="copy-btn border-l border-rule px-3 text-[0.75rem] uppercase tracking-wider text-ink-muted hover:bg-accent-wash hover:text-ink"
+    data-command={command}
+    aria-label={`Copy ${command}`}
+  >
+    <span data-label>Copy</span>
+  </button>
+</div>
+
+<script>
+  for (const btn of document.querySelectorAll<HTMLButtonElement>(".copy-btn")) {
+    const label = btn.querySelector<HTMLElement>("[data-label]");
+    btn.addEventListener("click", async () => {
+      const cmd = btn.dataset.command ?? "";
+      try {
+        await navigator.clipboard.writeText(cmd);
+        if (label) label.textContent = "Copied";
+      } catch {
+        if (label) label.textContent = "Select & copy";
+      }
+      setTimeout(() => {
+        if (label) label.textContent = "Copy";
+      }, 1500);
+    });
+  }
+</script>
