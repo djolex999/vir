@@ -259,7 +259,7 @@ sources 4 · via embedding · searched 126
 - A distill provider — any one of:
   - Anthropic API key (predictable per-session cost, no effect on your Claude Code limits)
   - Your Claude Code subscription (`provider: "claude-cli"` — free and keyless; distills consume your Claude Code usage limits)
-  - Kie.ai API key (~72% cheaper API, third-party proxy)
+  - Kie.ai API key (~72% cheaper, third-party proxy — used for testing and calibration runs, not recommended for your real vault)
 - Optional: Ollama + `nomic-embed-text` for semantic search
 
 ## Cost
