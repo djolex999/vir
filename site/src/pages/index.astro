@@ -1,0 +1,42 @@
+---
+import Base from "../layouts/Base.astro";
+import Nav from "../components/Nav.astro";
+import Hero from "../components/Hero.astro";
+import Problem from "../components/Problem.astro";
+import LoopDiagram from "../components/LoopDiagram.astro";
+import Alternatives from "../components/Alternatives.astro";
+import NoteAnatomy from "../components/NoteAnatomy.astro";
+import ThreeInputs from "../components/ThreeInputs.astro";
+import QueryAndMcp from "../components/QueryAndMcp.astro";
+import NoBenchmark from "../components/NoBenchmark.astro";
+import Cost from "../components/Cost.astro";
+import Install from "../components/Install.astro";
+import CreditFooter from "../components/CreditFooter.astro";
+import { fetchStats } from "../lib/stats";
+import { MEASURE } from "../consts";
+
+const stats = await fetchStats();
+if (MEASURE.length > 0) {
+  console.warn(`[site] unmeasured figures (blocks omitted): ${MEASURE.join(", ")}`);
+}
+---
+
+<Base
+  title="vir — an LLM Wiki for Claude Code, in your Obsidian vault"
+  description="vir reads your Claude Code transcripts, filters out the noise, and writes typed markdown notes into your Obsidian vault. Retroactively, in one run."
+>
+  <Nav />
+  <main id="main">
+    <Hero stats={stats} />
+    <Problem />
+    <LoopDiagram />
+    <Alternatives />
+    <NoteAnatomy />
+    <ThreeInputs />
+    <QueryAndMcp />
+    <NoBenchmark />
+    <Cost />
+    <Install />
+  </main>
+  <CreditFooter />
+</Base>

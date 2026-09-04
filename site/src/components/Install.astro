@@ -1,0 +1,28 @@
+---
+import CopyCommand from "./CopyCommand.astro";
+import { INSTALL_CMD } from "../consts";
+---
+<section id="install" class="section container">
+  <p class="reveal font-display text-[1.6rem] text-ink-muted md:text-[2rem]">Claude Code forgets. Your vault doesn't.</p>
+  <h2 class="reveal mt-3 font-display text-4xl leading-tight md:text-5xl">Install.</h2>
+  <div class="reveal mt-10 flex flex-col items-start gap-3">
+    <CopyCommand command={INSTALL_CMD} />
+    <CopyCommand command="vir init" />
+    <CopyCommand command="vir run" />
+  </div>
+  <p class="prose reveal mt-8 text-[0.95rem] text-ink-muted">
+    <code class="font-mono text-ink">vir init</code> is a wizard: provider, models, vault path.{" "}
+    <code class="font-mono text-ink">vir run</code> does one pass over your sessions and writes notes. When you like the output,{" "}
+    <code class="font-mono text-ink">vir schedule install</code> registers a daemon that keeps the vault current.
+  </p>
+  <p class="eyebrow reveal mt-6">macOS or Linux · Node 20+ · Claude Code · Obsidian optional — the output is plain markdown either way</p>
+
+  <div class="reveal mt-14 max-w-[62ch] border border-rule p-6 md:p-7">
+    <p class="eyebrow">What actually leaves your machine</p>
+    <p class="mt-3 text-[0.95rem] text-ink-muted">
+      Transcripts are classified and distilled by an LLM, so their content goes to whichever provider you
+      configure — including your Claude subscription via the claude-cli provider. Nothing else leaves the
+      machine: no server, no account, no telemetry. Embeddings are local (Ollama) or TF-IDF.
+    </p>
+  </div>
+</section>

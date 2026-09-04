@@ -1,0 +1,51 @@
+---
+import Logo from "./Logo.astro";
+import { GITHUB_URL, KARPATHY_GIST, KARPATHY_POST, NPM_URL, NUMBERS, PLUGIN_URL, VERSION } from "../consts";
+const status = [
+  `v${VERSION}`,
+  NUMBERS.tests !== null ? `${NUMBERS.tests} tests` : null,
+  "macOS · Linux",
+  "MIT",
+  "solo-built",
+].filter((s): s is string => s !== null);
+---
+<section class="border-t border-rule">
+  <div class="section container">
+    <p class="eyebrow reveal">The pattern</p>
+    <div class="prose reveal mt-5 text-ink-muted">
+      <p>
+        In April 2026, Andrej Karpathy described a pattern he calls the <span class="text-ink">LLM Wiki</span>: AI work that
+        feeds back into itself through a persistent, curated, structured artifact instead of resetting at the end of every
+        session. He published the idea as <a href={KARPATHY_GIST}>a gist</a> and <a href={KARPATHY_POST}>a post</a>.
+      </p>
+      <p class="mt-4">
+        Several implementations of this pattern exist. vir is the Obsidian-native, retroactive one.
+      </p>
+    </div>
+
+    <!--
+      Testimonial slot. Ship only real, attributed quotes. Do not curate weak ones.
+      <blockquote class="reveal mt-14 max-w-[62ch] border-l-2 border-accent pl-5">
+        <p class="font-display text-[1.5rem] leading-snug">“…”</p>
+        <footer class="mt-3 font-mono text-[0.8rem] text-ink-muted">— Name, project</footer>
+      </blockquote>
+    -->
+
+    <ul class="reveal mt-16 flex flex-wrap divide-x divide-rule font-mono text-[0.72rem] uppercase tracking-[0.08em] text-ink-muted" aria-label="Project status">
+      {status.map((s) => <li class="px-3 first:pl-0">{s}</li>)}
+    </ul>
+  </div>
+</section>
+
+<footer class="border-t border-rule">
+  <div class="container flex flex-wrap items-center justify-between gap-4 py-8 font-mono text-[0.78rem] text-ink-muted">
+    <a href="#top" class="flex items-center gap-2 text-ink"><Logo size={22} /><span class="font-display text-xl leading-none">vir</span></a>
+    <ul class="flex flex-wrap gap-x-5 gap-y-2">
+      <li><a class="hover:text-ink" href={GITHUB_URL}>GitHub</a></li>
+      <li><a class="hover:text-ink" href={NPM_URL}>npm</a></li>
+      <li><a class="hover:text-ink" href={PLUGIN_URL}>Obsidian plugin</a></li>
+      <li><a class="hover:text-ink" href={`${GITHUB_URL}/blob/main/LICENSE`}>MIT license</a></li>
+      <li>GrowthQ Lab DOO</li>
+    </ul>
+  </div>
+</footer>

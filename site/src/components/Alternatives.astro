@@ -1,0 +1,45 @@
+---
+const cols = [
+  {
+    ok: false,
+    title: "Agent memory stores",
+    text: "Built for the agent, not for you — memory in a format you never open. And they only know what happens after you install them.",
+  },
+  {
+    ok: false,
+    title: "The transcripts themselves",
+    text: "Readable and yours — until Claude Code prunes them at ~30 days. And nobody greps 243 JSONL files.",
+  },
+  {
+    ok: true,
+    title: "vir",
+    text: "Reads what's already on disk, drops the noise, writes typed notes into a graph you already look at.",
+  },
+];
+---
+<section class="bg-paper-2">
+  <div class="section container">
+    <p class="eyebrow reveal">Why not the alternatives</p>
+    <h2 class="reveal mt-3 font-display text-4xl leading-tight md:text-5xl">Two things that don't quite work, and one that does.</h2>
+
+    <div class="reveal mt-12 -mx-5 overflow-x-auto px-5 md:mx-0 md:px-0">
+      <ul class="grid min-w-[42rem] grid-cols-3 gap-px border border-rule bg-rule md:min-w-0">
+        {cols.map((c) => (
+          <li class="bg-paper-2 p-6 md:p-8">
+            <span class:list={["font-mono text-[1.4rem] leading-none", c.ok ? "text-accent-text" : "text-ink-muted"]} aria-hidden="true">{c.ok ? "✓" : "✕"}</span>
+            <span class="sr-only">{c.ok ? "Works:" : "Falls short:"}</span>
+            <h3 class:list={["mt-4 font-display text-[1.6rem] leading-tight", c.ok ? "text-ink" : "text-ink-muted"]}>{c.title}</h3>
+            <p class="mt-3 text-[0.95rem] text-ink-muted">{c.text}</p>
+          </li>
+        ))}
+      </ul>
+    </div>
+
+    <p class="prose reveal mt-10 border-t border-rule pt-6 text-[0.95rem] text-ink-muted">
+      The closest project to vir is <a href="https://basicmemory.com" class="text-ink underline underline-offset-4">Basic Memory</a> —
+      markdown, Obsidian, MCP, open source, and good. The difference is direction: Basic Memory has your agent
+      write notes going forward. vir reads the sessions you already ran. They are compatible; the vaults can sit
+      side by side.
+    </p>
+  </div>
+</section>

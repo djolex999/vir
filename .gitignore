@@ -6,3 +6,12 @@ dist/
 CLAUDE.md
 handoff.md
 tasks/
+
+# site
+site/.astro/
+site/.vercel/
+.playwright-mcp/
+full-*.jpeg
+figure.jpeg
+graph-*.jpeg
+hero-logo.jpeg

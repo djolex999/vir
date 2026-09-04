@@ -1,0 +1,77 @@
+---
+import { NoteTabs } from "../islands/NoteTabs";
+import { NOTES } from "../data/notes";
+import { highlightNote } from "../lib/highlight";
+
+const callouts = [
+  {
+    label: "[[wikilinks]]",
+    text: "Project and category links, plus the Related section, are why the graph fills in on its own.",
+  },
+  {
+    label: "confidence",
+    text: "How sure the classifier was. Low-confidence notes render dimmer in the vir Obsidian plugin.",
+  },
+  {
+    label: "## Related",
+    text: "Rebuilt from embedding neighbors, not from what the LLM guessed it should link to.",
+  },
+  {
+    label: "session_id · date",
+    text: "Provenance. Every claim traces back to the exact session that produced it. Open the note, read the id, and you know where the sentence came from.",
+  },
+];
+const fallback = NOTES[0];
+---
+<section id="note" class="section container">
+  <p class="eyebrow reveal">What it writes</p>
+  <h2 class="reveal mt-3 font-display text-4xl leading-tight md:text-5xl">Anatomy of a note.</h2>
+  <p class="prose reveal mt-5 text-ink-muted">
+    Every memory an agent-memory store keeps is for the agent. This is for you — and the agent reads it too.
+  </p>
+
+  <div class="reveal mt-12 grid gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:gap-12">
+    <div class="min-w-0">
+      <NoteTabs client:visible notes={NOTES} />
+      {fallback && (
+        <noscript>
+          <div class="note-card">
+            <div class="note-bar"><span class="note-tab" aria-current="true">{fallback.label}</span></div>
+            <pre class="note-body" set:html={highlightNote(fallback.markdown)} />
+          </div>
+        </noscript>
+      )}
+    </div>
+    <ol class="grid content-start gap-6 sm:grid-cols-2 lg:grid-cols-1">
+      {callouts.map((c) => (
+        <li class="border-t border-rule pt-4">
+          <span class="block font-mono text-[0.8rem] text-accent-text">{c.label}</span>
+          <p class="mt-1.5 text-[0.95rem] text-ink-muted">{c.text}</p>
+        </li>
+      ))}
+    </ol>
+  </div>
+</section>
+
+<style is:global>
+  .note-card { border: 1px solid var(--rule); background: #fff; box-shadow: 0 1px 0 var(--rule), 0 24px 60px -30px rgba(20, 19, 23, 0.25); }
+  .note-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; border-bottom: 1px solid var(--rule); padding: 0.5rem 0.75rem; }
+  .note-tabs { display: flex; gap: 0.25rem; }
+  .note-tab {
+    font-family: var(--font-mono); font-size: 0.78rem; letter-spacing: 0.04em;
+    padding: 0.35rem 0.7rem; border: 1px solid transparent; background: transparent; color: var(--ink-muted); cursor: pointer;
+  }
+  .note-tab:hover { color: var(--ink); }
+  .note-tab[aria-selected="true"], .note-tab[aria-current="true"] { color: var(--ink); background: var(--accent-wash); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+  .note-file { font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+  .note-body {
+    margin: 0; padding: 1rem 1.1rem 1.25rem; overflow-x: auto;
+    font-family: var(--font-mono); font-size: 0.82rem; line-height: 1.6; color: var(--ink);
+    white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2;
+  }
+  .note-body .fm-block { display: block; margin: -1rem -1.1rem 0.9rem; padding: 0.9rem 1.1rem; background: var(--paper-2); color: var(--ink-muted); }
+  .note-body .fence { color: var(--rule); }
+  .note-body .fm-key { color: var(--ink); }
+  .note-body .wikilink { color: var(--accent-text); }
+  .note-body .heading { color: var(--ink); font-weight: 500; }
+</style>
