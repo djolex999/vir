@@ -1,0 +1,22 @@
+---
+const inputs = [
+  { title: "Claude Code sessions", text: "Retroactive. Months of existing transcripts become notes in one run — and new sessions keep flowing in." },
+  { title: "Web articles", text: "Clip a page to a folder, for example with Obsidian Web Clipper. vir distills it into the same vault." },
+  { title: "PDFs and papers", text: "Drop a paper in. It gets read, summarized, and linked next to the sessions that cited it." },
+];
+---
+<section class="section container">
+  <p class="eyebrow reveal">Inputs</p>
+  <h2 class="reveal mt-3 font-display text-4xl leading-tight md:text-5xl">Three inputs, one vault.</h2>
+  <ul class="reveal mt-12 grid gap-px border border-rule bg-rule md:grid-cols-3">
+    {inputs.map((i) => (
+      <li class="bg-paper p-6 md:p-8">
+        <h3 class="font-display text-[1.5rem] leading-tight">{i.title}</h3>
+        <p class="mt-3 text-[0.95rem] text-ink-muted">{i.text}</p>
+      </li>
+    ))}
+  </ul>
+  <p class="prose reveal mt-6 text-[0.95rem] text-ink-muted">
+    Everything embeds into one vector space (Ollama optional, TF-IDF fallback), so <code class="font-mono text-ink">vir query</code> searches across all three.
+  </p>
+</section>

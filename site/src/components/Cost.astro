@@ -1,0 +1,25 @@
+---
+import { NUMBERS } from "../consts";
+const measured = NUMBERS.costRun !== null && NUMBERS.costRunTime !== null && NUMBERS.costOngoing !== null;
+const steps = [
+  { when: "60 seconds", what: "npm install -g, then vir init — a wizard: provider, models, vault path.", cost: "Free." },
+  { when: "One run", what: "Months of history become a vault.", cost: `${NUMBERS.costRunTime ?? ""}, ${NUMBERS.costRun ?? ""}. On a Claude subscription via the claude-cli provider: no API spend at all.` },
+  { when: "Ongoing", what: "vir schedule install registers a daemon that keeps the vault current.", cost: `${NUMBERS.costOngoing ?? ""} per new session.` },
+];
+---
+{measured && (
+  <section class="section container">
+    <p class="eyebrow reveal">What it costs you</p>
+    <h2 class="reveal mt-3 font-display text-4xl leading-tight md:text-5xl">Time and money, up front.</h2>
+    <ol class="reveal mt-12 border-t border-rule">
+      {steps.map((s) => (
+        <li class="grid gap-2 border-b border-rule py-6 md:grid-cols-[10rem_1fr_1fr] md:gap-8">
+          <span class="font-mono text-[0.8rem] uppercase tracking-[0.08em] text-ink-muted">{s.when}</span>
+          <span>{s.what}</span>
+          <span class="text-ink-muted">{s.cost}</span>
+        </li>
+      ))}
+    </ol>
+    <p class="prose reveal mt-6 text-[0.95rem] text-ink-muted"><code class="font-mono text-ink">vir cost</code> prints this for your own history before you commit to a full run.</p>
+  </section>
+)}

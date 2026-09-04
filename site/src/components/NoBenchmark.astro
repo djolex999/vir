@@ -1,0 +1,25 @@
+---
+import { NUMBERS } from "../consts";
+---
+<section class="bg-paper-2">
+  <div class="section container">
+    <p class="eyebrow reveal">Measured, not scored</p>
+    <h2 class="reveal mt-3 font-display text-4xl leading-tight md:text-5xl">There is no benchmark here.</h2>
+    <p class="prose reveal mt-5 text-ink-muted">
+      Every tool in this category leads with a score — LongMemEval, LoCoMo, recall@5. None of those measure
+      the thing that matters: whether the notes turned out to be worth reading. So here are the only numbers
+      I have, from one machine.
+    </p>
+    <dl class="reveal mt-14 grid gap-10 md:grid-cols-2 md:gap-14">
+      <div>
+        <dt class="font-display text-[5rem] leading-none tracking-[-0.02em] md:text-[7rem]">{NUMBERS.sessionsRescued}</dt>
+        <dd class="mt-4 max-w-[40ch] text-ink-muted"><span class="text-ink">sessions.</span> Claude Code would have pruned these. They now exist nowhere else.</dd>
+      </div>
+      <div>
+        <dt class="font-display text-[5rem] leading-none tracking-[-0.02em] md:text-[7rem]">{NUMBERS.transcriptsTotal}<span class="text-ink-muted"> → </span>~{NUMBERS.transcriptsMine}</dt>
+        <dd class="mt-4 max-w-[40ch] text-ink-muted"><span class="text-ink">transcripts.</span> Only about {NUMBERS.transcriptsMine} were sessions I actually drove. vir skips subagents, workflow phases, and headless runs by default.</dd>
+      </div>
+    </dl>
+    <p class="eyebrow reveal mt-12">Author's machine, {NUMBERS.measuredOn}. Yours will differ.</p>
+  </div>
+</section>

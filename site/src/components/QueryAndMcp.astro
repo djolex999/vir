@@ -1,0 +1,35 @@
+---
+import Terminal from "./Terminal.astro";
+const lines = [
+  { kind: "cmd" as const, text: 'vir query "how did we handle kie 200 errors"' },
+  { kind: "dim" as const, text: "searching 1,208 notes · 3 sources" },
+  { kind: "out" as const, text: "" },
+  { kind: "out" as const, text: "Kie.ai answers HTTP 200 even when generation fails; the" },
+  { kind: "out" as const, text: "failure only shows as code 422 in the body. Parse the body" },
+  { kind: "out" as const, text: "first, throw on code !== 200, and retry only on 5xx." },
+  { kind: "out" as const, text: "" },
+  { kind: "dim" as const, text: "sources" },
+  { kind: "link" as const, text: "  gotchas/kie-ai-returns-200-with-an-error-body-4f2a9c31.md" },
+  { kind: "link" as const, text: "  patterns/retry-with-backoff-on-idempotent-writes-0c91be7a.md" },
+];
+---
+<section class="section container">
+  <p class="eyebrow reveal">Retrieval</p>
+  <h2 class="reveal mt-3 font-display text-4xl leading-tight md:text-5xl">Ask the vault. Or let the agent ask it.</h2>
+  <div class="reveal mt-12 grid gap-10 md:grid-cols-2 md:gap-14">
+    <Terminal lines={lines} label="Example vir query output" />
+    <div class="prose">
+      <h3 class="font-display text-[1.6rem] leading-tight">Mid-session, without you asking</h3>
+      <p class="mt-3 text-ink-muted">
+        <code class="font-mono text-ink">vir mcp</code> exposes the vault to Claude Code as an MCP server, so the agent
+        consults past decisions instead of rediscovering them. The gotcha above surfaces the next time
+        Claude touches that endpoint — on any project.
+      </p>
+      <h3 class="mt-8 font-display text-[1.6rem] leading-tight">Back into CLAUDE.md</h3>
+      <p class="mt-3 text-ink-muted">
+        <code class="font-mono text-ink">vir sync-claude</code> feeds the best notes back into your project's CLAUDE.md,
+        with a diff and your confirmation. Nothing is written without you seeing it first.
+      </p>
+    </div>
+  </div>
+</section>

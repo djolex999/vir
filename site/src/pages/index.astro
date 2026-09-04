@@ -6,6 +6,12 @@ import Problem from "../components/Problem.astro";
 import LoopDiagram from "../components/LoopDiagram.astro";
 import Alternatives from "../components/Alternatives.astro";
 import NoteAnatomy from "../components/NoteAnatomy.astro";
+import ThreeInputs from "../components/ThreeInputs.astro";
+import QueryAndMcp from "../components/QueryAndMcp.astro";
+import NoBenchmark from "../components/NoBenchmark.astro";
+import Cost from "../components/Cost.astro";
+import Install from "../components/Install.astro";
+import CreditFooter from "../components/CreditFooter.astro";
 import { fetchStats } from "../lib/stats";
 import { MEASURE } from "../consts";
 
@@ -26,5 +32,11 @@ if (MEASURE.length > 0) {
     <LoopDiagram />
     <Alternatives />
     <NoteAnatomy />
+    <ThreeInputs />
+    <QueryAndMcp />
+    <NoBenchmark />
+    <Cost />
+    <Install />
   </main>
+  <CreditFooter />
 </Base>
