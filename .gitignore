@@ -11,3 +11,5 @@ tasks/
 site/.astro/
 site/.vercel/
 .playwright-mcp/
+full-*.jpeg
+figure.jpeg
