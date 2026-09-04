@@ -4,6 +4,8 @@ import Nav from "../components/Nav.astro";
 import Hero from "../components/Hero.astro";
 import Problem from "../components/Problem.astro";
 import LoopDiagram from "../components/LoopDiagram.astro";
+import Alternatives from "../components/Alternatives.astro";
+import NoteAnatomy from "../components/NoteAnatomy.astro";
 import { fetchStats } from "../lib/stats";
 import { MEASURE } from "../consts";
 
@@ -22,5 +24,7 @@ if (MEASURE.length > 0) {
     <Hero stats={stats} />
     <Problem />
     <LoopDiagram />
+    <Alternatives />
+    <NoteAnatomy />
   </main>
 </Base>
