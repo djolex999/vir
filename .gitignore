@@ -10,3 +10,4 @@ tasks/
 # site
 site/.astro/
 site/.vercel/
+.playwright-mcp/

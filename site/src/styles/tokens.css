@@ -45,8 +45,8 @@ body {
   text-transform: uppercase;
   color: var(--ink-muted);
 }
-.section { padding-block: 6rem; }
-@media (min-width: 768px) { .section { padding-block: 10rem; } }
+.section { padding-block: 4.5rem; }
+@media (min-width: 768px) { .section { padding-block: 6.5rem; } }
 .container { max-width: 1120px; margin-inline: auto; padding-inline: 1.25rem; }
 @media (min-width: 768px) { .container { padding-inline: 2.5rem; } }
 
