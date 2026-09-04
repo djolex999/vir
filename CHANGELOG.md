@@ -11,7 +11,7 @@
 - **New mark.** The graph-spiral logo replaces the whirlpool across README,
   the npm package asset, the site, and the Obsidian plugin (vir-obsidian
   0.2.2 ships the matching ribbon icon).
-- README numbers re-measured: 548 tests, 396 rescued sessions, 1,386 → 410
+- README numbers re-measured: 534 tests, 396 rescued sessions, 1,386 → 410
   transcripts-to-notes.
 
 ## 0.17.0 — 2026-08-13

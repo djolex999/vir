@@ -28,7 +28,7 @@ export const NUMBERS = {
   transcriptsSeen: 1386,
   transcriptsNoise: 562,
   transcriptsNotes: 410,
-  tests: 548 as number | null,
+  tests: 534 as number | null,
   vaultNotes: 465 as number | null,
   vaultLinks: 3549 as number | null,
   costWindow: "six months",
