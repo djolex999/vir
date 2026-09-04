@@ -13,3 +13,5 @@ site/.vercel/
 .playwright-mcp/
 full-*.jpeg
 figure.jpeg
+graph-*.jpeg
+hero-logo.jpeg
