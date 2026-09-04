@@ -62,7 +62,7 @@ export function Loop({ nodes }: { nodes: LoopNode[] }) {
                 setFocused(i);
                 setActive(i);
               }}
-              onClick={() => setActive(active === i ? null : i)}
+              onClick={() => setActive(i)}
               onKeyDown={(e) => onKey(e, i)}
             >
               {n.label}
