@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/vir_vortex.svg" width="140" height="140" alt="vir logo">
+  <img src="assets/vir_graph_spiral.svg" width="140" height="140" alt="vir logo">
 </p>
 
 <h1 align="center">vir</h1>
