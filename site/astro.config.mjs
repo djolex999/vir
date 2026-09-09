@@ -51,7 +51,7 @@ export default defineConfig({
         { label: "Changelog", slug: "docs/changelog" },
       ],
       components: {},
-      disable404Route: false,
+      disable404Route: true,
     }),
     preact(),
   ],

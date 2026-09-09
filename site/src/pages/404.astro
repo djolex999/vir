@@ -1,0 +1,41 @@
+---
+import Base from "../layouts/Base.astro";
+import Nav from "../components/Nav.astro";
+import Logo from "../components/Logo.astro";
+import { GITHUB_URL } from "../consts";
+
+const links = [
+  { href: "/", label: "The landing page", note: "What vir is, in one scroll." },
+  { href: "/docs/", label: "Documentation", note: "Install, configure, every command." },
+  { href: "/docs/changelog/", label: "Changelog", note: "Every release, newest first." },
+  { href: GITHUB_URL, label: "GitHub", note: "Code, issues, roadmap." },
+];
+---
+
+<Base
+  title="Not found — vir"
+  description="That page doesn't exist. Here's where things are."
+>
+  <Nav />
+  <main id="main" class="container section">
+    <div class="mx-auto max-w-[46rem] text-center">
+      <div class="mb-8 flex justify-center opacity-60"><Logo size={72} /></div>
+      <p class="eyebrow">404</p>
+      <h1 class="mt-3 font-display text-[2.5rem] leading-[1.05] md:text-[3.5rem]">
+        Pruned, moved, or never here.
+      </h1>
+      <p class="prose mx-auto mt-6 text-ink-muted">
+        Fitting, for a tool about things that disappear. This page isn't recoverable —
+        but these are.
+      </p>
+    </div>
+    <ul class="mx-auto mt-12 grid max-w-[46rem] gap-px border border-rule bg-rule sm:grid-cols-2">
+      {links.map((l) => (
+        <li class="bg-paper p-6">
+          <a class="font-display text-[1.4rem] leading-tight text-ink underline decoration-rule underline-offset-4 hover:decoration-accent" href={l.href}>{l.label}</a>
+          <p class="mt-2 text-[0.95rem] text-ink-muted">{l.note}</p>
+        </li>
+      ))}
+    </ul>
+  </main>
+</Base>
