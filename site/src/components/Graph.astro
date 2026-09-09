@@ -7,7 +7,7 @@ const CAT: Record<string, string> = { pattern: "#7c6af7", gotcha: "#5e8df4", dec
 const pos = new Map(graph.nodes.map((n) => [n.id, n]));
 ---
 <div class="graph" data-graph>
-  <svg viewBox={`0 0 ${graph.w} ${graph.h}`} class="graph-svg" role="img" aria-label={`${graph.nodes.length} notes from the author's vault, linked as vir linked them`}>
+  <svg viewBox={`0 0 ${graph.w} ${graph.h}`} class="graph-svg" role="img" aria-label={`${graph.nodes.length} notes from the author's vault, linked as vir linked them. Labelled: ${graph.nodes.filter((n) => n.show).map((n) => n.label).join(", ")}`}>
     <g class="graph-links" stroke="var(--graph-link)" stroke-opacity="0.22" stroke-width="1">
       {graph.links.map(([a, b]) => {
         const p = pos.get(a), q = pos.get(b);
@@ -16,10 +16,21 @@ const pos = new Map(graph.nodes.map((n) => [n.id, n]));
     </g>
     <g class="graph-nodes">
       {graph.nodes.map((n, i) => (
-        <g class="graph-node" data-id={n.id} style={`--d:${(i * 37) % 11}s;--x:${n.x}px;--y:${n.y}px`} tabindex="0">
-          <circle cx={n.x} cy={n.y} r={n.r} fill={CAT[n.cat] ?? "#7c6af7"} />
+        <g class="graph-node" data-id={n.id} data-shown={n.show || undefined} style={`--d:${(i * 37) % 11}s`} tabindex="0">
+          <circle cx={n.x} cy={n.y} r={n.show ? n.r + 1.2 : n.r} fill={CAT[n.cat] ?? "#7c6af7"} />
           <title>{n.label}</title>
         </g>
+      ))}
+    </g>
+    <g class="graph-names">
+      {graph.nodes.filter((n) => n.show).map((n) => (
+        <text
+          class="graph-name"
+          data-for={n.id}
+          x={n.side === "left" ? n.x - n.r - 7 : n.x + n.r + 7}
+          y={n.y + 3.5}
+          text-anchor={n.side === "left" ? "end" : "start"}
+        >{n.label.length > 30 ? `${n.label.slice(0, 29)}…` : n.label}</text>
       ))}
     </g>
   </svg>
@@ -32,6 +43,13 @@ const pos = new Map(graph.nodes.map((n) => [n.id, n]));
   .graph-node circle { transform-box: fill-box; transform-origin: center; transition: opacity 200ms ease; cursor: default; }
   .graph-node { outline: none; animation: graph-drift 9s ease-in-out infinite alternate; animation-delay: var(--d); }
   .graph-node:focus-visible circle { stroke: var(--accent); stroke-width: 3; }
+  .graph-name {
+    font-family: var(--font-mono); font-size: 10.5px; fill: var(--ink);
+    paint-order: stroke; stroke: var(--card); stroke-width: 3.5px; stroke-linejoin: round;
+    pointer-events: none; transition: opacity 200ms ease;
+  }
+  .graph[data-active] .graph-name { opacity: 0.25; }
+  .graph[data-active] .graph-name[data-hot] { opacity: 1; }
   .graph-links line { transition: stroke-opacity 200ms ease, stroke 200ms ease; }
   .graph[data-active] .graph-node:not([data-hot]) circle { opacity: 0.25; }
   .graph[data-active] .graph-links line:not([data-hot]) { stroke-opacity: 0.05; }
@@ -57,10 +75,12 @@ const pos = new Map(graph.nodes.map((n) => [n.id, n]));
     const label = root.querySelector<HTMLElement>("[data-graph-label]");
     const nodes = root.querySelectorAll<SVGGElement>(".graph-node");
     const lines = root.querySelectorAll<SVGLineElement>(".graph-links line");
+    const names = root.querySelectorAll<SVGTextElement>(".graph-name");
     const clear = () => {
       root.removeAttribute("data-active");
       nodes.forEach((n) => n.removeAttribute("data-hot"));
       lines.forEach((l) => l.removeAttribute("data-hot"));
+      names.forEach((t) => t.removeAttribute("data-hot"));
       if (label) label.textContent = "";
     };
     const hot = (id: string, text: string) => {
@@ -75,6 +95,7 @@ const pos = new Map(graph.nodes.map((n) => [n.id, n]));
         }
       });
       nodes.forEach((n) => { if (near.has(n.dataset.id ?? "")) n.setAttribute("data-hot", ""); });
+      names.forEach((t) => { if (near.has(t.dataset.for ?? "")) t.setAttribute("data-hot", ""); });
       if (label) label.textContent = text;
     };
     nodes.forEach((n) => {
