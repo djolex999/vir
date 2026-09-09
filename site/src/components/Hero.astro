@@ -22,7 +22,7 @@ proof.push("Open source", "MIT", `v${VERSION}`);
 
 const alt =
   "Obsidian graph view of a vault distilled by vir: session notes, articles, PDFs, and topic pages, cross-linked";
-const showComposition = NUMBERS.vaultNotes !== null && NUMBERS.vaultLinks !== null;
+
 ---
 <section id="top" class="container pt-16 pb-10 md:pt-24 md:pb-14">
   <div class="mb-10 flex justify-center"><LogoAnimated size={168} /></div>
@@ -70,10 +70,10 @@ const showComposition = NUMBERS.vaultNotes !== null && NUMBERS.vaultLinks !== nu
       </noscript>
     </div>
     <figcaption class="mt-5 flex flex-wrap items-baseline justify-between gap-2 font-mono text-[0.78rem] text-ink-muted">
-      <span>{graph.nodes.length} of the {NUMBERS.vaultNotes} notes in my vault, linked as vir linked them. Hover one.</span>
+      <span>{graph.nodes.length} of the {graph.total.notes} notes in my vault, linked as vir linked them. Hover one.</span>
       <span class="flex gap-4">
-        {showComposition && <span>{NUMBERS.vaultNotes} notes · 4 types · {NUMBERS.vaultLinks} links</span>}
-        <button type="button" data-open-graph class="text-accent-text underline underline-offset-4">Full graph in Obsidian ↗</button>
+        <span>{graph.total.notes} notes · 4 types · {graph.total.links.toLocaleString("en-US")} links</span>
+        <button type="button" data-open-graph class="text-accent-text underline underline-offset-4">See the full graph</button>
       </span>
     </figcaption>
   </figure>

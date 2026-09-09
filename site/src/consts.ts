@@ -15,22 +15,22 @@ export const INSTALL_CMD = `npm install -g ${NPM_PKG}`;
 // Every figure on the page. null = not yet measured; the block that needs it
 // is omitted and the build prints the key. See spec §11.
 // Measured 2026-09-04 on the author's machine. How each was derived:
+// Run `npm run refresh` to regenerate the graph and see which of these drifted.
+// Vault size and link count are NOT here: the hero reads them from graph.json,
+// so the sample and the totals cannot disagree.
 //   sessionsRescued  — sessions in ~/.vir/vir.db with a note written whose
 //                      transcript file no longer exists on disk
 //   transcriptsSeen  — rows in the sessions table
 //   transcriptsNoise — skip_reason in (workflow-transcript, agent-transcript, sidechain-transcript)
 //   transcriptsNotes — skipped=0 and note_paths != '[]'
-//   vaultNotes/Links — *.md files under the vault's vir/ dir, [[wikilink]] occurrences
-//   tests            — `npm test` at the repo root
+//   tests            — `npm test` at the repo root (534 CLI; the site's 18 are separate)
 //   cost*            — `vir cost --since 180d`
 export const NUMBERS = {
   sessionsRescued: 396,
-  transcriptsSeen: 1386,
-  transcriptsNoise: 562,
-  transcriptsNotes: 410,
+  transcriptsSeen: 1429,
+  transcriptsNoise: 601,
+  transcriptsNotes: 411,
   tests: 534 as number | null,
-  vaultNotes: 465 as number | null,
-  vaultLinks: 3549 as number | null,
   costWindow: "six months",
   costSessions: 295,
   costTotal: "$20.38" as string | null,
