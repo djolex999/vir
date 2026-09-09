@@ -1,0 +1,70 @@
+<!doctype html>
+<!-- Source for public/og.png. Rendered at 1200x630 by scripts/build-og.mjs,
+     which screenshots this file with Playwright so the real webfonts are used
+     (sharp's SVG text can't reach fonts that aren't installed system-wide). -->
+<meta charset="utf-8" />
+<style>
+  @font-face {
+    font-family: "Instrument Serif";
+    src: url("../node_modules/@fontsource/instrument-serif/files/instrument-serif-latin-400-normal.woff2") format("woff2");
+    font-weight: 400;
+  }
+  @font-face {
+    font-family: "JetBrains Mono";
+    src: url("../node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2") format("woff2");
+    font-weight: 400 700;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1200px; height: 630px; overflow: hidden; }
+  .card {
+    position: relative; width: 1200px; height: 630px;
+    background: #0b0b10; overflow: hidden;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 64px 72px;
+  }
+  .graph {
+    position: absolute; inset: -22% -10% auto auto; width: 78%;
+    filter: grayscale(1) brightness(2.4) contrast(0.85);
+    opacity: 0.44; mix-blend-mode: screen;
+  }
+  .veil {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(120% 90% at 88% 8%, rgba(124, 106, 247, 0.3) 0%, transparent 55%),
+      linear-gradient(105deg, #0b0b10 34%, rgba(11, 11, 16, 0.86) 56%, rgba(11, 11, 16, 0.5) 100%);
+  }
+  .row { position: relative; display: flex; align-items: center; gap: 14px; }
+  .mark { width: 44px; height: 44px; }
+  .word { font-family: "Instrument Serif", Georgia, serif; font-size: 42px; color: #f2f1f7; line-height: 1; }
+  h1 {
+    position: relative;
+    font-family: "Instrument Serif", Georgia, serif;
+    font-weight: 400; font-size: 78px; line-height: 1.03;
+    letter-spacing: -0.015em; color: #f6f5fa; max-width: 20ch;
+  }
+  .foot {
+    position: relative; display: flex; align-items: baseline; justify-content: space-between;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 19px; letter-spacing: 0.02em; color: #9b99a8;
+  }
+  .foot b { color: #c9c3ff; font-weight: 400; }
+</style>
+<div class="card">
+  <img class="graph" src="../src/assets/graph.png" alt="" />
+  <div class="veil"></div>
+  <div class="row">
+    <svg class="mark" viewBox="0 0 256 256" fill="none" stroke="#a79dff" stroke-linecap="round">
+      <path d="M128 18A110 110 0 1 1 32.74 73" stroke-width="9" opacity=".7" />
+      <path d="M176.92 80.75A68.01 68.01 0 1 1 89.97 71.62" stroke-width="8" opacity=".8" />
+      <path d="M170.03 129.47A42.05 42.05 0 1 1 122.15 86.36" stroke-width="7" opacity=".9" />
+      <path d="M145.4 147.32A26 26 0 1 1 136.03 103.27" stroke-width="6" stroke="#22d3ee" />
+      <circle cx="128" cy="128" r="11" fill="#22d3ee" stroke="none" />
+    </svg>
+    <span class="word">vir</span>
+  </div>
+  <h1>Months of Claude Code sessions you thought were gone.</h1>
+  <div class="foot">
+    <span>An LLM Wiki for Claude Code, in your Obsidian vault.</span>
+    <span><b>virwiki.dev</b></span>
+  </div>
+</div>
