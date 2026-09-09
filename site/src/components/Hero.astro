@@ -6,7 +6,7 @@ import Lightbox from "./Lightbox.astro";
 import Graph from "./Graph.astro";
 import LogoAnimated from "./LogoAnimated.astro";
 import graph from "../data/graph.json";
-import { INSTALL_CMD, NUMBERS, VERSION, WORKS_WITH } from "../consts";
+import { GITHUB_URL, INSTALL_CMD, NUMBERS, VERSION, WORKS_WITH } from "../consts";
 import { formatCount, type Stats } from "../lib/stats";
 
 interface Props { stats: Stats }
@@ -37,8 +37,20 @@ const showComposition = NUMBERS.vaultNotes !== null && NUMBERS.vaultLinks !== nu
     retroactively, in one run.
   </p>
 
-  <div class="mt-9 flex flex-wrap items-center justify-center gap-x-6 gap-y-4">
-    <CopyCommand command={INSTALL_CMD} />
+  <div class="mt-9 flex flex-col items-center gap-4">
+    <CopyCommand command={INSTALL_CMD} class="hidden sm:inline-flex" />
+    <div class="flex flex-wrap items-center justify-center gap-3">
+      <a
+        href="/docs/getting-started/"
+        class="border border-accent bg-accent px-5 py-2.5 font-mono text-[0.85rem] text-white hover:opacity-90"
+        >Read the docs</a
+      >
+      <a
+        href={GITHUB_URL}
+        class="border border-rule px-5 py-2.5 font-mono text-[0.85rem] text-ink hover:bg-accent-wash"
+        >View on GitHub</a
+      >
+    </div>
     <a href="#note" class="font-mono text-[0.85rem] text-accent-text underline underline-offset-4">See what it writes ↓</a>
   </div>
 
