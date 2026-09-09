@@ -30,11 +30,15 @@ for (const p of q("select path from sessions where skipped=0 and note_paths!='[]
   }
 }
 
-// The CLI targets Node 20; the site needs 22+ for Astro 7. Running the CLI
-// suite under the site's newer runtime reports 38 failures that don't exist
-// on 20, so the count is stamped with the version that produced it.
+// The CLI targets Node 20 and pins a native better-sqlite3 build to it; the
+// site needs Node 22+ for Astro 7. Running the CLI suite under the site's
+// runtime fails every DB test with a NODE_MODULE_VERSION mismatch, which is
+// an environment fault, not a result. Refuse to report a number rather than
+// print a wrong one.
 const nodeMajor = Number(process.versions.node.split(".")[0]);
-console.log(`→ counting CLI tests (node ${process.versions.node})`);
+const canCountTests = nodeMajor === 20;
+if (canCountTests) console.log(`→ counting CLI tests (node ${process.versions.node})`);
+else console.log(`→ skipping CLI tests — node ${nodeMajor}, the CLI needs node 20`);
 // vitest prints its summary on stderr, and on a failure the line reads
 // "Tests  1 failed | 533 passed (534)" — matching only /(\d+) passed/ would
 // silently report a green count for a red suite, which is exactly the kind of
@@ -49,7 +53,7 @@ const readTests = (text) => {
 };
 let tests = null;
 let testsFailed = 0;
-try {
+if (canCountTests) try {
   const r = readTests(execFileSync("npm", ["test", "--silent"], { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }));
   tests = r.passed;
   testsFailed = r.failed;
@@ -67,7 +71,7 @@ const rows = [
   ["transcriptsSeen", seen],
   ["transcriptsNoise", noise],
   ["transcriptsNotes", withNote],
-  ["tests", tests],
+  ...(canCountTests ? [["tests", tests]] : []),
 ];
 
 console.log("\nsrc/consts.ts — NUMBERS\n");
@@ -81,9 +85,9 @@ for (const [k, v] of rows) {
     `  ${k.padEnd(20)}${String(Number.isNaN(was) ? "—" : was).padStart(9)}${String(v ?? "—").padStart(13)}${same ? "" : "   ← update"}`,
   );
 }
-if (nodeMajor > 20) {
+if (!canCountTests) {
   console.log(
-    `\n  ⚠ counted under node ${nodeMajor}; the CLI targets node 20 and reports a\n    different number there. Re-run the CLI suite on 20 before trusting this.`,
+    `\n  ⚠ tests not counted: node ${nodeMajor} can't load this better-sqlite3 build.\n    Run \`nvm use 20 && npm test\` at the repo root and read the number there.`,
   );
 }
 if (testsFailed > 0) {
