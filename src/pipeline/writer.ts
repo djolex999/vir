@@ -58,10 +58,19 @@ export class VaultWriter {
   // spot; the self-heal sweep back-fills them next run.
   embedSkipped = 0;
 
-  constructor(cfg: Config, db: StateDb | null = null) {
+  // Tests only. Related links come from embedding neighbors (0.12.0), so a
+  // writer with no provider emits none — which made the link tests assert
+  // whatever happened to be installed on the machine rather than the contract.
+  // Production callers pass nothing and keep resolveEmbeddingProvider.
+  constructor(
+    cfg: Config,
+    db: StateDb | null = null,
+    providerOverride?: EmbeddingProvider,
+  ) {
     this.root = join(cfg.vaultPath, cfg.outputDir);
     this.db = db;
     this.embeddingChoice = cfg.embeddingProvider;
+    if (providerOverride) this.providerPromise = Promise.resolve(providerOverride);
     this.topicsDir = cfg.topicsDir ?? TOPICS_SUBDIR;
     for (const sub of [
       ...Object.values(CATEGORY_DIR),

@@ -1,27 +1,39 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Config } from "../config.js";
 import type { DistilledNote, ParsedSession } from "../pipeline/types.js";
 
-vi.mock("../search/embedder.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../search/embedder.js")>();
-  return {
-    ...actual,
-    isOllamaAvailableCached: vi.fn(async () => true),
-    embeddingForNote: vi.fn(async (text: string) => {
-      // Both notes are retry-themed → near-identical vectors → neighbors.
-      if (text.includes("Retry Backoff Strategy")) return [1, 0.1];
-      if (text.includes("Kie Timeout Handling")) return [1, 0.2];
-      return [0, 1];
-    }),
-  };
-});
-
 import { VaultWriter } from "../pipeline/writer.js";
+import type { EmbeddingProvider } from "../search/provider.js";
 import { StateDb } from "../state/db.js";
 import { orphanCheck } from "./linter.js";
+
+// Related links come from embedding neighbors, so these tests need a provider.
+// Injected rather than resolved: auto-detection made the result depend on
+// whether Ollama happened to be running on the machine, and the previous
+// vi.mock targeted embedder.js functions the writer stopped calling in 0.15.0
+// — so the suite passed only because a live Ollama made the real path work.
+const stubProvider: EmbeddingProvider = {
+  name: "ollama",
+  modelName: "nomic-embed-text",
+  dimensions: 2,
+  maxInputChars: 8192,
+  available: async () => true,
+  // Both notes are retry-themed → near-identical vectors → neighbors.
+  embedDoc: async (text: string) => ({
+    embedding: text.includes("Retry Backoff Strategy")
+      ? [1, 0.1]
+      : text.includes("Kie Timeout Handling")
+        ? [1, 0.2]
+        : [0, 1],
+    sentChars: text.length,
+    truncated: false,
+  }),
+  embedQuery: async () => [1, 0.15],
+  provenance: () => ({ model: "nomic-embed-text", dim: 2 }),
+};
 
 function makeCfg(vaultPath: string): Config {
   return {
@@ -90,7 +102,7 @@ describe("orphanCheck wikilink resolution", () => {
   it("resolves a writer-emitted related-link to the existing target note", async () => {
     const cfg = makeCfg(vault);
     const db = new StateDb(join(vault, "vir.db"));
-    const writer = new VaultWriter(cfg, db);
+    const writer = new VaultWriter(cfg, db, stubProvider);
 
     db.record({
       path: "/x/aaaa1111.jsonl", hash: "h1", skipped: false,
