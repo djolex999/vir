@@ -22,6 +22,17 @@ export default defineConfig({
         "@fontsource-variable/jetbrains-mono",
         "./src/styles/starlight.css",
       ],
+      head: [
+        {
+          tag: "link",
+          attrs: {
+            rel: "alternate",
+            type: "application/rss+xml",
+            title: "vir releases",
+            href: "/changelog.xml",
+          },
+        },
+      ],
       editLink: { baseUrl: "https://github.com/djolex999/vir/edit/main/site/" },
       lastUpdated: true,
       sidebar: [

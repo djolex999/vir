@@ -11,6 +11,7 @@ import QueryAndMcp from "../components/QueryAndMcp.astro";
 import NoBenchmark from "../components/NoBenchmark.astro";
 import Cost from "../components/Cost.astro";
 import Install from "../components/Install.astro";
+import Follow from "../components/Follow.astro";
 import CreditFooter from "../components/CreditFooter.astro";
 import { fetchStats } from "../lib/stats";
 import { MEASURE } from "../consts";
@@ -37,6 +38,7 @@ if (MEASURE.length > 0) {
     <NoBenchmark />
     <Cost />
     <Install />
+    <Follow stats={stats} />
   </main>
   <CreditFooter />
 </Base>
