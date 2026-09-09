@@ -29,6 +29,21 @@ PATH=/opt/homebrew/bin:$PATH npm run dev
   `scripts/sync-changelog.mjs` on every build; edit `../CHANGELOG.md` instead.
 - `src/pages/changelog.xml.ts` — the release RSS feed, parsed from the same file.
 
+## Keeping the numbers honest
+
+```bash
+npm run refresh
+```
+
+Regenerates the hero graph and prints every value in `NUMBERS` next to what's
+committed, so a stale figure is visible instead of silent. It writes nothing to
+`consts.ts` — those values are claims on a public page and deserve a human
+deciding to change them. Cost figures come from `vir cost --since 180d` by hand.
+
+Note it counts the CLI suite with whatever node is on PATH. The CLI targets node
+20 and the site needs 22+, and the suite reports different numbers on each — the
+script warns when it ran on the wrong one.
+
 ## Regenerating artifacts
 
 **The hero graph** is laid out at build time and committed, because Vercel has no

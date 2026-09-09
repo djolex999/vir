@@ -5,10 +5,18 @@
 import graph from "../data/graph.json";
 const CAT: Record<string, string> = { pattern: "#7c6af7", gotcha: "#5e8df4", decision: "#40b0f1", tool: "#22d3ee" };
 const pos = new Map(graph.nodes.map((n) => [n.id, n]));
+const titleId = "graph-title";
+const descId = "graph-desc";
 ---
 <div class="graph" data-graph>
-  <svg viewBox={`0 0 ${graph.w} ${graph.h}`} class="graph-svg" role="img" aria-label={`${graph.nodes.length} notes from the author's vault, linked as vir linked them. Labelled: ${graph.nodes.filter((n) => n.show).map((n) => n.label).join(", ")}`}>
-    <g class="graph-links" stroke="var(--graph-link)" stroke-opacity="0.22" stroke-width="1">
+  <svg viewBox={`0 0 ${graph.w} ${graph.h}`} class="graph-svg" role="img" aria-labelledby={`${titleId} ${descId}`}>
+    <title id={titleId}>{graph.nodes.length} notes from the author's vault</title>
+    <desc id={descId}>
+      A force-directed graph of {graph.nodes.length} of the {graph.total.notes} notes vir wrote,
+      connected by the links it derived between them. The most-connected notes are labelled;
+      each is listed below the graph.
+    </desc>
+    <g class="graph-links" aria-hidden="true" stroke="var(--graph-link)" stroke-opacity="0.22" stroke-width="1">
       {graph.links.map(([a, b]) => {
         const p = pos.get(a), q = pos.get(b);
         return p && q ? <line x1={p.x} y1={p.y} x2={q.x} y2={q.y} data-a={a} data-b={b} /> : null;
@@ -16,13 +24,22 @@ const pos = new Map(graph.nodes.map((n) => [n.id, n]));
     </g>
     <g class="graph-nodes">
       {graph.nodes.map((n, i) => (
-        <g class="graph-node" data-id={n.id} data-shown={n.show || undefined} style={`--d:${(i * 37) % 11}s`} tabindex="0">
+        <g
+          class="graph-node"
+          data-id={n.id}
+          data-shown={n.show || undefined}
+          style={`--d:${(i * 37) % 11}s`}
+          tabindex={n.show ? 0 : undefined}
+          aria-hidden={n.show ? undefined : "true"}
+          role={n.show ? "img" : undefined}
+          aria-label={n.show ? `${n.label} — ${n.d} links` : undefined}
+        >
           <circle cx={n.x} cy={n.y} r={n.show ? n.r + 1.2 : n.r} fill={CAT[n.cat] ?? "#7c6af7"} />
-          <title>{n.label}</title>
+          {n.show && <title>{n.label}</title>}
         </g>
       ))}
     </g>
-    <g class="graph-names">
+    <g class="graph-names" aria-hidden="true">
       {graph.nodes.filter((n) => n.show).map((n) => (
         <text
           class="graph-name"
@@ -36,6 +53,15 @@ const pos = new Map(graph.nodes.map((n) => [n.id, n]));
   </svg>
   <div class="graph-label" data-graph-label aria-live="polite"></div>
 </div>
+<ul class="graph-key">
+  {graph.nodes.filter((n) => n.show).sort((a, b) => (b.d ?? 0) - (a.d ?? 0)).map((n) => (
+    <li>
+      <span class="graph-key-dot" style={`background:${CAT[n.cat] ?? "#7c6af7"}`} aria-hidden="true"></span>
+      <span class="graph-key-name">{n.label}</span>
+      <span class="graph-key-meta">{n.cat} · {n.d} links</span>
+    </li>
+  ))}
+</ul>
 
 <style is:global>
   .graph { position: relative; }
@@ -60,6 +86,16 @@ const pos = new Map(graph.nodes.map((n) => [n.id, n]));
     background: var(--paper); border: 1px solid var(--rule); padding: 0.35rem 0.6rem; pointer-events: none;
   }
   .graph-label:empty { display: none; }
+  .graph-key {
+    list-style: none; margin: 1rem 0 0; padding: 0;
+    display: grid; gap: 0.4rem 1.5rem; grid-template-columns: 1fr;
+    font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-muted);
+  }
+  @media (min-width: 768px) { .graph-key { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .graph-key li { display: flex; align-items: baseline; gap: 0.5rem; min-width: 0; }
+  .graph-key-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; transform: translateY(-1px); }
+  .graph-key-name { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .graph-key-meta { flex: 0 0 auto; margin-left: auto; }
   @keyframes graph-drift {
     from { transform: translate(0, 0); }
     to { transform: translate(3px, -2px); }

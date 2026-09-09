@@ -1,0 +1,102 @@
+// One command to end number drift. Regenerates the hero graph and prints the
+// current measured values for NUMBERS in src/consts.ts, each next to what's
+// committed, so a stale figure is visible instead of silent.
+//   cd site && node scripts/refresh.mjs
+// Nothing is written to consts.ts — the values are a claim on the page and
+// deserve a human deciding to change them.
+import { execFileSync } from "node:child_process";
+import { readFileSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
+
+const repo = resolve(process.cwd(), "..");
+const home = process.env.HOME ?? "";
+console.log("→ regenerating the hero graph");
+execFileSync(process.execPath, ["scripts/build-graph.mjs"], { stdio: "inherit" });
+
+const db = join(home, ".vir/vir.db");
+const q = (sql) => execFileSync("sqlite3", [db, sql], { encoding: "utf8" }).trim();
+const seen = Number(q("select count(*) from sessions"));
+const withNote = Number(q("select count(*) from sessions where skipped=0 and note_paths!='[]'"));
+const noise = Number(
+  q("select count(*) from sessions where skipped=1 and skip_reason in ('workflow-transcript','agent-transcript','sidechain-transcript')"),
+);
+let rescued = 0;
+for (const p of q("select path from sessions where skipped=0 and note_paths!='[]'").split("\n")) {
+  if (!p) continue;
+  try {
+    statSync(p);
+  } catch {
+    rescued += 1;
+  }
+}
+
+// The CLI targets Node 20; the site needs 22+ for Astro 7. Running the CLI
+// suite under the site's newer runtime reports 38 failures that don't exist
+// on 20, so the count is stamped with the version that produced it.
+const nodeMajor = Number(process.versions.node.split(".")[0]);
+console.log(`→ counting CLI tests (node ${process.versions.node})`);
+// vitest prints its summary on stderr, and on a failure the line reads
+// "Tests  1 failed | 533 passed (534)" — matching only /(\d+) passed/ would
+// silently report a green count for a red suite, which is exactly the kind of
+// number this script exists to prevent.
+const readTests = (text) => {
+  // Anchor on vitest's summary line only — per-file lines like
+  // "(2 tests | 1 failed)" appear earlier and would win a loose match.
+  const line = text.match(/^\s*Tests\s{2,}(.+)$/m)?.[1] ?? "";
+  const failed = Number(line.match(/(\d+) failed/)?.[1] ?? 0);
+  const passed = Number(line.match(/(\d+) passed/)?.[1] ?? 0);
+  return { passed: passed || null, failed };
+};
+let tests = null;
+let testsFailed = 0;
+try {
+  const r = readTests(execFileSync("npm", ["test", "--silent"], { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }));
+  tests = r.passed;
+  testsFailed = r.failed;
+} catch (e) {
+  const r = readTests(`${e.stdout ?? ""}${e.stderr ?? ""}`);
+  tests = r.passed;
+  testsFailed = r.failed;
+}
+
+const committed = readFileSync("src/consts.ts", "utf8");
+const current = (key) => Number(committed.match(new RegExp(`${key}: (\\d+)`))?.[1] ?? NaN);
+
+const rows = [
+  ["sessionsRescued", rescued],
+  ["transcriptsSeen", seen],
+  ["transcriptsNoise", noise],
+  ["transcriptsNotes", withNote],
+  ["tests", tests],
+];
+
+console.log("\nsrc/consts.ts — NUMBERS\n");
+console.log("  key                 committed     measured");
+let drift = 0;
+for (const [k, v] of rows) {
+  const was = current(k);
+  const same = was === v;
+  if (!same) drift += 1;
+  console.log(
+    `  ${k.padEnd(20)}${String(Number.isNaN(was) ? "—" : was).padStart(9)}${String(v ?? "—").padStart(13)}${same ? "" : "   ← update"}`,
+  );
+}
+if (nodeMajor > 20) {
+  console.log(
+    `\n  ⚠ counted under node ${nodeMajor}; the CLI targets node 20 and reports a\n    different number there. Re-run the CLI suite on 20 before trusting this.`,
+  );
+}
+if (testsFailed > 0) {
+  console.log(
+    `\n  ⚠ ${testsFailed} CLI test(s) FAILING. "${tests} passing" is only honest once\n    the suite is green — fix it or stop quoting the number.`,
+  );
+}
+console.log(
+  "\n  vault size and link count come from graph.json itself — the hero reads them\n  from there, so they cannot drift from the sample.",
+);
+console.log(
+  drift === 0
+    ? "\nEverything matches. Commit the regenerated graph.json if it changed.\n"
+    : `\n${drift} value(s) drifted. Edit src/consts.ts, then commit it with graph.json.\n`,
+);
+console.log("Cost figures come from `vir cost --since 180d` — re-read them by hand.\n");
