@@ -57,6 +57,27 @@ const xs = nodes.map((n) => n.x), ys = nodes.map((n) => n.y);
 const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
 const pad = 24;
 const sx = (W - pad * 2) / (maxX - minX), sy = (H - pad * 2) / (maxY - minY), s = Math.min(sx, sy);
+// Permanently label the highest-degree nodes, but never two close enough to
+// collide — a labelled hairball is worse than none. Greedy: take by degree,
+// skip anything within LABEL_MIN_DIST of one already taken.
+const LABEL_COUNT = 8;
+const LABEL_MIN_DIST = 190;
+const placed = [];
+const scaled = new Map();
+for (const n of nodes) {
+  scaled.set(n.id, {
+    x: pad + (n.x - minX) * s + ((W - pad * 2) - (maxX - minX) * s) / 2,
+    y: pad + (n.y - minY) * s + ((H - pad * 2) - (maxY - minY) * s) / 2,
+  });
+}
+for (const n of [...nodes].sort((a, b) => b.d - a.d)) {
+  if (placed.length >= LABEL_COUNT) break;
+  const q = scaled.get(n.id);
+  if (placed.some((m) => Math.hypot(scaled.get(m.id).x - q.x, scaled.get(m.id).y - q.y) < LABEL_MIN_DIST)) continue;
+  placed.push(n);
+}
+const labelled = new Set(placed.map((n) => n.id));
+
 const out = {
   w: W, h: H,
   total: { notes: notes.size, links: [...notes.values()].reduce((n, x) => n + x.links.size, 0) },
@@ -65,6 +86,12 @@ const out = {
     x: +(pad + (n.x - minX) * s + ((W - pad * 2) - (maxX - minX) * s) / 2).toFixed(1),
     y: +(pad + (n.y - minY) * s + ((H - pad * 2) - (maxY - minY) * s) / 2).toFixed(1),
     r: +(3.5 + Math.min(n.d, 12) * 0.5).toFixed(1),
+    d: n.d,
+    // labelled nodes carry the side the text hangs off, so it never runs
+    // off the viewBox
+    ...(labelled.has(n.id)
+      ? { show: true, side: scaled.get(n.id).x > W * 0.62 ? "left" : "right" }
+      : {}),
   })),
   links: links.map((l) => [l.source.id, l.target.id]),
 };
