@@ -1,0 +1,41 @@
+---
+import { GITHUB_URL, NPM_URL } from "../consts";
+import { formatCount, type Stats } from "../lib/stats";
+
+interface Props { stats: Stats }
+const { stats } = Astro.props;
+---
+<section class="bg-paper-2">
+  <div class="section container">
+    <p class="eyebrow reveal">Follow along</p>
+    <h2 class="reveal mt-3 font-display text-4xl leading-tight md:text-5xl">Solo project, shipping in public.</h2>
+    <p class="prose reveal mt-5 text-ink-muted">
+      No mailing list, no account. Three ways to see what changes, all of them ones you already use.
+    </p>
+    <ul class="reveal mt-10 grid gap-px border border-rule bg-rule md:grid-cols-3">
+      <li class="bg-paper-2 p-6 md:p-7">
+        <a class="font-display text-[1.45rem] leading-tight text-ink underline decoration-rule underline-offset-4 hover:decoration-accent" href={GITHUB_URL}>Star on GitHub</a>
+        <p class="mt-3 text-[0.95rem] text-ink-muted">
+          {stats.stars === null
+            ? "Where the code, the issues, and the roadmap live."
+            : `${formatCount(stats.stars)} so far. Where the code, the issues, and the roadmap live.`}
+        </p>
+      </li>
+      <li class="bg-paper-2 p-6 md:p-7">
+        <a class="font-display text-[1.45rem] leading-tight text-ink underline decoration-rule underline-offset-4 hover:decoration-accent" href={`${GITHUB_URL}/releases`}>Watch releases</a>
+        <p class="mt-3 text-[0.95rem] text-ink-muted">
+          GitHub → Watch → Custom → Releases. One notification per version, nothing else.
+        </p>
+      </li>
+      <li class="bg-paper-2 p-6 md:p-7">
+        <a class="font-display text-[1.45rem] leading-tight text-ink underline decoration-rule underline-offset-4 hover:decoration-accent" href="/changelog.xml">Subscribe by RSS</a>
+        <p class="mt-3 text-[0.95rem] text-ink-muted">
+          <code class="font-mono text-ink">virwiki.dev/changelog.xml</code> — every release note, in your reader.
+        </p>
+      </li>
+    </ul>
+    <p class="prose reveal mt-6 text-[0.95rem] text-ink-muted">
+      Also on <a href={NPM_URL}>npm</a>, and the full history is on the <a href="/docs/changelog/">changelog</a>.
+    </p>
+  </div>
+</section>
