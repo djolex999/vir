@@ -25,6 +25,7 @@ export default defineConfig({
       editLink: { baseUrl: "https://github.com/djolex999/vir/edit/main/site/" },
       lastUpdated: true,
       sidebar: [
+        { label: "Overview", slug: "docs" },
         { label: "Getting started", slug: "docs/getting-started" },
         { label: "How it works", slug: "docs/how-it-works" },
         { label: "Inputs", slug: "docs/inputs" },
