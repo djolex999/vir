@@ -1,0 +1,36 @@
+---
+import CopyCommand from "./CopyCommand.astro";
+---
+<section class="section container">
+  <p class="eyebrow reveal">Your numbers</p>
+  <h2 class="reveal mt-3 font-display text-4xl leading-tight md:text-5xl">Run this before you install anything.</h2>
+  <p class="prose reveal mt-5 text-ink-muted">
+    Mine are one machine's. Yours are the only ones that matter, and you already have them —
+    Claude Code has been writing transcripts to your disk since the day you started.
+  </p>
+
+  <div class="reveal mt-10 flex flex-col items-start gap-3">
+    <CopyCommand command="find ~/.claude/projects -name '*.jsonl' | wc -l" />
+    <CopyCommand command="find ~/.claude/projects -name '*.jsonl' -mtime +25 | wc -l" />
+  </div>
+
+  <ol class="reveal mt-9 max-w-[62ch] border-t border-rule">
+    <li class="border-b border-rule py-4">
+      <span class="font-mono text-[0.78rem] uppercase tracking-[0.08em] text-ink-muted">First number</span>
+      <p class="mt-1.5">Every session Claude Code still has on disk. vir reads all of them in one pass.</p>
+    </li>
+    <li class="border-b border-rule py-4">
+      <span class="font-mono text-[0.78rem] uppercase tracking-[0.08em] text-ink-muted">Second number</span>
+      <p class="mt-1.5">
+        The ones older than 25 days. Claude Code prunes at around 30, so that's roughly what
+        disappears in the next five — whether or not you do anything.
+      </p>
+    </li>
+  </ol>
+
+  <p class="prose reveal mt-6 text-[0.95rem] text-ink-muted">
+    Both commands only count files. They read nothing, send nothing, and change nothing.
+    Not all of the first number becomes notes — most transcripts are subagent runs and
+    workflow phases, and vir <a href="/docs/how-it-works/">skips those</a>.
+  </p>
+</section>
