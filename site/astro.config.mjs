@@ -49,6 +49,15 @@ export default defineConfig({
         { label: "Troubleshooting", slug: "docs/troubleshooting" },
         { label: "Privacy", slug: "docs/privacy" },
         { label: "Changelog", slug: "docs/changelog" },
+        {
+          label: "The vault vir wrote",
+          items: [
+            { label: "Overview", slug: "vault" },
+            { label: "Patterns", collapsed: true, items: [{ autogenerate: { directory: "vault/patterns" } }] },
+            { label: "Decisions", collapsed: true, items: [{ autogenerate: { directory: "vault/decisions" } }] },
+            { label: "Gotchas", collapsed: true, items: [{ autogenerate: { directory: "vault/gotchas" } }] },
+          ],
+        },
       ],
       components: {},
       disable404Route: true,
