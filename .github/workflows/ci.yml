@@ -42,6 +42,13 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: site/package-lock.json
+      # site/package-lock.json is written by npm 11; the npm 10 that ships with
+      # node 22 can't verify it and `npm ci` fails claiming packages are
+      # missing. Match the local version rather than loosen to `npm install`,
+      # which would silently repair the lock instead of failing on a bad one.
+      - name: use npm 11
+        run: npm i -g npm@11
+        working-directory: .
       - run: npm ci
       - name: typecheck
         run: npm run check
