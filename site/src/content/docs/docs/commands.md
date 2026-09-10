@@ -53,7 +53,7 @@ description: Every vir subcommand with what it costs.
 | `vir sync-claude [project]` | free | Diff, confirm, write between VIR markers. `--dry-run`, `--force`, `--global` |
 | `vir schedule install` / `uninstall` | free | Daemon. `--run-now` |
 | `vir status` | free | Knowledge base breakdown + daemon state |
-| `vir doctor` | cheap | 13 install/config checks. `--json` |
+| `vir doctor` | cheap | 15 install/config checks. `--json` |
 | `vir cost` | free | Actual spend from cost.log. `--since`, `--top`, `--by-session` |
 
 `vir query --json` and `vir doctor --json` are stable contracts consumed by the [Obsidian plugin](/docs/obsidian-plugin/). Other `--json` outputs are for scripting and may change.

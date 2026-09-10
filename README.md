@@ -367,7 +367,7 @@ with your distro, init system, and Node version.
 | `vir embed --setup`         | free  | Install the local embedding provider (no Ollama needed) |
 | `vir schedule install`      | free  | Register the background daemon            |
 | `vir status`                | free  | Knowledge base breakdown + daemon status  |
-| `vir doctor`                | cheap | 13 install/config checks                  |
+| `vir doctor`                | cheap | 15 install/config checks                  |
 | `vir reconcile`             | $$    | Retry sessions that failed, cache-bypassed |
 | `vir mcp install`           | free  | Register the MCP server with Claude Code  |
 

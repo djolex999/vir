@@ -9,7 +9,9 @@ description: Start with vir doctor. Then the failures people actually hit.
 vir doctor
 ```
 
-Thirteen checks: config validity, a live API-key probe, vault and output paths, session discovery, project decisions, agent-transcript detection, the SQLite schema, daemon state, backups, Ollama, the `claude` binary, MCP registration, and claude-cli limit detection. Three states each — ok, warn, fail — and a non-zero exit on any hard failure.
+Fifteen checks: config validity, a live API-key probe, vault path, output directory, session discovery, project decisions, agent-transcript detection, the SQLite database, daemon state, backups, the query log, Ollama, the embedding provider, the `claude` binary, and MCP registration. Three states each — ok, warn, fail — and a non-zero exit on any hard failure.
+
+One of them is time-sensitive and easy to miss: **project decisions**. Transcripts from a project you haven't included or excluded sit as `project-pending` and are never distilled — and Claude Code prunes them at around 30 days. Doctor tells you the age of the oldest one, because past that point the decision is moot.
 
 ## Common failures
 

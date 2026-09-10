@@ -17,7 +17,7 @@ description: vir-obsidian brings the vault into Obsidian's sidebar — recent no
 
 The plugin shells out to the `vir` binary, so install the CLI first.
 
-1. Obsidian → Settings → Community plugins → Browse → search **Vir**, or install manually from the [releases page](https://github.com/djolex999/vir-obsidian/releases).
+1. Obsidian → Settings → Community plugins → Browse → search **Vir** (plugin id `vir`). Or install manually from the [releases page](https://github.com/djolex999/vir-obsidian/releases).
 2. Enable it. If the status dot says *CLI not found*, set the binary path in the plugin settings (`which vir` prints it).
 
 Desktop only — the plugin needs a shell, which Obsidian mobile doesn't provide.
