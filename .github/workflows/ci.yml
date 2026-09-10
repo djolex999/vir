@@ -1,0 +1,56 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same branch cancels the first — no point finishing a
+# run for a commit nobody will look at.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cli:
+    name: cli (node 20)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      # better-sqlite3 is native and compiles here against the runner's node,
+      # so this is also the only place the Linux path is exercised at all.
+      - run: npm ci
+      - name: typecheck and build
+        run: npm run build
+      - name: test
+        run: npm test
+
+  site:
+    name: site (node 22)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+      - name: typecheck
+        run: npm run check
+      - name: test
+        run: npm test
+      - name: build
+        run: npm run build
+      # Every internal href must resolve to a file the build actually emitted.
+      # Starlight treats links as strings, so a renamed page ships a 404 into
+      # our own navigation and nothing complains.
+      - name: check internal links
+        run: node scripts/check-links.mjs

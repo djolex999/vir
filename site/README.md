@@ -12,7 +12,12 @@ prefix with Homebrew's node:
 PATH=/opt/homebrew/bin:$PATH npm run dev
 ```
 
-`npm run build` · `npm run preview` · `npm test` · `npm run check`
+`npm run build` · `npm run preview` · `npm test` · `npm run check` · `npm run check:links`
+
+`check:links` runs against `dist/`, so build first. It fails when any internal
+href points at a page the build didn't emit — Astro and Starlight treat links as
+opaque strings, so a renamed docs page otherwise ships a 404 into our own nav.
+CI runs it on every push.
 
 ## Where things live
 
