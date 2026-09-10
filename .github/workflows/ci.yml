@@ -42,14 +42,12 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: site/package-lock.json
-      # site/package-lock.json is written by npm 11; the npm 10 that ships with
-      # node 22 can't verify it and `npm ci` fails claiming packages are
-      # missing. Match the local version rather than loosen to `npm install`,
-      # which would silently repair the lock instead of failing on a bad one.
-      - name: use npm 11
-        run: npm i -g npm@11
-        working-directory: .
-      - run: npm ci
+      # `npm install`, not `npm ci`. The lockfile is generated on macOS, where
+      # npm never resolves the wasm sharp variant, so it has no top-level
+      # @emnapi/* entries and `npm ci` on Linux refuses as out-of-sync. npm
+      # won't record them from macOS (--os/--cpu don't help), and Vercel
+      # installs the same way — so this matches what actually deploys.
+      - run: npm install --no-audit --no-fund
       - name: typecheck
         run: npm run check
       - name: test
