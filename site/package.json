@@ -11,7 +11,8 @@
     "preview": "astro preview",
     "check": "astro check",
     "test": "vitest run",
-    "refresh": "node scripts/refresh.mjs"
+    "refresh": "node scripts/refresh.mjs",
+    "check:links": "node scripts/check-links.mjs"
   },
   "dependencies": {
     "@astrojs/preact": "^6.0.5",

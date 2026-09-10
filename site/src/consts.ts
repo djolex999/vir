@@ -32,10 +32,10 @@ export const NUMBERS = {
   transcriptsNotes: 411,
   tests: 534 as number | null,
   costWindow: "six months",
-  costSessions: 295,
-  costTotal: "$20.38" as string | null,
+  costSessions: 296,
+  costTotal: "$22.23" as string | null,
   costMedian: "$0.004" as string | null,
-  costP90: "$0.13" as string | null,
+  costP90: "$0.14" as string | null,
   measuredOn: "September 2026",
 };
 
