@@ -63,8 +63,27 @@ if (canCountTests) try {
   testsFailed = r.failed;
 }
 
+// Cost is the one set of figures a skeptic checks, and it drifts every run.
+// Parsed rather than left to a "re-read by hand" note that nobody re-reads.
+let cost = null;
+try {
+  const out = execFileSync("vir", ["cost", "--since", "180d"], { encoding: "utf8" });
+  const grab = (label) => out.match(new RegExp(`${label}:\\s+\\$?([\\d.]+)`))?.[1];
+  cost = {
+    costSessions: Number(grab("sessions")),
+    costTotal: Number(grab("total")),
+    costMedian: Number(grab("median/session")),
+    costP90: Number(grab("p90/session")),
+  };
+} catch {
+  console.log("→ `vir cost` unavailable; skipping cost figures");
+}
+
 const committed = readFileSync("src/consts.ts", "utf8");
 const current = (key) => Number(committed.match(new RegExp(`${key}: (\\d+)`))?.[1] ?? NaN);
+// cost values are quoted strings like "$20.38" / "$0.004"
+const currentCost = (key) =>
+  Number(committed.match(new RegExp(`${key}: "\\$?([\\d.]+)"`))?.[1] ?? committed.match(new RegExp(`${key}: (\\d+)`))?.[1] ?? NaN);
 
 const rows = [
   ["sessionsRescued", rescued],
@@ -85,6 +104,22 @@ for (const [k, v] of rows) {
     `  ${k.padEnd(20)}${String(Number.isNaN(was) ? "—" : was).padStart(9)}${String(v ?? "—").padStart(13)}${same ? "" : "   ← update"}`,
   );
 }
+if (cost) {
+  for (const [k, v] of Object.entries(cost)) {
+    const was = currentCost(k);
+    const shown = committed.match(new RegExp(`${k}: "\\$?([\\d.]+)"`))?.[1] ?? "";
+    const dp = shown.includes(".") ? shown.split(".")[1].length : 0;
+    // Compare at the precision the page actually prints: "$0.004" is a correct
+    // rendering of 0.0041, but "$0.13" is not a correct rendering of 0.139.
+    const same =
+      k === "costSessions" ? was === v : Number(v.toFixed(dp)) === Number(was.toFixed(dp));
+    if (!same) drift += 1;
+    const fmt = (n) => (k === "costSessions" ? String(n) : `$${n}`);
+    console.log(
+      `  ${k.padEnd(20)}${(Number.isNaN(was) ? "—" : fmt(was)).padStart(9)}${fmt(v).padStart(13)}${same ? "" : "   ← update"}`,
+    );
+  }
+}
 if (!canCountTests) {
   console.log(
     `\n  ⚠ tests not counted: node ${nodeMajor} can't load this better-sqlite3 build.\n    Run \`nvm use 20 && npm test\` at the repo root and read the number there.`,
@@ -103,4 +138,3 @@ console.log(
     ? "\nEverything matches. Commit the regenerated graph.json if it changed.\n"
     : `\n${drift} value(s) drifted. Edit src/consts.ts, then commit it with graph.json.\n`,
 );
-console.log("Cost figures come from `vir cost --since 180d` — re-read them by hand.\n");
