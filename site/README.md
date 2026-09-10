@@ -61,6 +61,16 @@ node scripts/build-graph.mjs          # reads the vault from ~/.vir/config.json
 Topics matching `leak|bypass|attack|inject|exploit|vuln|self-grant|secur` are
 excluded from the public sample.
 
+**The public vault** at `/vault` is generated from the real vault:
+
+```bash
+node scripts/build-vault.mjs      # project "vir" only; security topics excluded
+```
+
+Output lands in `src/content/docs/vault/` and is committed — Vercel has no vault.
+Rerun it after a distill run that touched the vir project. Only `project: "vir"`
+notes are published; nothing from client or product work.
+
 **The OG card** is `scripts/og.html`, screenshotted at 1200×630:
 
 ```bash
