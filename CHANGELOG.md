@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.17.7 — 2026-09-11
+
+**`vir lint --strays`.** Finds note files that no live database row can
+account for — pre-0.17.3 retitle debris, 32 of them in the reference vault
+(one session accounts for five). Reporting only; nothing is moved or deleted.
+
+- **Strays are retrievable, which is why this matters.** The embedding path
+  never surfaces them: `getEmbeddings` builds each note's path from its
+  CURRENT topic, so a stale slug never resolves. But the TF-IDF walk indexes
+  every category dir — it skips only `summaries`, `.rejected` and `archived` —
+  so whenever the embedder is down, one session can be cited twice under two
+  titles and take two slots in the same top-k. That is observable in this
+  vault's own query log.
+- **The check asks whether ANY non-pruned row can produce a filename**, and
+  deliberately ignores the content column. A session awaiting `vir reconcile`
+  has empty content while its file on disk holds the only copy of the text, so
+  a content-based test reports a live note as debris. The one-off script
+  written for this cleanup did exactly that and would have demoted a real
+  note; the case is now a test.
+- **Strays are classified, not just counted.** `retitle-duplicate` (a live
+  sibling shares the session id, so nothing unique is in the file, and the
+  report names it), `pruned-leftover` (the demoted copy belongs in
+  `.rejected/`), and `unknown` (no row at all — reported with no
+  recommendation and flagged as possibly the only copy).
+- `vir lint --strays` runs the check alone; a bare `vir lint` includes it.
+- **A flaky test of our own, fixed.** `writer.related.test` asserted "no
+  embedding provider" by relying on Ollama being absent from the machine, and
+  broke the moment Ollama was running — the exact machine-dependent assertion
+  the `providerOverride` seam exists to prevent. It now sets
+  `embeddingProvider: "none"` explicitly.
+
 ## 0.17.6 — 2026-09-11
 
 **A rewrite with no embedder no longer wipes every Related section.** One
