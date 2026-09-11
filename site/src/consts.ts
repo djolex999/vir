@@ -23,14 +23,14 @@ export const INSTALL_CMD = `npm install -g ${NPM_PKG}`;
 //   transcriptsSeen  — rows in the sessions table
 //   transcriptsNoise — skip_reason in (workflow-transcript, agent-transcript, sidechain-transcript)
 //   transcriptsNotes — skipped=0 and note_paths != '[]'
-//   tests            — `npm test` at the repo root (535 CLI; the site's 18 are separate)
+//   tests            — `npm test` at the repo root (540 CLI; the site's 18 are separate)
 //   cost*            — `vir cost --since 180d`
 export const NUMBERS = {
   sessionsRescued: 396,
   transcriptsSeen: 1429,
   transcriptsNoise: 601,
   transcriptsNotes: 411,
-  tests: 535 as number | null,
+  tests: 540 as number | null,
   costWindow: "six months",
   costSessions: 296,
   costTotal: "$22.23" as string | null,

@@ -5,9 +5,10 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
-import { join, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 import type { Config } from "../config.js";
 import { cosineSimilarity } from "../search/embedder.js";
 import {
@@ -38,7 +39,7 @@ import {
   composeRelPath,
   type ComposedTopic,
 } from "./composer.js";
-import { kebab, makeSlug } from "./slug.js";
+import { kebab, makeSlug, sessionSuffix } from "./slug.js";
 
 // Rejected notes are moved here by `vir review`, never deleted. Shared with
 // cli/review.ts so the two sides can't drift apart.
@@ -100,13 +101,21 @@ export class VaultWriter {
     const relPath = join(subDir, `${slug}.md`);
     const fullPath = join(this.root, relPath);
 
-    // `vir review` rejects by MOVING the note into `.rejected/`, so the category
-    // path no longer exists and preservedReviewFields() below finds nothing to
-    // carry over — a --full re-distill would write the note back as if it had
-    // never been rejected. Rejection is sticky: leave the file where the user
-    // put it, and skip the embedding + index/log work entirely.
-    const rejectedPath = join(this.root, REJECTED_DIR, `${slug}.md`);
-    if (existsSync(rejectedPath)) return [rejectedPath];
+    // The path above is derived from the CURRENT topic, but the distiller
+    // retitles between runs on purpose (0.9.1) — so it can't be used to find
+    // the note this one replaces. Resolve by session id instead.
+    const prior = this.locateBySession(session.sessionId);
+
+    // `vir review` rejects by MOVING the note into `.rejected/`. Rejection is
+    // sticky: leave the file where the user put it, and skip the embedding and
+    // index/log work entirely.
+    if (prior !== null && dirname(prior) === join(this.root, REJECTED_DIR)) {
+      return [prior];
+    }
+
+    // Read carried-over state from where the note actually is, not from where
+    // this run's title says it would go.
+    const priorPath = prior ?? fullPath;
 
     // themes is a fresh classify signal but isn't a DB column, so a rewrite-only
     // pass carries none — fall back to the existing note's themes block then,
@@ -114,7 +123,7 @@ export class VaultWriter {
     const themesLines =
       classification.themes.length > 0
         ? renderThemesLines(classification.themes)
-        : this.preservedThemesBlock(fullPath);
+        : this.preservedThemesBlock(priorPath);
 
     // Obsidian resolves [[bare-kebab-topic]] (what wikilinkRelated emits in
     // OTHER notes' Related sections) to this note only via an alias — the
@@ -133,7 +142,7 @@ export class VaultWriter {
       // A user's review verdict (set by `vir review`) lives in frontmatter, not
       // SQLite — so any rewrite of the file (rewrite-only OR a --full re-distill
       // that re-emits an existing note) would clobber it. Carry it over verbatim.
-      ...this.preservedReviewFields(fullPath),
+      ...this.preservedReviewFields(priorPath),
       "---",
       "",
     ].join("\n");
@@ -162,6 +171,17 @@ export class VaultWriter {
 
     const finalContent = frontmatter + wikilinkHeader + body + "\n";
     writeFileSync(fullPath, finalContent);
+
+    // A retitle or recategorisation lands the note on a new path. Retire the
+    // old file and its index row rather than leaving a stale duplicate behind
+    // — append mode never regenerates index.md, so a dropped row must be
+    // dropped explicitly.
+    if (prior !== null && prior !== fullPath) {
+      rmSync(prior, { force: true });
+      this.dropIndexRow(relative(this.root, prior));
+    }
+    this.noteIndex?.set(sessionSuffix(session.sessionId), fullPath);
+
     if (vec && provider && this.db) {
       try {
         this.db.storeEmbedding(session.sessionId, vec, provider.provenance());
@@ -446,6 +466,78 @@ export class VaultWriter {
   // Read back any review verdict already stamped on an existing note so a
   // rewrite preserves it. Returns the raw frontmatter lines (e.g.
   // `verified: true`) in stable order; [] for a brand-new note or no fields.
+  // A note's filename is `<kebab-topic>-<8-char session>.md`, so the only
+  // stable part is the suffix — the topic half is whatever the distiller chose
+  // that run. Built once per writer and kept current as notes are written; a
+  // full rescan per note would be O(n^2) over a vault with thousands of them.
+  private noteIndex: Map<string, string> | null = null;
+
+  private buildNoteIndex(): Map<string, string> {
+    const idx = new Map<string, string>();
+    // `.rejected/` is scanned last so it wins: a rejection is the authoritative
+    // location for its session, even if a stale category copy exists.
+    for (const sub of [...Object.values(CATEGORY_DIR), REJECTED_DIR]) {
+      const dir = join(this.root, sub);
+      if (!existsSync(dir)) continue;
+      for (const name of readdirSync(dir)) {
+        if (!name.endsWith(".md")) continue;
+        const suffix = name.slice(0, -".md".length).split("-").pop();
+        if (suffix !== undefined && suffix.length > 0) {
+          idx.set(suffix, join(dir, name));
+        }
+      }
+    }
+    return idx;
+  }
+
+  // Confirm a suffix match really is this session. makeSlug truncates the id to
+  // 8 chars, so two sessions can collide — and since a match here authorises
+  // deleting the old file, the suffix is only an index hint. The full id in
+  // frontmatter is the authority.
+  private belongsToSession(notePath: string, sessionId: string): boolean {
+    try {
+      const m = readFileSync(notePath, "utf8").match(/^session_id:\s*(.+)$/m);
+      return m?.[1]?.trim() === sessionId;
+    } catch {
+      return false;
+    }
+  }
+
+  private locateBySession(sessionId: string): string | null {
+    this.noteIndex ??= this.buildNoteIndex();
+    const suffix = sessionSuffix(sessionId);
+    const hit = this.noteIndex.get(suffix);
+    if (hit !== undefined && existsSync(hit)) {
+      return this.belongsToSession(hit, sessionId) ? hit : null;
+    }
+    if (hit === undefined) return null;
+    // The cached path is gone: `vir review` moves notes into `.rejected/`
+    // between runs, so an entry recorded earlier can point nowhere. Rebuild
+    // once and retry — but only on a stale hit, never on a miss, or every
+    // genuinely-new note in a batch would trigger a full rescan.
+    this.noteIndex = this.buildNoteIndex();
+    const rebuilt = this.noteIndex.get(suffix);
+    if (rebuilt === undefined) return null;
+    return this.belongsToSession(rebuilt, sessionId) ? rebuilt : null;
+  }
+
+  // Drop the index.md row pointing at a path that no longer exists. Rows are
+  // matched on the wikilink target, which is unique per note.
+  private dropIndexRow(relPath: string): void {
+    const p = join(this.root, "index.md");
+    if (!existsSync(p)) return;
+    const marker = `[[${relPath.replace(/\.md$/, "")}|`;
+    const current = readFileSync(p, "utf8");
+    if (!current.includes(marker)) return;
+    writeFileSync(
+      p,
+      current
+        .split("\n")
+        .filter((line) => !line.includes(marker))
+        .join("\n"),
+    );
+  }
+
   private preservedReviewFields(fullPath: string): string[] {
     if (!existsSync(fullPath)) return [];
     let content: string;
