@@ -852,6 +852,16 @@ export async function runPipeline(
         continue;
       }
 
+      // A pruned session is demoted on purpose — even under --full. The gate
+      // belongs HERE, at the paid boundary, not at write(): the writer would
+      // catch it, but only after a classify and a distill have been billed,
+      // every run, forever. `vir prune --restore` is the way back in.
+      if (db.isPruned(found.path)) {
+        summary.alreadyProcessed += 1;
+        fileLog(`pruned, skipping: ${found.path}`);
+        continue;
+      }
+
       // Retry bound: MAX_DISTILL_ATTEMPTS consecutive failures park the
       // session — even under --full — so the daemon can't burn money on a
       // persistently failing transcript. `vir reconcile --force` is the only

@@ -8,6 +8,7 @@ import {
   ollamaCheck,
   pendingProjectsCheck,
   queryLogCheck,
+  prunedNotesCheck,
 } from "./doctor.js";
 
 // The doctor Ollama check must be probe-based, not reachability-based: a
@@ -309,5 +310,26 @@ describe("embeddingProviderCheck", () => {
     expect(r.detail).toMatch(/14/);
     expect(r.detail).toMatch(/different model/);
     expect(r.detail).toMatch(/vir embed --force/);
+  });
+});
+
+// Pruned notes are demoted, not deleted — so the only place the user can see
+// how much of their vault is sitting in `.rejected/`, and why, is doctor.
+// Human table only: `doctor --json` is a cross-repo 8-field contract.
+describe("prunedNotesCheck", () => {
+  it("reports nothing when no notes are pruned", () => {
+    expect(prunedNotesCheck({})).toBeNull();
+  });
+
+  it("reports the total and a per-reason breakdown", () => {
+    const r = prunedNotesCheck({
+      "sidechain-transcript": 132,
+      "workflow-transcript": 3,
+    });
+    expect(r?.label).toBe("pruned notes");
+    expect(r?.detail).toContain("135");
+    expect(r?.detail).toContain("sidechain-transcript 132");
+    expect(r?.detail).toContain("workflow-transcript 3");
+    expect(r?.detail).toContain("vir prune --restore");
   });
 });

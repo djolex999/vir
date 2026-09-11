@@ -16,6 +16,7 @@ vi.mock("../state/db.js", () => ({
   StateDb: class {
     isProcessed = vi.fn(() => false);
     retryExhausted = spies.exhausted;
+    isPruned = vi.fn(() => false);
     record = vi.fn();
     recordError = spies.recordError;
     listDistilled = vi.fn(() => []);

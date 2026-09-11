@@ -523,6 +523,44 @@ function checkBackup(): CheckResult | null {
   );
 }
 
+// ── 7c. pruned notes ──────────────────────────────────────────────────────────
+// `vir prune` demotes notes into `.rejected/` rather than deleting them, so
+// without a report the vault quietly shrinks with nothing saying why or how to
+// undo it. Null when nothing is pruned — doctor should not grow a row for a
+// feature the user has not used. Human table ONLY, never doctor --json (the
+// 8-field VirDoctorResult is a cross-repo contract).
+function checkPrunedNotes(): CheckResult | null {
+  let db: StateDb | null = null;
+  try {
+    db = new StateDb(STATE_PATH, { readonly: true });
+    return prunedNotesCheck(db.countPrunedByReason());
+  } catch {
+    // No DB yet, or an ancient one without the column. The database row above
+    // already reports a missing DB; this check stays silent rather than
+    // doubling the noise.
+    return null;
+  } finally {
+    try {
+      db?.close();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export function prunedNotesCheck(
+  byReason: Record<string, number>,
+): CheckResult | null {
+  const entries = Object.entries(byReason).sort((a, b) => b[1] - a[1]);
+  if (entries.length === 0) return null;
+  const total = entries.reduce((n, [, v]) => n + v, 0);
+  const breakdown = entries.map(([r, n]) => `${r} ${n}`).join(", ");
+  return ok(
+    "pruned notes",
+    `${total} demoted to .rejected/ (${breakdown}) — vir prune --restore to undo`,
+  );
+}
+
 // ── 7b. query log ─────────────────────────────────────────────────────────────
 // appendQueryLog is best-effort (a log failure must never fail a query), so
 // the queries.failed marker is its only durable failure signal. Surface
@@ -748,6 +786,8 @@ export async function runDoctor(): Promise<void> {
   const backup = checkBackup();
   if (backup) record(backup);
   record(checkQueryLog(cfg));
+  const pruned = checkPrunedNotes();
+  if (pruned) record(pruned);
   const limitPattern = checkClaudeCliLimitPattern(cfg);
   if (limitPattern) record(limitPattern);
 

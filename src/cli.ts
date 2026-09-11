@@ -22,6 +22,7 @@ import {
   type Config,
 } from "./config.js";
 import { applyPlan, planUpdates, type PlanItem } from "./claude/updater.js";
+import { pruneCommand } from "./cli/pruneAction.js";
 import { detectDuplicates } from "./dedupe/detector.js";
 import { mergeNotes } from "./dedupe/merger.js";
 import {
@@ -1669,6 +1670,17 @@ program
   .option("--project <slug>", "Filter by project")
   .option("--limit <n>", "Max notes to review in this session", "50")
   .action(runAction(runReview));
+
+program
+  .command("prune")
+  .description("Demote agent-derived notes to .rejected/ (dry run by default)")
+  .option("--apply", "Actually demote (default is a dry run)")
+  .option("--restore", "Restore every pruned note to its exact prior state")
+  .action(
+    runAction(async (opts: { apply?: boolean; restore?: boolean }) => {
+      await pruneCommand(opts);
+    }),
+  );
 
 program
   .command("doctor")

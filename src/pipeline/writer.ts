@@ -45,7 +45,7 @@ import { kebab, makeSlug, sessionSuffix } from "./slug.js";
 // cli/review.ts so the two sides can't drift apart.
 export const REJECTED_DIR = ".rejected";
 
-const CATEGORY_DIR: Record<Category, string> = {
+export const CATEGORY_DIR: Record<Category, string> = {
   pattern: "patterns",
   gotcha: "gotchas",
   decision: "decisions",
