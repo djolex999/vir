@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.17.4 — 2026-09-11
+
+**Four findings from the July audit backlog.** Two of them lose data; two
+lie quietly. No new surface.
+
+- **A garbled classify response no longer buries a session forever.**
+  `parseClassification` folded an unparseable response into a confidence-0
+  verdict, which `run.ts` recorded as `skipped: true` with the current hash
+  — and `vir reconcile` only targets `skipped = 0`. One transient
+  formatting glitch dropped that session's knowledge with no recovery path,
+  indistinguishable from a session the model had genuinely judged dull. The
+  two now diverge where the distinction exists: the fallback branches are
+  marked `unparsed` and `run()` throws `ClassifyParseError`, which the
+  existing handler routes through `recordError` (skipped = 0, error set,
+  attempts + 1). The session becomes a reconcile target and
+  `MAX_DISTILL_ATTEMPTS` bounds it at 3 consecutive failures. A real
+  low-confidence verdict is untouched — that one is an answer, not an
+  accident. (bug-hunt #17)
+- **`vir sync-claude` no longer mangles a hand-edited CLAUDE.md.** Both
+  markers were matched with a bare first-`indexOf`, no ordering or balance
+  check, against a file the user edits by hand. An orphan `VIR:START`
+  failed the guard and a SECOND block was appended — and the next sync then
+  sliced from the orphan to the new block's END, deleting every line
+  written between them (the deletion is armed by one sync and sprung by the
+  next). `END` before `START` duplicated the region between them; a second
+  complete block was left behind forever; and markers inside a fenced code
+  block counted as real, so a CLAUDE.md that DOCUMENTS vir's markers got
+  edited at the example. Markers are now located fence-aware and paired
+  forward into complete blocks; unbalanced markers are refused with a
+  reason and nothing is written, because appending was what armed the
+  deletion. `applyPlan` returns `{ ok, reason }` and `vir sync-claude`
+  prints it. (bug-hunt #13)
+- **A `config.pricing` override for an unknown model no longer logs $0.**
+  `resolvePricing` returned null as soon as the model was absent from
+  `DEFAULT_PRICING`, before overrides were consulted — so an override for a
+  model id newer than the table, which is exactly what the override exists
+  for, priced the run at $0 silently. Only a COMPLETE override stands
+  alone: with no base to patch, half a price is a wrong price. (bug-hunt
+  #14)
+- **MCP stops telling clients three untrue things.** It announced
+  `version: "0.1.1"`, a literal untouched since the first release — now
+  `readVirVersion()`, with a test asserting the initialiser carries no
+  literal at all. `vir mcp install` advertised 4 tools while the server
+  registers 6; both sides now read one `VIR_TOOLS` list, pinned by a test
+  that scans the server's own `registerTool` calls, so a new tool cannot
+  ship half-announced. And `getStats()` names six migration-added columns
+  while the read-only MCP path deliberately skips migrations, so on an
+  upgraded-but-never-written DB `vir_status` died with `no such column:
+  category`; it now degrades to empty stats. (bug-hunt #19)
+
 ## 0.17.3 — 2026-09-11
 
 **A note is identified by its session, not by its title.** Completes the
