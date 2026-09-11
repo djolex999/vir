@@ -40,6 +40,10 @@ import {
 } from "./composer.js";
 import { kebab, makeSlug } from "./slug.js";
 
+// Rejected notes are moved here by `vir review`, never deleted. Shared with
+// cli/review.ts so the two sides can't drift apart.
+export const REJECTED_DIR = ".rejected";
+
 const CATEGORY_DIR: Record<Category, string> = {
   pattern: "patterns",
   gotcha: "gotchas",
@@ -95,6 +99,14 @@ export class VaultWriter {
     const subDir = CATEGORY_DIR[classification.category];
     const relPath = join(subDir, `${slug}.md`);
     const fullPath = join(this.root, relPath);
+
+    // `vir review` rejects by MOVING the note into `.rejected/`, so the category
+    // path no longer exists and preservedReviewFields() below finds nothing to
+    // carry over — a --full re-distill would write the note back as if it had
+    // never been rejected. Rejection is sticky: leave the file where the user
+    // put it, and skip the embedding + index/log work entirely.
+    const rejectedPath = join(this.root, REJECTED_DIR, `${slug}.md`);
+    if (existsSync(rejectedPath)) return [rejectedPath];
 
     // themes is a fresh classify signal but isn't a DB column, so a rewrite-only
     // pass carries none — fall back to the existing note's themes block then,
