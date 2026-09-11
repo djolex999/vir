@@ -615,10 +615,14 @@ program
             ui.row(ui.warn(ui.WARN_GLYPH), ui.text(`skipped ${collapseHome(p.target)}`));
             continue;
           }
-          const ok = applyPlan(p);
+          const result = applyPlan(p);
           ui.row(
-            ok ? ui.success(ui.CHECK) : ui.errorColor(ui.CROSS),
-            ui.text(collapseHome(p.target)),
+            result.ok ? ui.success(ui.CHECK) : ui.errorColor(ui.CROSS),
+            ui.text(
+              result.ok || result.reason === undefined
+                ? collapseHome(p.target)
+                : `${collapseHome(p.target)} — ${result.reason}`,
+            ),
           );
         }
       } finally {
