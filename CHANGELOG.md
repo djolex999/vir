@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.17.8 — 2026-09-11
+
+**Distill failures are now visible while they can still be fixed.** `vir run`
+already recorded an error row per failed session and logged it — correct, and
+also invisible, because the daemon is unattended and nobody reads daemon.log.
+In the vault this was built against, 14 sessions died in one `fetch failed`
+window on 2026-06-11 and were found three months later, by which time Claude
+Code had deleted the transcripts and the knowledge was gone. 27 such rows
+exist there and not one is recoverable.
+
+- **A desktop notification at the end of any run that errored**, mirroring the
+  existing projects-awaiting-decision notice. This is the half that reaches
+  you the same day, while `vir reconcile` can still act. Respects
+  `notifications: false`.
+- **A `distill failures` row in `vir doctor`** carrying the standing state:
+  how many failed, how many are still recoverable, the date of the last one,
+  and the worst single day — because a cluster is the signal. 15 failures in
+  one afternoon is an outage; 15 across a quarter is noise.
+- **Severity keys on recoverability, not count.** Recoverable means the
+  transcript still exists on disk, which is the only thing reconcile can act
+  on: `fail` inside the ~7-day window, `warn` when older but still retryable,
+  and `ok` once the transcripts have expired. A permanent red row for work
+  nobody can do teaches people to ignore the whole table, so an expired
+  backlog is reported as a fact with no call to action.
+- Human table only; the 8-field `doctor --json` contract is unchanged.
+
 ## 0.17.7 — 2026-09-11
 
 **`vir lint --strays`.** Finds note files that no live database row can
