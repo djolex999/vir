@@ -228,6 +228,18 @@ const ADDED_COLUMNS: Array<{ name: string; ddl: string }> = [
     ddl: "ALTER TABLE sessions ADD COLUMN skip_reason TEXT",
   },
   {
+    // Prune state. Deliberately NOT a skip_reason: `skipped` means "never
+    // distilled", and 0.14.0 learned the hard way that overloading it on a row
+    // that holds a note is a semi-prune wearing a filter's clothes. A pruned
+    // row keeps its content and embedding so a restore is exact.
+    name: "pruned_at",
+    ddl: "ALTER TABLE sessions ADD COLUMN pruned_at TEXT",
+  },
+  {
+    name: "prune_reason",
+    ddl: "ALTER TABLE sessions ADD COLUMN prune_reason TEXT",
+  },
+  {
     // Launch signature of the transcript's first user line (e.g. "sdk-py").
     // Recorded whenever the pipeline knows it; NULL for pre-existing rows.
     name: "entrypoint",
@@ -240,6 +252,18 @@ const ADDED_COLUMNS: Array<{ name: string; ddl: string }> = [
 // daemon spend on a transcript that fails persistently (each retry is a paid
 // classify call at minimum).
 export const MAX_DISTILL_ATTEMPTS = 3;
+
+// One distilled row as the prune planner sees it.
+export interface PruneCandidateRow {
+  path: string;
+  entrypoint: string | null;
+  category: Category;
+  topic: string;
+  project: string | null;
+  pruned_at: string | null;
+  prune_reason: string | null;
+  archived: number;
+}
 
 export class StateDb {
   private db: Database.Database;
@@ -389,6 +413,80 @@ export class StateDb {
     return this.columnsOf(table).has("embedding_model");
   }
 
+  // `AND pruned_at IS NULL`, or nothing when the column does not exist yet.
+  // The read-only MCP path skips migrations, so an upgraded-but-never-written
+  // DB has no prune column — naming it unconditionally would take out every
+  // read path at once, which is exactly the class of break #19 was.
+  private prunedGate(): string {
+    return this.columnsOf("sessions").has("pruned_at")
+      ? " AND pruned_at IS NULL"
+      : "";
+  }
+
+  // Demote a distilled row: it stops serving every read path but keeps its
+  // content, embedding, hash and `skipped` value, so `vir prune --restore`
+  // puts it back exactly as it was.
+  markPruned(
+    path: string,
+    reason: string,
+    now: string = new Date().toISOString(),
+  ): void {
+    this.db
+      .prepare(
+        "UPDATE sessions SET pruned_at = ?, prune_reason = ? WHERE path = ?",
+      )
+      .run(now, reason, path);
+  }
+
+  isPruned(path: string): boolean {
+    if (!this.columnsOf("sessions").has("pruned_at")) return false;
+    const row = this.db
+      .prepare("SELECT pruned_at FROM sessions WHERE path = ?")
+      .get(path) as { pruned_at: string | null } | undefined;
+    return row?.pruned_at != null;
+  }
+
+  clearPruned(path: string): void {
+    this.db
+      .prepare(
+        "UPDATE sessions SET pruned_at = NULL, prune_reason = NULL WHERE path = ?",
+      )
+      .run(path);
+  }
+
+  countPrunedByReason(): Record<string, number> {
+    if (!this.columnsOf("sessions").has("pruned_at")) return {};
+    const rows = this.db
+      .prepare(
+        `SELECT COALESCE(prune_reason, 'unknown') AS reason, COUNT(*) AS n
+         FROM sessions WHERE pruned_at IS NOT NULL GROUP BY reason`,
+      )
+      .all() as Array<{ reason: string; n: number }>;
+    const out: Record<string, number> = {};
+    for (const r of rows) out[r.reason] = r.n;
+    return out;
+  }
+
+  // Every distilled row with the fields the prune classifier needs. Already
+  // pruned rows are included so a plan can report them instead of counting
+  // them again as fresh candidates.
+  listPruneCandidates(): PruneCandidateRow[] {
+    if (!this.columnsOf("sessions").has("pruned_at")) return [];
+    return this.db
+      .prepare(
+        `SELECT path, entrypoint, category, topic, project,
+                pruned_at, prune_reason, COALESCE(archived,0) AS archived
+         FROM sessions
+         WHERE skipped = 0
+           AND error IS NULL
+           AND content IS NOT NULL
+           AND content != ''
+           AND category IS NOT NULL
+           AND topic IS NOT NULL`,
+      )
+      .all() as PruneCandidateRow[];
+  }
+
   getByPath(path: string): SessionRow | undefined {
     return this.db
       .prepare("SELECT * FROM sessions WHERE path = ?")
@@ -461,7 +559,7 @@ export class StateDb {
         `SELECT * FROM sessions
          WHERE skipped = 0
            AND (content IS NULL OR content = ''
-                OR (error IS NOT NULL AND error != ''))`,
+                OR (error IS NOT NULL AND error != ''))${this.prunedGate()}`,
       )
       .all() as SessionRow[];
   }
@@ -521,7 +619,7 @@ export class StateDb {
            AND embedding IS NULL
            AND topic IS NOT NULL
            AND category IS NOT NULL
-           AND COALESCE(archived, 0) = 0`,
+           AND COALESCE(archived, 0) = 0${this.prunedGate()}`,
       )
       .all() as EmbeddingTargetRow[];
   }
@@ -633,7 +731,7 @@ export class StateDb {
            AND content IS NOT NULL
            AND category IS NOT NULL
            AND topic IS NOT NULL
-           AND COALESCE(archived, 0) = 0`,
+           AND COALESCE(archived, 0) = 0${this.prunedGate()}`,
       )
       .all() as Array<{
       path: string;
@@ -718,7 +816,7 @@ export class StateDb {
          WHERE skipped = 0
            AND error IS NULL
            AND content IS NOT NULL
-           AND COALESCE(archived, 0) = 0`,
+           AND COALESCE(archived, 0) = 0${this.prunedGate()}`,
             )
             .all()
         : []
@@ -841,7 +939,7 @@ export class StateDb {
            AND embedding IS NOT NULL
            AND COALESCE(archived, 0) = 0
            AND topic IS NOT NULL
-           AND category IS NOT NULL`,
+           AND category IS NOT NULL${this.prunedGate()}`,
       )
       .all() as Array<{
       path: string;
