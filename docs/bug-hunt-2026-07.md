@@ -1,8 +1,10 @@
 # Bug hunt — 2026-07-08
 
-**Last re-verified: 2026-07-30** — #1, #2, #4, #5, #6, #9 RESOLVED (verified
-against source at the noted file:line); #3, #7, #8 NOT RE-VERIFIED (status
-unknown since 07-08 — do not read them as confirmed-live).
+**SUPERSEDED — see `docs/bug-hunt-verification-2026-09-11.md`** for the current
+status of every finding, verified against source at v0.17.4. #1, #2, #4, #5,
+#6, #9 fixed by 0.12.0; #12 fixed in 0.17.3; #13, #14, #17, #19 fixed in
+0.17.4; everything else in this document is confirmed STILL LIVE. Do not read
+the severities or line numbers below as current — they are from v0.11.1.
 
 Whole-codebase hunt at v0.11.1 (4 parallel finders over pipeline / state+search /
 CLI+config+cost / MCP+daemon+lint+dedupe), followed by an independent
