@@ -474,6 +474,23 @@ export class StateDb {
   // filtering on content. A session awaiting reconcile has an empty content
   // column but its note file on disk is real — a caller deciding whether a file
   // is debris must see that row, or it will call a live note an orphan.
+  // Sessions that errored and never produced a note. Used by the doctor
+  // failure check, which decides recoverability by looking at whether each
+  // transcript still exists on disk — a filesystem question, so the rows come
+  // back raw rather than being counted here.
+  listDistillFailures(): Array<{ path: string; processed_at: string }> {
+    const gate = this.prunedGate();
+    return this.db
+      .prepare(
+        `SELECT path, processed_at
+         FROM sessions
+         WHERE skipped = 0
+           AND error IS NOT NULL AND error != ''
+           AND (content IS NULL OR content = '')${gate}`,
+      )
+      .all() as Array<{ path: string; processed_at: string }>;
+  }
+
   listAllNoteRows(): Array<{
     path: string;
     topic: string;

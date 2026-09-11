@@ -12,6 +12,7 @@ import {
 } from "./distiller.js";
 import { computeCost } from "../cost/pricing.js";
 import { scoreSession } from "./filter.js";
+import { failureNotice } from "../diagnostics/distillFailures.js";
 import { parseSession } from "./parser.js";
 import { scanSessions } from "./scanner.js";
 import { scanArticles } from "./articleReader.js";
@@ -1080,6 +1081,20 @@ export async function runPipeline(
         "vir — projects awaiting decision",
         `${stillPending.size} project(s), ${summary.projectPending} session(s) pending — run vir projects`,
       );
+    }
+  }
+
+  // A run that dropped sessions on the floor is worth knowing about the day it
+  // happens. run.ts already records an error row per failure and logs it, but
+  // the daemon runs unattended and nobody reads daemon.log — which is how 15
+  // sessions died in one window here and were found three months later, after
+  // Claude Code had deleted the transcripts. Doctor carries the standing state;
+  // this is the part that reaches the user in time to act.
+  const notice = failureNotice(summary.errored);
+  if (notice !== null) {
+    fileLog(`${summary.errored} session(s) failed to distill this run`);
+    if (cfg.notifications !== false && process.platform === "darwin") {
+      notify(notice.title, notice.message);
     }
   }
 
