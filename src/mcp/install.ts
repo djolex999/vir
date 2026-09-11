@@ -9,13 +9,9 @@
  */
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import * as ui from "../ui/display.js";
+import { VIR_TOOLS as TOOLS } from "./tools.js";
 
-const TOOLS = [
-  "vir_query",
-  "vir_status",
-  "vir_recent_notes",
-  "vir_project_summary",
-] as const;
+
 
 function runClaude(args: string[]): SpawnSyncReturns<string> {
   return spawnSync("claude", args, { encoding: "utf8" });

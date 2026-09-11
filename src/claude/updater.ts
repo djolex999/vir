@@ -237,30 +237,96 @@ function computeDiff(old: Entry[], next: Entry[]): DiffResult {
   return { added, removed, upgraded, unchanged };
 }
 
-export function applyPlan(plan: PlanItem): boolean {
-  if (!plan.exists) return false;
+export interface ApplyResult {
+  ok: boolean;
+  reason?: string;
+}
+
+// Marker offsets that are REAL — i.e. not inside a fenced code block. A
+// CLAUDE.md may legitimately document vir's own markers (this repo's docs do),
+// and editing the file at an example would corrupt it.
+function markerOffsets(raw: string): { starts: number[]; ends: number[] } {
+  const starts: number[] = [];
+  const ends: number[] = [];
+  let offset = 0;
+  let fenced = false;
+  for (const line of raw.split("\n")) {
+    const t = line.trim();
+    if (t.startsWith("```") || t.startsWith("~~~")) {
+      fenced = !fenced;
+    } else if (!fenced) {
+      if (t === VIR_START) starts.push(offset);
+      else if (t === VIR_END) ends.push(offset);
+    }
+    offset += line.length + 1;
+  }
+  return { starts, ends };
+}
+
+// Pair markers into complete blocks, walking forward: a START claims the first
+// END after it. Returns null when anything is left unmatched — an orphan START
+// from a hand-edit, or an END before any START.
+function pairBlocks(
+  starts: number[],
+  ends: number[],
+): Array<{ from: number; to: number }> | null {
+  const blocks: Array<{ from: number; to: number }> = [];
+  let ei = 0;
+  for (const start of starts) {
+    while (ei < ends.length && ends[ei]! < start) return null; // END before START
+    if (ei >= ends.length) return null; // START with no END after it
+    blocks.push({ from: start, to: ends[ei]! + VIR_END.length });
+    ei += 1;
+  }
+  if (ei !== ends.length) return null; // trailing unmatched END
+  return blocks;
+}
+
+export function applyPlan(plan: PlanItem): ApplyResult {
+  if (!plan.exists) return { ok: false, reason: "file does not exist" };
   let raw: string;
   try {
     raw = readFileSync(plan.target, "utf8");
   } catch {
-    return false;
+    return { ok: false, reason: "could not read file" };
   }
 
+  const { starts, ends } = markerOffsets(raw);
   let updated: string;
-  if (raw.includes(VIR_START) && raw.includes(VIR_END)) {
-    const start = raw.indexOf(VIR_START);
-    const end = raw.indexOf(VIR_END) + VIR_END.length;
-    updated = raw.slice(0, start) + plan.newBlock + raw.slice(end);
-  } else {
+
+  if (starts.length === 0 && ends.length === 0) {
     const sep = raw.endsWith("\n") ? "\n" : "\n\n";
     updated = raw + sep + plan.newBlock + "\n";
+  } else {
+    const blocks = pairBlocks(starts, ends);
+    // Unbalanced markers mean a hand-edit went wrong. Appending here is what
+    // made this destructive: the NEXT sync would slice from the orphan marker
+    // to the appended block's END and delete everything the user wrote in
+    // between. Refuse, say so, and let them fix their own file.
+    if (blocks === null || blocks.length === 0) {
+      return {
+        ok: false,
+        reason: `unbalanced ${VIR_START} / ${VIR_END} markers — fix them by hand, nothing was written`,
+      };
+    }
+    // Replace the first block; drop any later ones. Splice back-to-front so
+    // earlier offsets stay valid. Later blocks are entirely vir-owned, so
+    // removing them takes none of the user's content.
+    updated = raw;
+    for (let i = blocks.length - 1; i >= 1; i -= 1) {
+      const b = blocks[i]!;
+      updated = updated.slice(0, b.from) + updated.slice(b.to);
+    }
+    const first = blocks[0]!;
+    updated =
+      updated.slice(0, first.from) + plan.newBlock + updated.slice(first.to);
   }
 
   try {
     writeFileSync(plan.target, updated);
-    return true;
+    return { ok: true };
   } catch {
-    return false;
+    return { ok: false, reason: "could not write file" };
   }
 }
 

@@ -367,15 +367,26 @@ export class StateDb {
   // True when `table` carries the provenance columns. The read-only MCP path
   // skips migrations, so an upgraded-but-never-written DB may lack them; read
   // paths must degrade to legacy provenance instead of erroring.
-  private provenanceCache = new Map<string, boolean>();
-  private hasProvenance(table: string): boolean {
-    const cached = this.provenanceCache.get(table);
+  private columnCache = new Map<string, Set<string>>();
+  private columnsOf(table: string): Set<string> {
+    const cached = this.columnCache.get(table);
     if (cached !== undefined) return cached;
-    const has = (
-      this.db.prepare(`PRAGMA table_info(${table})`).all() as ColumnInfo[]
-    ).some((r) => r.name === "embedding_model");
-    this.provenanceCache.set(table, has);
-    return has;
+    let cols: Set<string>;
+    try {
+      cols = new Set(
+        (
+          this.db.prepare(`PRAGMA table_info(${table})`).all() as ColumnInfo[]
+        ).map((r) => r.name),
+      );
+    } catch {
+      cols = new Set();
+    }
+    this.columnCache.set(table, cols);
+    return cols;
+  }
+
+  private hasProvenance(table: string): boolean {
+    return this.columnsOf(table).has("embedding_model");
   }
 
   getByPath(path: string): SessionRow | undefined {
@@ -681,17 +692,37 @@ export class StateDb {
     };
   }
 
+  // Every column below arrived in a migration, and the read-only path skips
+  // migrations — so an upgraded-but-never-written DB has none of them and the
+  // query dies with "no such column", taking the whole vir_status tool with
+  // it. No columns means no distilled rows to count: degrade to empty stats,
+  // which is what the aggregation below produces from zero rows anyway.
+  private static readonly STATS_COLUMNS = [
+    "category",
+    "project",
+    "confidence",
+    "started_at",
+    "content",
+    "archived",
+  ];
+
   getStats(): KnowledgeStats {
-    const rows = this.db
-      .prepare(
-        `SELECT category, project, confidence, started_at
+    const cols = this.columnsOf("sessions");
+    const ready = StateDb.STATS_COLUMNS.every((c) => cols.has(c));
+    const rows = (
+      ready
+        ? this.db
+            .prepare(
+              `SELECT category, project, confidence, started_at
          FROM sessions
          WHERE skipped = 0
            AND error IS NULL
            AND content IS NOT NULL
            AND COALESCE(archived, 0) = 0`,
-      )
-      .all() as Array<{
+            )
+            .all()
+        : []
+    ) as Array<{
       category: string | null;
       project: string | null;
       confidence: number | null;

@@ -382,6 +382,22 @@ export async function probeProvider(
   await Promise.race([probe, timeout]);
 }
 
+// The model's classify response could not be parsed. Thrown rather than
+// folded into a confidence-0 verdict, because run.ts treats the two
+// oppositely: a thrown error goes through recordError (skipped = 0, error set,
+// attempts + 1) so `vir reconcile` retries it and MAX_DISTILL_ATTEMPTS bounds
+// the spend, while a low-confidence verdict is recorded as skipped and never
+// looked at again. One transient formatting glitch used to take the second
+// path and drop the session's knowledge permanently.
+export class ClassifyParseError extends Error {
+  constructor(sessionId: string) {
+    super(
+      `classify response for ${sessionId} could not be parsed — retryable, not a verdict`,
+    );
+    this.name = "ClassifyParseError";
+  }
+}
+
 export class Distiller {
   private client: Anthropic | null;
   private cfg: Config;
@@ -491,6 +507,7 @@ ${scrubbedContent}`;
     scrubbedContent: string,
   ): Promise<DistilledNote | null> {
     const cls = await this.classify(session, scrubbedSummary);
+    if (cls.unparsed) throw new ClassifyParseError(session.sessionId);
     if (cls.confidence <= 0.6) return null;
     // Hybrid routing decides here, after classify, on the post-filter distill
     // input. The chosen model flows into callLLM and lands in cost.log.
@@ -598,6 +615,7 @@ export function parseClassification(
       project: fallbackProject,
       confidence: 0,
       themes: [],
+      unparsed: true,
     };
   }
   let obj: Record<string, unknown>;
@@ -610,6 +628,7 @@ export function parseClassification(
       project: fallbackProject,
       confidence: 0,
       themes: [],
+      unparsed: true,
     };
   }
   const rawCat = typeof obj.category === "string" ? obj.category : "pattern";

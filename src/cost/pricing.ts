@@ -68,7 +68,21 @@ export function resolvePricing(
 ): ModelPricing | null {
   const table = DEFAULT_PRICING[provider];
   const baseKey = findTableKey(table, model);
-  if (baseKey === undefined) return null;
+  if (baseKey === undefined) {
+    // No posted rate for this model. A config override is exactly the escape
+    // hatch for that case — a new model id shipping before the table catches
+    // up — so consult it before giving up. Returning null here regardless is
+    // how a configured price silently logged the run at $0.
+    // Only a COMPLETE override can stand alone: there is no base to patch, and
+    // half a price is a wrong price, not a partial one.
+    const patch = overrides?.[provider]?.[
+      findOverrideKey(overrides[provider] ?? {}, model) ?? ""
+    ];
+    if (patch?.inputPer1M !== undefined && patch.outputPer1M !== undefined) {
+      return { inputPer1M: patch.inputPer1M, outputPer1M: patch.outputPer1M };
+    }
+    return null;
+  }
 
   // Non-null assertion is safe: baseKey came from Object.keys(table)
   const base: ModelPricing = { ...table[baseKey]! };

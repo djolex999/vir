@@ -100,3 +100,23 @@ describe("claude-sonnet-5 pricing (default provider/model as of 0.14.0)", () => 
     expect(computeCost("anthropic", "claude-sonnet-5", 100_000, 2_000)).toBeGreaterThan(0);
   });
 });
+
+// A model absent from DEFAULT_PRICING is exactly the case a config override
+// exists for: a new model id ships before the table catches up. Returning null
+// there logs the run at $0 — silently, which is the failure mode cost logging
+// is supposed to prevent.
+describe("resolvePricing with overrides for an unknown model", () => {
+  it("uses a complete override for a model absent from the default table", () => {
+    const p = resolvePricing("anthropic", "claude-opus-9", {
+      anthropic: { "claude-opus-9": { inputPer1M: 15, outputPer1M: 75 } },
+    });
+    expect(p).toEqual({ inputPer1M: 15, outputPer1M: 75 });
+  });
+
+  it("still returns null for a partial override it cannot complete", () => {
+    const p = resolvePricing("anthropic", "claude-opus-9", {
+      anthropic: { "claude-opus-9": { inputPer1M: 15 } },
+    });
+    expect(p).toBeNull();
+  });
+});

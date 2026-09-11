@@ -28,6 +28,7 @@ import { join } from "node:path";
 import { exit } from "node:process";
 import { z } from "zod";
 import { STATE_PATH, type Config } from "../config.js";
+import { readVirVersion } from "../version.js";
 import { composeSlug, TOPICS_SUBDIR } from "../pipeline/composer.js";
 import type { Category } from "../pipeline/types.js";
 import { kebab, makeSlug } from "../pipeline/writer.js";
@@ -215,7 +216,7 @@ export async function runMcpServer(cfg: Config): Promise<void> {
     exit(1);
   }
 
-  const server = new McpServer({ name: "vir", version: "0.1.1" });
+  const server = new McpServer({ name: "vir", version: readVirVersion() });
 
   server.registerTool(
     "vir_query",

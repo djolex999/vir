@@ -49,6 +49,12 @@ export interface Classification {
   // surfacing multi-theme dilution (a grab-bag session names only one in `topic`)
   // — written to note frontmatter, not used by retrieval. Empty when none.
   themes: string[];
+
+  // Set only when the model's response could not be parsed at all. Without it
+  // a formatting glitch is indistinguishable from a genuine confidence-0
+  // verdict — and the two deserve opposite treatment: one is transient and
+  // must stay retryable, the other is an answer.
+  unparsed?: true;
 }
 
 export interface DistilledNote {

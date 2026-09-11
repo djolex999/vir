@@ -7,6 +7,8 @@ import {
   KieTimeoutError,
   kieResponseError,
   maybeAnthropicClient,
+  ClassifyParseError,
+  Distiller,
   parseClassification,
   selectDistillModel,
 } from "./distiller.js";
@@ -270,5 +272,72 @@ describe("callKie timeout", () => {
       }),
     ).rejects.toBeInstanceOf(KieTimeoutError);
     expect(Date.now() - start).toBeLessThan(2000);
+  });
+});
+
+// A garbled classify response and a genuinely uninteresting session both ended
+// up as confidence 0 — and run.ts records BOTH as skipped with the current
+// hash. `vir reconcile` only targets skipped = 0, so one transient formatting
+// glitch dropped a session's knowledge with no recovery path. The two have to
+// be distinguishable.
+describe("unparseable classify responses are transient, not a verdict", () => {
+  const cfg = {
+    provider: "claude-cli",
+    models: { classify: "claude-haiku-4-5-20251001", distill: "claude-sonnet-4-6" },
+  } as unknown as Config;
+
+  const session = {
+    sessionId: "abc12345",
+    projectSlug: "demo",
+    rawSummary: "",
+  } as unknown as Parameters<Distiller["run"]>[0];
+
+  class StubDistiller extends Distiller {
+    constructor(private readonly stub: Classification) {
+      super(cfg);
+    }
+    override async classify(): Promise<Classification> {
+      return this.stub;
+    }
+  }
+
+  it("marks a response with no JSON at all as unparsed", () => {
+    expect(parseClassification("I'm sorry, I can't do that", "vir").unparsed).toBe(true);
+  });
+
+  it("marks malformed JSON as unparsed", () => {
+    expect(parseClassification('{"category": "pattern", ', "vir").unparsed).toBe(true);
+  });
+
+  it("does not mark a well-formed low-confidence verdict as unparsed", () => {
+    const c = parseClassification(
+      '{"category":"pattern","topic":"x","project":"vir","confidence":0.2}',
+      "vir",
+    );
+    expect(c.unparsed).toBeFalsy();
+    expect(c.confidence).toBe(0.2);
+  });
+
+  it("run() throws on an unparsed classification so the session is retryable", async () => {
+    const d = new StubDistiller({
+      category: "pattern",
+      topic: "unknown",
+      project: "vir",
+      confidence: 0,
+      themes: [],
+      unparsed: true,
+    });
+    await expect(d.run(session, "", "")).rejects.toThrow(ClassifyParseError);
+  });
+
+  it("run() still returns null for a real low-confidence verdict", async () => {
+    const d = new StubDistiller({
+      category: "pattern",
+      topic: "a real but dull topic",
+      project: "vir",
+      confidence: 0.2,
+      themes: [],
+    });
+    await expect(d.run(session, "", "")).resolves.toBeNull();
   });
 });

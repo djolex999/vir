@@ -564,3 +564,43 @@ describe("embedding model provenance", () => {
     db.close();
   });
 });
+
+// The read-only MCP path deliberately skips migrations (they are writes), so a
+// DB that upgraded but never had a writable pass still carries the ORIGINAL
+// sessions schema. getStats names six migration-added columns; on such a DB
+// SQLite raises "no such column" and the whole vir_status tool dies.
+describe("StateDb.getStats on a pre-migration schema", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vir-db-old-"));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("returns empty stats instead of throwing", () => {
+    const path = join(dir, "vir.db");
+    const raw = new Database(path);
+    raw.exec(`
+      CREATE TABLE sessions (
+        path TEXT PRIMARY KEY,
+        hash TEXT NOT NULL,
+        processed_at TEXT NOT NULL,
+        skipped INTEGER NOT NULL DEFAULT 0,
+        note_paths TEXT NOT NULL DEFAULT '[]',
+        error TEXT
+      );
+    `);
+    raw.close();
+
+    const db = new StateDb(path, { readonly: true });
+    try {
+      const stats = db.getStats();
+      expect(stats.total).toBe(0);
+      expect(stats.oldestNote).toBe("");
+    } finally {
+      db.close();
+    }
+  });
+});
