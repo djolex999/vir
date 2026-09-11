@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Config } from "../config.js";
 import type { DistilledNote, ParsedSession } from "./types.js";
-import { rejectNote } from "../cli/review.js";
+import { approveNote, rejectNote } from "../cli/review.js";
 import { VaultWriter } from "./writer.js";
 
 function makeCfg(vaultPath: string): Config {
@@ -35,11 +35,11 @@ function makeCfg(vaultPath: string): Config {
   };
 }
 
-function makeSession(): ParsedSession {
+function makeSession(sessionId = "abc12345"): ParsedSession {
   return {
-    path: "/x/abc12345.jsonl",
+    path: `/x/${sessionId}.jsonl`,
     hash: "",
-    sessionId: "abc12345",
+    sessionId,
     projectSlug: "demo",
     startedAt: "2026-05-01T10:00:00.000Z",
     endedAt: null,
@@ -53,11 +53,15 @@ function makeSession(): ParsedSession {
   };
 }
 
-function makeNote(themes: string[] = []): DistilledNote {
+function makeNote(
+  themes: string[] = [],
+  topic = "test topic",
+  category: DistilledNote["classification"]["category"] = "pattern",
+): DistilledNote {
   return {
     classification: {
-      category: "pattern",
-      topic: "test topic",
+      category,
+      topic,
       project: "demo",
       confidence: 0.9,
       themes,
@@ -186,5 +190,92 @@ describe("VaultWriter rejection stickiness", () => {
 
     expect(existsSync(notePath!)).toBe(false);
     expect(existsSync(rejectedPath)).toBe(true);
+  });
+});
+
+// A note's filename comes from its topic, but its identity is the session id.
+// The distiller retitles deliberately (0.9.1), so every one of these cases is
+// a normal re-distill, not an exotic edge.
+describe("VaultWriter session-id identity", () => {
+  let vault: string;
+  let root: string;
+
+  beforeEach(() => {
+    vault = mkdtempSync(join(tmpdir(), "vir-vault-"));
+    root = join(vault, "vir");
+  });
+
+  afterEach(() => {
+    rmSync(vault, { recursive: true, force: true });
+  });
+
+  it("keeps a rejected note rejected when the re-distill retitles it", async () => {
+    const writer = new VaultWriter(makeCfg(vault), null);
+    const [first] = await writer.write(makeSession(), makeNote());
+    rejectNote(first!, root);
+
+    const [after] = await writer.write(
+      makeSession(),
+      makeNote([], "a completely different title"),
+    );
+
+    expect(after).toContain(".rejected");
+    expect(existsSync(join(root, "patterns", "a-completely-different-title-abc12345.md"))).toBe(false);
+  });
+
+  it("moves a retitled note instead of forking a duplicate", async () => {
+    const writer = new VaultWriter(makeCfg(vault), null);
+    const [first] = await writer.write(makeSession(), makeNote());
+
+    const [second] = await writer.write(
+      makeSession(),
+      makeNote([], "renamed topic"),
+    );
+
+    expect(existsSync(second!)).toBe(true);
+    expect(existsSync(first!)).toBe(false);
+  });
+
+  it("preserves the review verdict across a retitle", async () => {
+    const writer = new VaultWriter(makeCfg(vault), null);
+    const [first] = await writer.write(makeSession(), makeNote());
+    approveNote(first!);
+
+    const [second] = await writer.write(
+      makeSession(),
+      makeNote([], "renamed topic"),
+    );
+
+    expect(readFileSync(second!, "utf8")).toContain("verified: true");
+  });
+
+  it("drops the stale index row when a note is retitled", async () => {
+    const writer = new VaultWriter(makeCfg(vault), null);
+    await writer.write(makeSession(), makeNote());
+
+    await writer.write(makeSession(), makeNote([], "renamed topic"));
+
+    const index = readFileSync(join(root, "index.md"), "utf8");
+    expect(index).not.toContain("test-topic-abc12345");
+    expect(index).toContain("renamed-topic-abc12345");
+  });
+
+  // makeSlug truncates the session id to 8 chars, so two distinct sessions can
+  // share a filename suffix. Resolving on the suffix alone would make one
+  // session's note delete the other's.
+  it("does not treat a suffix collision as the same note", async () => {
+    const writer = new VaultWriter(makeCfg(vault), null);
+    const [first] = await writer.write(
+      makeSession("abc12345-1111-4444-8888-aaaaaaaaaaaa"),
+      makeNote([], "first session topic"),
+    );
+
+    const [second] = await writer.write(
+      makeSession("abc12345-2222-4444-8888-bbbbbbbbbbbb"),
+      makeNote([], "second session topic"),
+    );
+
+    expect(existsSync(second!)).toBe(true);
+    expect(existsSync(first!)).toBe(true);
   });
 });
