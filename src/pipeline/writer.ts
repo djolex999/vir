@@ -167,7 +167,15 @@ export class VaultWriter {
       vec && provider
         ? this.neighborLinks(vec, session.sessionId, provider.modelName)
         : [];
-    const body = strippedBody + renderRelatedSection(related);
+    // With no vector there are ZERO neighbours to compute — which renders
+    // identically to "this note has no relatives". Emitting that would wipe the
+    // Related section of every note in the vault in a single `--rewrite-only`
+    // pass with Ollama down, silently. The existing section is the better
+    // answer until a provider can produce a new one.
+    const body =
+      vec && provider
+        ? strippedBody + renderRelatedSection(related)
+        : strippedBody + this.preservedRelatedSection(priorPath);
 
     const finalContent = frontmatter + wikilinkHeader + body + "\n";
     writeFileSync(fullPath, finalContent);
@@ -536,6 +544,33 @@ export class VaultWriter {
         .filter((line) => !line.includes(marker))
         .join("\n"),
     );
+  }
+
+  // The existing note's Related block, verbatim, for a rewrite that could not
+  // embed. Mirrors preservedThemesBlock: carry forward what this pass cannot
+  // regenerate rather than emitting an empty section that reads as a fact.
+  private preservedRelatedSection(fullPath: string): string {
+    if (!existsSync(fullPath)) return "";
+    let content: string;
+    try {
+      content = readFileSync(fullPath, "utf8");
+    } catch {
+      return "";
+    }
+    const lines = content.split("\n");
+    const start = lines.findIndex((l) => /^##\s+related\b/i.test(l));
+    if (start === -1) return "";
+    const out: string[] = [];
+    for (const line of lines.slice(start + 1)) {
+      if (/^#{1,6}\s+/.test(line)) break;
+      out.push(line);
+    }
+    const bulletsEnd = out.reduce(
+      (last, line, i) => (line.trim().length > 0 ? i : last),
+      -1,
+    );
+    if (bulletsEnd === -1) return "";
+    return `\n\n## Related\n\n${out.slice(0, bulletsEnd + 1).join("\n").trim()}`;
   }
 
   private preservedReviewFields(fullPath: string): string[] {
