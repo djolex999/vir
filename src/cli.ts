@@ -30,6 +30,7 @@ import {
   orphanCheck,
   stalenessCheck,
 } from "./lint/linter.js";
+import { strayFileCheck } from "./lint/strayFiles.js";
 import { runPipeline } from "./pipeline/run.js";
 import {
   categorizeTranscriptHead,
@@ -724,22 +725,28 @@ program
 
 program
   .command("lint")
-  .description("Run orphan, staleness, and contradiction checks on the vault")
+  .description(
+    "Run orphan, stray-file, staleness, and contradiction checks on the vault",
+  )
   .option("--orphans", "Run only the orphan check (free)")
+  .option("--strays", "Run only the stray-file check (free)")
   .option("--stale", "Run only the staleness check (free)")
   .option("--contradictions", "Run only the contradiction check (Haiku tokens)")
   .action(
     runAction(async (opts: {
       orphans?: boolean;
+      strays?: boolean;
       stale?: boolean;
       contradictions?: boolean;
     }) => {
       const cfg = loadConfig();
       const db = new StateDb();
       try {
-        const runAll = !opts.orphans && !opts.stale && !opts.contradictions;
+        const runAll =
+          !opts.orphans && !opts.strays && !opts.stale && !opts.contradictions;
         const checks: string[] = [];
         if (runAll || opts.orphans) checks.push("orphans");
+        if (runAll || opts.strays) checks.push("strays");
         if (runAll || opts.stale) checks.push("stale");
         if (runAll || opts.contradictions) checks.push("contradictions");
 
@@ -747,6 +754,7 @@ program
         ui.blank();
 
         let orphanCount = 0;
+        let strayCount = 0;
         let staleCount = 0;
         let contradictionCount = 0;
         let issues = 0;
@@ -763,6 +771,33 @@ program
             ui.row(ui.errorColor(ui.CROSS), `${ui.text("orphans")} ${ui.dim("(" + orphanCount + ")")}`);
             for (const o of r.orphans) {
               console.log(`   ${ui.dim(ui.BULLET)} ${ui.text(ui.shortNotePath(o))}`);
+            }
+          }
+        }
+
+        if (runAll || opts.strays) {
+          const sp = ui.spinner("checking stray files").start();
+          const r = strayFileCheck(cfg, db);
+          sp.stop();
+          strayCount = r.strays.length;
+          issues += strayCount;
+          if (strayCount === 0) {
+            ui.row(ui.success(ui.CHECK), `${ui.text("strays")}   ${ui.dim("none")}`);
+          } else {
+            ui.row(
+              ui.errorColor(ui.CROSS),
+              `${ui.text("strays")} ${ui.dim("(" + strayCount + " of " + r.scanned + " files)")}`,
+            );
+            for (const st of r.strays) {
+              // The sibling is the whole point: it is what makes a stray safe
+              // to demote. An `unknown` stray has none, and gets no advice.
+              const note =
+                st.liveSibling !== null
+                  ? ui.dim(`${ui.ARROW} live: ${st.liveSibling}`)
+                  : ui.warn("only copy — inspect before removing");
+              console.log(
+                `   ${ui.dim(ui.BULLET)} ${ui.text(ui.shortNotePath(st.relPath))}  ${ui.muted(st.kind)}  ${note}`,
+              );
             }
           }
         }
@@ -818,6 +853,7 @@ program
             color: issues > 0 ? ui.errorColor : ui.success,
           },
           orphans: { value: orphanCount, color: ui.muted },
+          strays: { value: strayCount, color: ui.muted },
           stale: { value: staleCount, color: ui.muted },
           contradictions: { value: contradictionCount, color: ui.muted },
         });

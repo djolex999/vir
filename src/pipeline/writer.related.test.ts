@@ -143,8 +143,15 @@ describe("Related links are regenerated, not hand-maintained", () => {
     const before = readFileSync(keeper!, "utf8");
     expect(before).toContain("## Related");
 
-    // No provider override, and no Ollama in the test environment.
-    const offline = new VaultWriter(cfg(), db);
+    // `embeddingProvider: "none"` makes resolveEmbeddingProvider return null
+    // by configuration. The first version of this test just omitted the
+    // override and relied on Ollama being absent from the machine — so it
+    // passed until someone started Ollama, which is precisely the
+    // machine-dependent assertion the providerOverride seam exists to avoid.
+    const offline = new VaultWriter(
+      { ...cfg(), embeddingProvider: "none" } as Config,
+      db,
+    );
     const [rewritten] = await offline.write(
       session("bbbb2222"),
       note("second topic"),

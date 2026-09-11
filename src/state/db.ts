@@ -470,6 +470,34 @@ export class StateDb {
   // Every distilled row with the fields the prune classifier needs. Already
   // pruned rows are included so a plan can report them instead of counting
   // them again as fresh candidates.
+  // Every row that could have produced a note file, pruned or not, WITHOUT
+  // filtering on content. A session awaiting reconcile has an empty content
+  // column but its note file on disk is real — a caller deciding whether a file
+  // is debris must see that row, or it will call a live note an orphan.
+  listAllNoteRows(): Array<{
+    path: string;
+    topic: string;
+    category: Category;
+    pruned_at: string | null;
+  }> {
+    const prunedCol = this.columnsOf("sessions").has("pruned_at");
+    return this.db
+      .prepare(
+        `SELECT path, topic, category${prunedCol ? ", pruned_at" : ", NULL AS pruned_at"}
+         FROM sessions
+         WHERE skipped = 0
+           AND topic IS NOT NULL
+           AND category IS NOT NULL
+           AND COALESCE(archived, 0) = 0`,
+      )
+      .all() as Array<{
+      path: string;
+      topic: string;
+      category: Category;
+      pruned_at: string | null;
+    }>;
+  }
+
   listPruneCandidates(): PruneCandidateRow[] {
     if (!this.columnsOf("sessions").has("pruned_at")) return [];
     return this.db
