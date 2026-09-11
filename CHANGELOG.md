@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.17.6 — 2026-09-11
+
+**A rewrite with no embedder no longer wipes every Related section.** One
+fix, on the path you reach for straight after `vir prune --apply`.
+
+- **`vir run --rewrite-only` with no embedding provider used to strip the
+  Related section from every note in the vault, silently.** `neighborLinks`
+  needs a vector; without a provider `computeNoteEmbedding` returns null, the
+  writer computed ZERO neighbours, and zero neighbours renders identically to
+  a note that genuinely has none. The self-heal sweep does not undo it — it
+  stores embeddings, it does not rewrite notes — so the loss persisted until
+  another rewrite with a working provider. `write()` now falls back to
+  `preservedRelatedSection` (the existing block, verbatim) whenever there is
+  no vector, mirroring `preservedThemesBlock`. A rewrite without an embedder
+  is a no-op for links instead of a wipe.
+- **Dangling wikilinks after a prune are cleared by regenerating, never by
+  editing notes.** `neighborLinks` reads `db.getEmbeddings`, which the prune
+  gate filters, so a pruned note disappears from every Related section on the
+  next `vir run --rewrite-only` — by construction, now pinned by a test. The
+  consequence of the fix above is worth stating: clearing dangling links
+  REQUIRES a working embedding provider. With one down the rewrite preserves
+  them, which is the safe failure but not the fix.
+
 ## 0.17.5 — 2026-09-11
 
 **`vir prune`.** 0.14.0's agent-transcript filters are forward-only, so every
