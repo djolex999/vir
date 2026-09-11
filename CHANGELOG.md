@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.17.2 — 2026-09-11
+
+**Rejection sticks.** `vir review` rejections survive a `--full` re-distill.
+No other behavior changes.
+
+- **A rejected note no longer comes back.** `vir review` rejects by *moving*
+  the note into `.rejected/`, which left the category path empty — so
+  `preservedReviewFields()`, which carries a verdict across a rewrite by
+  reading the destination path, found nothing and a re-distill wrote the
+  note straight back as if it had never been rejected. `rejected_at` was in
+  that function's keep-list the whole time; it just never had a file to be
+  read from. `write()` now checks `.rejected/<slug>.md` first and returns
+  that path untouched when it exists: the slug is
+  `makeSlug(topic, sessionId)`, so a re-distill of the same session resolves
+  to the same filename and the check is exact, not a heuristic. The
+  embedding call and the index and log appends are skipped for a note nobody
+  wants. `vir reconcile` and rewrite-only runs share `write()`, so one guard
+  covers all three paths. (#9)
+- **`REJECTED_DIR` has one definition**, in `writer.ts`, imported by
+  `review.ts`. The literal was declared in both files — the same drift that
+  produced the slug-helper bug (bug-hunt #1), caught before it could bite
+  twice.
+
 ## 0.17.1 — 2026-09-04
 
 **Website and brand.** No CLI behavior changes.
