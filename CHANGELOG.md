@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.17.3 — 2026-09-11
+
+**A note is identified by its session, not by its title.** Completes the
+0.17.2 fix, which only covered half the cases. Includes everything in
+0.17.2, which was tagged but never published.
+
+- **A retitle no longer loses the review verdict or forks a duplicate.** A
+  note's path is `makeSlug(topic, sessionId)` — built from the *topic*, which
+  the distiller changes between runs on purpose (0.9.1 retitles
+  deliberately). The path was therefore never identity. Every consumer that
+  recomputed it from the current topic missed the note it meant to update:
+  `preservedReviewFields()` read the new path, so `verified` / `reviewed_at`
+  and the +0.2 retrieval boost were dropped; the old note stayed behind as a
+  duplicate; and the 0.17.2 `.rejected/` guard keyed off the current slug
+  too, so a retitled note came back rejected-no-more. Three symptoms, one
+  cause. (bug-hunt #12, finishing #9)
+- **`locateBySession()`** indexes the vault by the filename's session suffix,
+  built once per writer and kept current as notes are written — a rescan per
+  note would be O(n²) on a vault with thousands. `.rejected/` is scanned last
+  so it wins: a rejection is the authoritative location for its session. A
+  stale hit (a note `vir review` moved between runs) triggers one rebuild;
+  a miss never does, so a batch of new notes doesn't rescan per note.
+- **The suffix is an index hint; the full id is the authority.** `makeSlug`
+  truncates the session id to 8 characters, so two sessions can share a
+  filename suffix — and a match authorises deleting the old file. Every hit
+  is confirmed against the `session_id` in frontmatter before it is used. A
+  collision degrades to an orphaned duplicate, never a deletion. (The first
+  draft of this patch resolved on the suffix alone and deleted the colliding
+  note; the collision test caught it.)
+- **`write()` retires what it replaces** — on a retitle the old file is
+  removed and its `index.md` row dropped, since append mode never
+  regenerates the index.
+- **`archived/` is deliberately not indexed.** A dedupe-merged note being
+  re-created by a re-distill is the same shape of problem, but what a merge
+  should mean for the loser's session is a product decision, not a
+  refactor — it gets its own.
+
 ## 0.17.2 — 2026-09-11
 
 **Rejection sticks.** `vir review` rejections survive a `--full` re-distill.
