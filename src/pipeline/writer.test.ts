@@ -1,9 +1,16 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Config } from "../config.js";
 import type { DistilledNote, ParsedSession } from "./types.js";
+import { rejectNote } from "../cli/review.js";
 import { VaultWriter } from "./writer.js";
 
 function makeCfg(vaultPath: string): Config {
@@ -154,5 +161,30 @@ describe("VaultWriter write modes", () => {
     const after = readFileSync(notePath!, "utf8");
     expect(after).toContain("verified: true");
     expect(after).toContain("reviewed_at: 2026-05-24T00:00:00.000Z");
+  });
+});
+
+describe("VaultWriter rejection stickiness", () => {
+  let vault: string;
+
+  beforeEach(() => {
+    vault = mkdtempSync(join(tmpdir(), "vir-vault-"));
+  });
+
+  afterEach(() => {
+    rmSync(vault, { recursive: true, force: true });
+  });
+
+  it("does not resurrect a rejected note on re-distill", async () => {
+    const root = join(vault, "vir");
+    const writer = new VaultWriter(makeCfg(vault), null);
+    const [notePath] = await writer.write(makeSession(), makeNote());
+    const rejectedPath = rejectNote(notePath!, root);
+
+    // --full re-distill: same session, same topic, so the same slug.
+    await writer.write(makeSession(), makeNote());
+
+    expect(existsSync(notePath!)).toBe(false);
+    expect(existsSync(rejectedPath)).toBe(true);
   });
 });

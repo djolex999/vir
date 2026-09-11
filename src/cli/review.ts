@@ -11,13 +11,12 @@ import { basename, join } from "node:path";
 import { stdin, stdout } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { loadConfig } from "../config.js";
-import { kebab } from "../pipeline/writer.js";
+import { REJECTED_DIR, kebab } from "../pipeline/writer.js";
 import * as ui from "../ui/display.js";
 
 // The four typed category dirs hold reviewable notes. `.rejected/`, `archived/`,
 // `projects/`, index.md and log.md are intentionally never walked.
 const CATEGORY_DIRS = ["patterns", "gotchas", "decisions", "tools"] as const;
-const REJECTED_DIR = ".rejected";
 
 export interface ReviewNote {
   filePath: string;
