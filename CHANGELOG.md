@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.17.5 — 2026-09-11
+
+**`vir prune`.** 0.14.0's agent-transcript filters are forward-only, so every
+note distilled before them is still in the vault, the embedding pool, TF-IDF
+and all six MCP tools. This demotes them. Dry run is the default; nothing is
+ever deleted.
+
+- **`vir prune`** reports what it would demote, per reason, and exits.
+  `--apply` moves each note to `.rejected/` and marks its row; `--restore`
+  puts every pruned note back byte-for-byte. On the vault this was built
+  against: 132 candidates (129 sidechain, 3 workflow), 278 kept.
+- **Prune state is DB-authoritative** — `pruned_at` + `prune_reason` on the
+  sessions row. Deliberately NOT `skipped`: flipping that on a row holding a
+  note is the 0.14.0 semi-prune. And deliberately not frontmatter, which is
+  invisible to SQL — the reason `vir review`'s `.rejected/` move leaks through
+  eight DB-backed read paths today (`listDistilled` and everything downstream,
+  `getStats`, the embedding sweep). Every serving query now carries
+  `prunedGate()`, which is a no-op on a DB whose migration has not run, so the
+  read-only MCP path still opens an un-migrated database.
+- **Gated at the paid boundary.** `--full` bypasses `isProcessed`, so without
+  a gate in the run loop it re-classifies and re-distills every pruned session
+  and only discovers at `write()` that the note is demoted — billing you on
+  every run, forever. The check sits beside the retry bound, which has the
+  same "even under --full" reasoning.
+- **Classification is pure and zero-I/O.** 396 of 411 distilled transcripts no
+  longer exist on disk (Claude Code prunes at ~30 days), and `entrypoint` was
+  never backfilled — NULL on 376 of 411 rows — so the stored path does the
+  work: `subagents/` yields sidechain, `wf_`/`workflows` yields workflow, and
+  a stored `sdk*` entrypoint yields agent. The launcher traps hold by
+  construction: the classifier reads `entrypoint` only, never `promptSource`
+  (which reads "sdk" on desktop-launched human sessions) and never turn count
+  (which would kill single-prompt autonomous runs).
+- **Two buckets are reported and never pruned.** `unclassifiable` (no
+  entrypoint, transcript gone — 231 rows) and `merge-winner` (dedupe records
+  no parentage, so a winner cannot be shown to be all-agent — 12 rows). A
+  prune that guesses is a delete with extra steps.
+- **`--restore` is exact.** A pruned row keeps its content, embedding and
+  hash; the note is stamped with prune's own frontmatter keys, never review's
+  `rejected_at`, so a note that is both rejected and pruned restores cleanly.
+- **Kept notes are never edited.** Dangling wikilinks pointing at pruned notes
+  are counted and reported (177 on the reference vault), never rewritten.
+- **`vir doctor`** gains a human-table row with pruned counts per reason and
+  the restore hint. The 8-field `doctor --json` contract is unchanged.
+- `CATEGORY_DIR` is exported from `writer.ts` rather than re-declared.
+
 ## 0.17.4 — 2026-09-11
 
 **Four findings from the July audit backlog.** Two of them lose data; two

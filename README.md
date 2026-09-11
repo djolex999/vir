@@ -362,6 +362,9 @@ with your distro, init system, and Node version.
 | `vir lint`                  | cheap | Find orphans, stale notes, contradictions |
 | `vir dedupe`                | cheap | Interactive duplicate detection + merge   |
 | `vir review`                | free  | Walk new notes: approve/edit/reject       |
+| `vir prune`                 | free  | Dry run: agent-derived notes to demote    |
+| `vir prune --apply`         | free  | Demote them to `.rejected/` (never deletes) |
+| `vir prune --restore`       | free  | Put every pruned note back, exactly       |
 | `vir sync-claude`           | free  | Inject top knowledge into CLAUDE.md       |
 | `vir embed`                 | free  | Generate embeddings for semantic search   |
 | `vir embed --setup`         | free  | Install the local embedding provider (no Ollama needed) |
@@ -504,7 +507,7 @@ improvements. Delete it any time; disable it with `"logQueries": false` in
 
 |                |                                           |
 | -------------- | ----------------------------------------- |
-| Version        | 0.17.4                                    |
+| Version        | 0.17.5                                    |
 | Tests          | 585 passing                               |
 | Platforms      | macOS (launchd), Linux (systemd/cron)     |
 | Node           | 20+                                       |
