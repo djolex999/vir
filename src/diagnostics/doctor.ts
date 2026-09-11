@@ -40,6 +40,7 @@ import { CLAUDE_CLI_LIMIT_MARKER_PATH } from "../pipeline/claudeCli.js";
 import { isClaudeAvailable, isInstalled } from "../mcp/install.js";
 import { gatherProjectsReport } from "../cli/projects.js";
 import { StateDb } from "../state/db.js";
+import { distillFailureCheck } from "./distillFailures.js";
 import { buildDoctorResult } from "../output/json.js";
 import * as ui from "../ui/display.js";
 
@@ -529,6 +530,45 @@ function checkBackup(): CheckResult | null {
 // undo it. Null when nothing is pruned — doctor should not grow a row for a
 // feature the user has not used. Human table ONLY, never doctor --json (the
 // 8-field VirDoctorResult is a cross-repo contract).
+// Reads the failure rows and resolves recoverability against the filesystem:
+// `vir reconcile` can only retry a session whose transcript still exists.
+function checkDistillFailures(): CheckResult | null {
+  let db: StateDb | null = null;
+  try {
+    db = new StateDb(STATE_PATH, { readonly: true });
+    const rows = db.listDistillFailures();
+    if (rows.length === 0) return null;
+    let recoverable = 0;
+    let lastFailureAt: string | null = null;
+    const byDay = new Map<string, number>();
+    for (const r of rows) {
+      if (existsSync(r.path)) recoverable += 1;
+      const day = (r.processed_at ?? "").slice(0, 10);
+      if (day.length === 10) byDay.set(day, (byDay.get(day) ?? 0) + 1);
+      if (lastFailureAt === null || r.processed_at > lastFailureAt) {
+        lastFailureAt = r.processed_at;
+      }
+    }
+    let worstDay: { date: string; count: number } | null = null;
+    for (const [date, count] of byDay) {
+      if (worstDay === null || count > worstDay.count) worstDay = { date, count };
+    }
+    const r = distillFailureCheck(
+      { total: rows.length, recoverable, lastFailureAt, worstDay },
+      Date.now(),
+    );
+    return r === null ? null : { status: r.status, label: r.label, detail: r.detail };
+  } catch {
+    return null;
+  } finally {
+    try {
+      db?.close();
+    } catch {
+      // ignore
+    }
+  }
+}
+
 function checkPrunedNotes(): CheckResult | null {
   let db: StateDb | null = null;
   try {
@@ -786,6 +826,8 @@ export async function runDoctor(): Promise<void> {
   const backup = checkBackup();
   if (backup) record(backup);
   record(checkQueryLog(cfg));
+  const failures = checkDistillFailures();
+  if (failures) record(failures);
   const pruned = checkPrunedNotes();
   if (pruned) record(pruned);
   const limitPattern = checkClaudeCliLimitPattern(cfg);
