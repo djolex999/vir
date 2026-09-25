@@ -57,9 +57,14 @@ import { scrub } from "./pipeline/scrubber.js";
 import { filterToolCalls } from "./pipeline/toolCallFilter.js";
 import {
   Distiller,
+  callLLM,
+  maybeAnthropicClient,
   normalizeModelName,
   resolveModelShorthand,
+  withRateLimitRetry,
 } from "./pipeline/distiller.js";
+import { batchByProject } from "./audit/batch.js";
+import { noteIsVerified, runAudit, selectAuditRows } from "./audit/run.js";
 import {
   composeFromSources,
   estimateComposeCostTokens,
@@ -112,7 +117,7 @@ import {
   uninstall as uninstallDaemon,
   type DaemonStatus,
 } from "./daemon/index.js";
-import { StateDb, type KnowledgeStats } from "./state/db.js";
+import { StateDb, type DistilledRow, type KnowledgeStats } from "./state/db.js";
 import { parseDuration, readCostLog } from "./cost/log.js";
 import { buildReport } from "./cost/report.js";
 import * as ui from "./ui/display.js";
@@ -1775,6 +1780,104 @@ program
   .option("--limit <n>", "Max notes to review in this session", "50")
   .option("--restore <note>", "Move one rejected note back out of .rejected/")
   .action(runAction(runReview));
+
+program
+  .command("audit")
+  .description("Have a model judge every note (keep/verify/merge/reject) for vir review")
+  .option("--project <name>", "Only this project's notes")
+  .option("--limit <n>", "Audit at most N notes this run")
+  .option("--all", "Re-audit notes that already have a fresh verdict")
+  .option("--model <m>", "haiku | sonnet | a full model id (default: models.distill)")
+  .option("--dry-run", "Show notes, batches and est. cost, exit before any LLM call")
+  .option("--yes", "Skip the cost confirmation prompt")
+  .action(
+    runAction(async (opts: {
+      project?: string;
+      limit?: string;
+      all?: boolean;
+      model?: string;
+      dryRun?: boolean;
+      yes?: boolean;
+    }) => {
+      const cfg = loadConfig();
+      const db = new StateDb();
+      try {
+        const root = vaultRoot(cfg);
+        const limit = opts.limit ? Number.parseInt(opts.limit, 10) : undefined;
+        const auditOpts = { project: opts.project, limit, all: opts.all };
+        const isVerified = (r: DistilledRow): boolean => noteIsVerified(root, r);
+        const model = normalizeModelName(
+          resolveModelShorthand(opts.model ?? cfg.models.distill),
+          cfg.provider,
+        );
+
+        const picked = selectAuditRows(db.listDistilled(), db.listAudits(), auditOpts, isVerified);
+        const batches = batchByProject(picked.rows);
+        const inputTokens = Math.ceil(
+          picked.rows.reduce((n, r) => n + r.content.length, 0) / 4 + batches.length * 600,
+        );
+        const outputTokens = picked.rows.length * 60;
+        const estCost = estCostLabel(cfg, model, inputTokens, outputTokens);
+
+        ui.header("audit");
+        ui.blank();
+        ui.summary({
+          notes: { value: picked.rows.length, color: ui.info },
+          batches: { value: batches.length, color: ui.info },
+          "already audited": { value: picked.skippedFresh, color: ui.muted },
+          verified: { value: picked.skippedVerified, color: ui.muted },
+          model: { value: model, color: ui.accent },
+          "est. cost": { value: estCost, color: ui.warn },
+        });
+        ui.divider();
+        if (picked.rows.length === 0) {
+          ui.row(ui.success(ui.CHECK), ui.text("nothing to audit"));
+          return;
+        }
+        if (opts.dryRun) {
+          ui.line(ui.dim("  dry run — no model calls made"));
+          return;
+        }
+        if (opts.yes !== true) {
+          const proceed = await confirm({ message: `audit ${picked.rows.length} notes with ${model} (~${estCost})?`, default: true });
+          if (!proceed) {
+            ui.line(ui.dim("aborted"));
+            return;
+          }
+        }
+
+        const client = maybeAnthropicClient(cfg);
+        const sp = ui.spinner(`auditing ${batches.length} batches`).start();
+        const summary = await runAudit(db, auditOpts, {
+          isVerified,
+          llm: (prompt) =>
+            withRateLimitRetry(() =>
+              callLLM(cfg, client, {
+                prompt,
+                model,
+                maxTokens: 4000,
+                cost: { stage: "audit" },
+              }),
+            ),
+        });
+        sp.stop();
+
+        ui.summary({
+          audited: { value: summary.audited, color: ui.info },
+          keep: { value: summary.byVerdict.keep, color: ui.success },
+          verify: { value: summary.byVerdict.verify, color: ui.warn },
+          merge: { value: summary.byVerdict.merge, color: ui.warn },
+          reject: { value: summary.byVerdict.reject, color: ui.errorColor },
+          unanswered: { value: summary.unanswered, color: ui.muted },
+          "failed batches": { value: summary.failedBatches, color: summary.failedBatches > 0 ? ui.errorColor : ui.muted },
+        });
+        ui.line(ui.dim("  nothing was moved — walk the flagged notes with `vir review --audited`"));
+        if (summary.failedBatches > 0) process.exitCode = 1;
+      } finally {
+        db.close();
+      }
+    }),
+  );
 
 program
   .command("prune")
