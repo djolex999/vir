@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased
+
+**`vir audit` and `vir review --audited`: a model judges the vault, a human
+still decides.** Every served session note is a candidate for keep, verify,
+merge or reject, one at a time, forever — nothing has ever re-graded the
+whole vault at once. `vir audit` batches each project's notes (~40k chars a
+batch, so near-duplicates usually share one) and asks `models.distill`
+(`--model` overrides) for a verdict and a one-line reason per note. It only
+ever writes to the `sessions` row — it never moves, rejects or merges a note
+itself.
+
+- **Verdicts are suggestions, not gates.** `tasks/lessons.md` (2026-09-18)
+  found two model judges "agree on levels and flip a coin on direction" —
+  so there is no `--apply`. `vir review --audited` walks only the notes with
+  a fresh non-`keep` verdict, worst first (reject, then merge, then verify),
+  showing the auditor's reason under each one; the human approves, edits or
+  rejects exactly as in plain `vir review`.
+- **State lives on the row, like `pruned_at`/`rejected_at`.** Five columns —
+  `audit_verdict`, `audit_reason`, `audit_merge_into`, `audit_content_hash`,
+  `audited_at` — added the normal additive way. A verdict is stale once the
+  note's content hash no longer matches; every reader ignores a stale
+  verdict, so no upsert path has to know audits exist.
+  `vir audit --all` re-audits fresh verdicts anyway.
+- **Skips what a human has already settled.** A verified note (`verified:
+  true` in frontmatter) is never audited — a human verdict outranks a model
+  one. A garbled reply fails only its own batch (exit code 1, the rest keep
+  going); a claude-cli subscription limit halts the whole run, the same as
+  every other LLM path.
+- **`--dry-run`** shows notes, batches and estimated cost with no model
+  call. Cost is recorded under stage `audit` in `cost.log`, same chokepoint
+  as every other LLM caller.
+- **Calibration:** pending the pre-release gate (see the plan's Task 7).
+
 ## 0.21.0 — 2026-09-25
 
 **`vir dedupe` merges render like the writer and survive a rewrite.** A
