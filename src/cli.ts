@@ -1779,6 +1779,7 @@ program
   .option("--project <slug>", "Filter by project")
   .option("--limit <n>", "Max notes to review in this session", "50")
   .option("--restore <note>", "Move one rejected note back out of .rejected/")
+  .option("--audited", "Walk notes vir audit flagged, worst first")
   .action(runAction(runReview));
 
 program

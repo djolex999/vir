@@ -13,6 +13,7 @@ import { StateDb } from "../state/db.js";
 import {
   approveNote,
   collectNotes,
+  orderForAudit,
   parseFrontmatter,
   rejectNote,
   restoreRejected,
@@ -288,5 +289,44 @@ describe("rejections reach the database", () => {
 
   it("restoreRejected names the missing note instead of guessing", () => {
     expect(() => restoreRejected(db, vault, "nope")).toThrow(/nope/);
+  });
+});
+
+describe("orderForAudit", () => {
+  const note = (sessionId: string, date: string) => ({
+    filePath: `/v/patterns/${sessionId}.md`,
+    relPath: `patterns/${sessionId}.md`,
+    topic: sessionId,
+    category: "pattern",
+    project: "demo",
+    confidence: 0.9,
+    date,
+    verified: false,
+    sessionId,
+  });
+  const audit = (sessionId: string, verdict: "keep" | "verify" | "merge" | "reject", fresh = true) => ({
+    path: `/p/x/${sessionId}.jsonl`,
+    sessionId,
+    verdict,
+    reason: "r",
+    mergeInto: null,
+    auditedAt: "2026-09-25",
+    fresh,
+  });
+
+  it("walks rejects, then merges, then verifies; keeps and stale verdicts are left out", () => {
+    const out = orderForAudit(
+      [note("a", "2026-05-01"), note("b", "2026-05-02"), note("c", "2026-05-03"), note("d", "2026-05-04"), note("e", "2026-05-05")],
+      [audit("a", "verify"), audit("b", "reject"), audit("c", "keep"), audit("d", "merge"), audit("e", "reject", false)],
+    );
+    expect(out.map((n) => [n.sessionId, n.audit.verdict])).toEqual([
+      ["b", "reject"],
+      ["d", "merge"],
+      ["a", "verify"],
+    ]);
+  });
+
+  it("ignores notes with no verdict at all", () => {
+    expect(orderForAudit([note("a", "2026-05-01")], [])).toEqual([]);
   });
 });

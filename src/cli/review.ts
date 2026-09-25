@@ -13,6 +13,7 @@ import { createInterface } from "node:readline/promises";
 import { loadConfig } from "../config.js";
 import { CATEGORY_DIR, REJECTED_DIR, kebab } from "../pipeline/writer.js";
 import type { Category } from "../pipeline/types.js";
+import type { AuditRow } from "../state/db.js";
 import { StateDb } from "../state/db.js";
 import { syncRejections } from "../state/rejections.js";
 import * as ui from "../ui/display.js";
@@ -30,6 +31,7 @@ export interface ReviewNote {
   confidence: number;
   date: string;
   verified: boolean;
+  sessionId: string;
 }
 
 // Frontmatter is line-oriented `key: value`. Mirrors mcp/server.ts so review
@@ -225,6 +227,7 @@ export function collectNotes(
         confidence: Number(fm.confidence ?? "0") || 0,
         date: fm.date ?? "",
         verified,
+        sessionId: fm.session_id ?? "",
       });
     }
   }
@@ -232,6 +235,29 @@ export function collectNotes(
   out.sort((a, b) => b.date.localeCompare(a.date));
   if (opts.limit && opts.limit > 0) return out.slice(0, opts.limit);
   return out;
+}
+
+export interface AuditedNote extends ReviewNote {
+  audit: AuditRow;
+}
+
+const AUDIT_ORDER: Record<string, number> = { reject: 0, merge: 1, verify: 2 };
+
+// Worst first, so a short review session spends its attention where the
+// auditor saw the most noise. `keep` needs no human, and a stale verdict judged
+// text the note no longer has.
+export function orderForAudit(notes: ReviewNote[], audits: AuditRow[]): AuditedNote[] {
+  const bySession = new Map(audits.filter((a) => a.fresh).map((a) => [a.sessionId, a]));
+  return notes
+    .flatMap((n) => {
+      const audit = bySession.get(n.sessionId);
+      return audit !== undefined && audit.verdict !== "keep" ? [{ ...n, audit }] : [];
+    })
+    .sort(
+      (a, b) =>
+        (AUDIT_ORDER[a.audit.verdict] ?? 9) - (AUDIT_ORDER[b.audit.verdict] ?? 9) ||
+        b.date.localeCompare(a.date),
+    );
 }
 
 // Body sans frontmatter and the injected "Project:/Category:" wikilink header,
@@ -260,7 +286,12 @@ function openInEditor(filePath: string): boolean {
   return !res.error;
 }
 
-function renderNote(n: ReviewNote, idx: number, total: number): void {
+function renderNote(
+  n: ReviewNote,
+  idx: number,
+  total: number,
+  audit?: { verdict: string; reason: string; target: string | null },
+): void {
   const catColor = ui.colorForCategory[n.category] ?? ui.text;
   ui.line(
     `${ui.dim(`[${idx + 1}/${total}]`)} ${ui.text(ui.shortNotePath(n.relPath))}`,
@@ -270,6 +301,12 @@ function renderNote(n: ReviewNote, idx: number, total: number): void {
       `  ${ui.dim(ui.BULLET)}  ${ui.dim("conf")} ${ui.info(n.confidence.toFixed(2))}` +
       (n.verified ? `  ${ui.dim(ui.BULLET)}  ${ui.success("verified")}` : ""),
   );
+  if (audit !== undefined) {
+    const color = audit.verdict === "reject" ? ui.errorColor : ui.warn;
+    ui.line(
+      `${ui.dim("audit")}  ${color(audit.verdict)}${audit.target ? ui.dim(` → ${audit.target}`) : ""}  ${ui.text(audit.reason)}`,
+    );
+  }
   ui.blank();
   let body = "";
   try {
@@ -286,6 +323,7 @@ export interface ReviewCliOptions {
   project?: string;
   limit?: string;
   restore?: string;
+  audited?: boolean;
 }
 
 export async function runReview(opts: ReviewCliOptions): Promise<void> {
@@ -316,11 +354,14 @@ async function reviewWithDb(
   const parsedLimit = opts.limit ? Number.parseInt(opts.limit, 10) : 50;
   const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 50;
 
-  const notes = collectNotes(vaultRoot, {
+  const collected = collectNotes(vaultRoot, {
     all: opts.all,
     project: opts.project,
-    limit,
+    limit: opts.audited ? undefined : limit,
   });
+  const topicBySession = new Map(db.listDistilled().map((r) => [r.sessionId, r.topic]));
+  const audited = opts.audited ? orderForAudit(collected, db.listAudits()).slice(0, limit) : null;
+  const notes: ReviewNote[] = audited ?? collected;
 
   ui.header("review");
   ui.blank();
@@ -329,9 +370,11 @@ async function reviewWithDb(
     ui.row(
       ui.success(ui.CHECK),
       ui.text(
-        opts.all
-          ? "no notes found to review"
-          : "no unreviewed notes — you're all caught up",
+        opts.audited
+          ? "no flagged notes — run `vir audit` first"
+          : opts.all
+            ? "no notes found to review"
+            : "no unreviewed notes — you're all caught up",
       ),
     );
     return;
@@ -357,7 +400,17 @@ async function reviewWithDb(
       const n = notes[i];
       if (!n) continue;
       ui.divider();
-      renderNote(n, i, notes.length);
+      const a = audited?.[i]?.audit;
+      renderNote(
+        n,
+        i,
+        notes.length,
+        a && {
+          verdict: a.verdict,
+          reason: a.reason,
+          target: a.mergeInto ? (topicBySession.get(a.mergeInto) ?? a.mergeInto) : null,
+        },
+      );
 
       const ans = (
         await rl.question(
