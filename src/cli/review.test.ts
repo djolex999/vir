@@ -290,6 +290,16 @@ describe("rejections reach the database", () => {
   it("restoreRejected names the missing note instead of guessing", () => {
     expect(() => restoreRejected(db, vault, "nope")).toThrow(/nope/);
   });
+
+  it("restoreRejected also drops the auditor's rejected_by stamp", () => {
+    seedRow(SID);
+    writeRejected(
+      "test-topic-abc12345.md",
+      noteContent({ sessionId: SID, extra: ["rejected_at: 2026-09-25T00:00:00.000Z", "rejected_by: audit"] }),
+    );
+    const dest = restoreRejected(db, vault, "test-topic-abc12345");
+    expect(readFileSync(dest, "utf8")).not.toContain("rejected_by");
+  });
 });
 
 describe("orderForAudit", () => {

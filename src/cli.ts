@@ -63,6 +63,7 @@ import {
   resolveModelShorthand,
   withRateLimitRetry,
 } from "./pipeline/distiller.js";
+import { applyAuditRejects, selectRejectsToApply } from "./audit/apply.js";
 import { batchByProject } from "./audit/batch.js";
 import { noteIsVerified, runAudit, selectAuditRows } from "./audit/run.js";
 import {
@@ -1791,6 +1792,7 @@ program
   .option("--model <m>", "haiku | sonnet | a full model id (default: models.distill)")
   .option("--dry-run", "Show notes, batches and est. cost, exit before any LLM call")
   .option("--yes", "Skip the cost confirmation prompt")
+  .option("--apply-rejects", "Move notes with a fresh reject verdict to .rejected/ (no model call; undo with vir review --restore)")
   .action(
     runAction(async (opts: {
       project?: string;
@@ -1799,11 +1801,42 @@ program
       model?: string;
       dryRun?: boolean;
       yes?: boolean;
+      applyRejects?: boolean;
     }) => {
       const cfg = loadConfig();
       const db = new StateDb();
       try {
         const root = vaultRoot(cfg);
+
+        if (opts.applyRejects) {
+          const targets = selectRejectsToApply(db.listDistilled(), db.listAudits(), opts.project);
+          ui.header("audit");
+          ui.blank();
+          ui.summary({ rejects: { value: targets.length, color: ui.errorColor } });
+          for (const r of targets.slice(0, 20)) ui.line(`  ${ui.dim(ui.BULLET)} ${ui.text(r.topic)} ${ui.dim(r.project)}`);
+          if (targets.length > 20) ui.line(ui.dim(`  … and ${targets.length - 20} more`));
+          ui.divider();
+          if (targets.length === 0 || opts.dryRun) {
+            if (opts.dryRun) ui.line(ui.dim("  dry run — nothing moved"));
+            return;
+          }
+          if (opts.yes !== true) {
+            const proceed = await confirm({ message: `move ${targets.length} notes to .rejected/?`, default: false });
+            if (!proceed) {
+              ui.line(ui.dim("aborted"));
+              return;
+            }
+          }
+          const s = applyAuditRejects(db, root, { project: opts.project });
+          ui.summary({
+            moved: { value: s.moved, color: ui.info },
+            "missing file": { value: s.missingFile, color: ui.muted },
+            collision: { value: s.collision, color: s.collision > 0 ? ui.warn : ui.muted },
+          });
+          ui.line(ui.dim("  undo any of them with `vir review --restore <note>`"));
+          return;
+        }
+
         const limit = opts.limit ? Number.parseInt(opts.limit, 10) : undefined;
         const auditOpts = { project: opts.project, limit, all: opts.all };
         const isVerified = (r: DistilledRow): boolean => noteIsVerified(root, r);

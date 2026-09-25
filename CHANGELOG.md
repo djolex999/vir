@@ -31,6 +31,14 @@ itself.
 - **`--dry-run`** shows notes, batches and estimated cost with no model
   call. Cost is recorded under stage `audit` in `cost.log`, same chokepoint
   as every other LLM caller.
+- **`vir audit --apply-rejects`: the one exception, and only for rejects.**
+  It moves notes with a fresh `reject` verdict straight to `.rejected/` —
+  no model call, gated behind the pipeline lock like `vir run`, and stamps
+  `rejected_by: audit` so the note reads as machine-, not human-, rejected.
+  `keep`/`verify`/`merge` are untouched; a stale verdict (content hash no
+  longer matches) and an already-occupied `.rejected/` destination are both
+  skipped and counted, never overwritten. Fully reversible with
+  `vir review --restore <note>`. Ships gated on calibration rule 5 below.
 - **Calibration:** pending the pre-release gate (see the plan's Task 7).
 
 ## 0.21.0 — 2026-09-25

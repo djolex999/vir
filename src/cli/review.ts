@@ -174,7 +174,7 @@ export function restoreRejected(
     throw new Error(`${join(subDir, basename(file))} already exists — not overwriting it`);
   }
   mkdirSync(join(vaultRoot, subDir), { recursive: true });
-  writeFileSync(dest, removeFrontmatterKeys(content, ["rejected_at"]));
+  writeFileSync(dest, removeFrontmatterKeys(content, ["rejected_at", "rejected_by"]));
   rmSync(src);
   if (fm.session_id) db.clearRejected(fm.session_id);
   return dest;
