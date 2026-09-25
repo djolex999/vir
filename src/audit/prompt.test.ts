@@ -34,6 +34,14 @@ describe("buildAuditPrompt", () => {
     const p = buildAuditPrompt("vir", [row("a", "b")]);
     expect(p.indexOf("already know")).toBeLessThan(p.indexOf("duplicate"));
   });
+
+  // First calibration run: 111 of 141 verify reasons were title or filler
+  // polish, so verify stopped meaning "a human must decide".
+  it("keeps title and filler polish out of verify", () => {
+    const p = buildAuditPrompt("vir", [row("a", "b")]);
+    expect(p).toContain("A title that covers only part of the note is not by itself a reason to leave keep.");
+    expect(p).toContain("a human has to decide something before this note can be trusted");
+  });
 });
 
 describe("parseAuditResponse", () => {

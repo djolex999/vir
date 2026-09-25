@@ -17,7 +17,9 @@ export interface ParsedVerdict {
 
 // The criteria and their order come from the 2026-09-25 manual audit of the
 // reference vault (~/.vir/eval/audit-2026-09-25/): the generic test decided
-// most rejects, narration and snapshot-only notes most of the rest.
+// most rejects, narration and snapshot-only notes most of the rest. Verdict
+// wording revised after the first calibration run sent 76% of notes to verify
+// for title and filler polish.
 export function buildAuditPrompt(project: string, rows: DistilledRow[]): string {
   const notes = rows
     .map(
@@ -34,11 +36,11 @@ Apply these tests in order:
 2. Is it narration instead of knowledge? "The session scanned the middleware", "no vulnerabilities were found", file-tree walkthroughs.
 3. Is it only true on the day it was written? Test counts, commit hashes, branch status, "X is still missing".
 4. Is it a duplicate of another note in this batch? Keep the better one and mark the other merge.
-5. Does the title (topic) describe what the body actually says?
+5. Does the title (topic) describe what the body actually says? A title that covers only part of the note is not by itself a reason to leave keep.
 
 Verdicts:
-- keep: specific, still plausible, and the title fits.
-- verify: real value, but a human must edit it. Say exactly what to keep, drop or retitle.
+- keep: the note carries project-specific knowledge worth retrieving as it is. Some filler, a few generic lines around the specific facts, or a title that covers only part of the note do not make it verify.
+- verify: a human has to decide something before this note can be trusted: a claim looks wrong or contradicts another note here, a snapshot ("still missing", a branch or test state) is stated as a lasting fact, or the project-specific part is under about a third of the note. Say exactly what to change.
 - merge: a near-duplicate of another note here. Give merge_into as that note's id.
 - reject: generic, narration, snapshot-only, or wrong.
 
