@@ -1,10 +1,11 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ClaudeCliLimitError } from "../pipeline/claudeCli.js";
+import type { DistilledRow } from "../state/db.js";
 import { StateDb } from "../state/db.js";
-import { runAudit } from "./run.js";
+import { noteIsVerified, parseLimitOption, runAudit } from "./run.js";
 
 const sid = (n: number): string => `abc1234${n}-0000-4000-8000-000000000001`;
 
@@ -121,5 +122,67 @@ describe("runAudit", () => {
     });
     expect(s.audited).toBe(1);
     expect(db.listAudits()[0]?.sessionId).toBe(sid(3));
+  });
+});
+
+describe("noteIsVerified", () => {
+  const row = (topic: string, sessionId: string): DistilledRow => ({
+    path: `/p/x/${sessionId}.jsonl`,
+    sessionId,
+    startedAt: "2026-05-01",
+    category: "gotcha",
+    topic,
+    project: "vir",
+    confidence: 0.9,
+    content: "body",
+  });
+
+  it("is true when the note's frontmatter has verified: true", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vir-note-verified-"));
+    try {
+      mkdirSync(join(dir, "gotchas"), { recursive: true });
+      const r = row("topic one", sid(1));
+      const file = join(dir, "gotchas", `topic-one-${sid(1).slice(0, 8)}.md`);
+      writeFileSync(file, `---\ntopic: "topic one"\nverified: true\n---\n\nbody\n`);
+      expect(noteIsVerified(dir, r)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("is false when the note file does not exist", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vir-note-verified-"));
+    try {
+      expect(noteIsVerified(dir, row("gone", sid(2)))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("is false for garbled or missing frontmatter", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vir-note-verified-"));
+    try {
+      mkdirSync(join(dir, "gotchas"), { recursive: true });
+      const r = row("topic three", sid(3));
+      const file = join(dir, "gotchas", `topic-three-${sid(3).slice(0, 8)}.md`);
+      writeFileSync(file, "not even frontmatter\n");
+      expect(noteIsVerified(dir, r)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("parseLimitOption", () => {
+  it("returns undefined when the flag was omitted", () => {
+    expect(parseLimitOption(undefined)).toBeUndefined();
+  });
+
+  it("returns the parsed integer for a positive value", () => {
+    expect(parseLimitOption("5")).toBe(5);
+  });
+
+  it.each(["abc", "0", "-1", "3.5"])("returns null for an invalid value %s", (raw) => {
+    expect(parseLimitOption(raw)).toBeNull();
   });
 });

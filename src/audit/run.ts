@@ -15,6 +15,16 @@ export interface AuditOptions {
   all?: boolean;
 }
 
+// `--limit` must gate before any model call: an unparseable or non-positive
+// value ("abc", "0", "-1") is a usage error, not silently "no limit" (that
+// used to be `vir audit`'s behavior, and it hid typos as a full-vault run).
+// undefined = flag omitted; null = flag given but invalid.
+export function parseLimitOption(raw: string | undefined): number | undefined | null {
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 export interface AuditDeps {
   llm: (prompt: string) => Promise<string>;
   isVerified: (row: DistilledRow) => boolean;
