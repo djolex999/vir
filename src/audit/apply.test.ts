@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { restoreRejected } from "../cli/review.js";
 import { LockHeldError } from "../pipeline/lock.js";
 import { StateDb } from "../state/db.js";
 import { applyAuditRejects } from "./apply.js";
@@ -44,12 +45,28 @@ describe("applyAuditRejects", () => {
     const file = seed(1, "reject");
     const s = applyAuditRejects(db, vault, { lockPath, now: "2026-09-25T00:00:00.000Z" });
 
-    expect(s).toEqual({ moved: 1, missingFile: 0, collision: 0 });
+    expect(s).toEqual({ moved: 1, missingFile: 0, collision: 0, verified: 0 });
     expect(existsSync(file)).toBe(false);
     const moved = readFileSync(join(vault, ".rejected", `topic-1-${sid(1).slice(0, 8)}.md`), "utf8");
     expect(moved).toContain("rejected_at: 2026-09-25T00:00:00.000Z");
     expect(moved).toContain("rejected_by: audit");
     expect(db.listDistilled()).toEqual([]);
+  });
+
+  // A human's approval (`verified: true` in the note file) outranks a stale-but
+  // -fresh model verdict — `vir review` approve writes only the file, never the
+  // DB row, so this check must read the file, not the audit table.
+  it("skips a fresh reject whose note file is already verified", () => {
+    const file = seed(1, "reject");
+    writeFileSync(
+      file,
+      readFileSync(file, "utf8").replace("---\n\nbody 1", "verified: true\n---\n\nbody 1"),
+    );
+    const s = applyAuditRejects(db, vault, { lockPath });
+
+    expect(s).toEqual({ moved: 0, missingFile: 0, collision: 0, verified: 1 });
+    expect(existsSync(file)).toBe(true);
+    expect(db.listDistilled()).toHaveLength(1);
   });
 
   // Only rejects are ever acted on; verify and merge need a human.
@@ -73,7 +90,7 @@ describe("applyAuditRejects", () => {
     const clash = join(vault, ".rejected", `topic-1-${sid(1).slice(0, 8)}.md`);
     writeFileSync(clash, "earlier\n");
 
-    expect(applyAuditRejects(db, vault, { lockPath })).toEqual({ moved: 0, missingFile: 0, collision: 1 });
+    expect(applyAuditRejects(db, vault, { lockPath })).toEqual({ moved: 0, missingFile: 0, collision: 1, verified: 0 });
     expect(readFileSync(clash, "utf8")).toBe("earlier\n");
     expect(existsSync(file)).toBe(true);
     expect(db.listDistilled()).toHaveLength(1);
@@ -82,8 +99,25 @@ describe("applyAuditRejects", () => {
   it("counts a reject whose note file is gone, and leaves its row alone", () => {
     const file = seed(1, "reject");
     rmSync(file);
-    expect(applyAuditRejects(db, vault, { lockPath })).toEqual({ moved: 0, missingFile: 1, collision: 0 });
+    expect(applyAuditRejects(db, vault, { lockPath })).toEqual({ moved: 0, missingFile: 1, collision: 0, verified: 0 });
     expect(db.listDistilled()).toHaveLength(1);
+  });
+
+  // Restoring a machine reject is itself a human verdict: it must stick even
+  // if the reject verdict is still sitting fresh in the audits table.
+  it("round trip: apply moves a reject, restore brings it back verified, a second apply moves nothing", () => {
+    const file = seed(1, "reject");
+    const s1 = applyAuditRejects(db, vault, { lockPath });
+    expect(s1.moved).toBe(1);
+
+    const dest = restoreRejected(db, vault, basename(file));
+    expect(dest).toBe(file);
+    const restored = readFileSync(dest, "utf8");
+    expect(restored).toContain("verified: true");
+
+    const s2 = applyAuditRejects(db, vault, { lockPath });
+    expect(s2).toEqual({ moved: 0, missingFile: 0, collision: 0, verified: 1 });
+    expect(existsSync(file)).toBe(true);
   });
 
   it("honours --project", () => {

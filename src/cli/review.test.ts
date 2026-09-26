@@ -272,6 +272,18 @@ describe("rejections reach the database", () => {
     expect(db.listDistilled()).toHaveLength(1);
   });
 
+  // A restore of a human reject (no rejected_by) is not itself extra review
+  // signal — only restoring a MACHINE reject counts as a human verdict.
+  it("restoreRejected does not verify a note that a human (not audit) rejected", () => {
+    seedRow(SID);
+    writeRejected(
+      "test-topic-abc12345.md",
+      noteContent({ sessionId: SID, extra: ["rejected_at: 2026-09-25T00:00:00.000Z"] }),
+    );
+    const dest = restoreRejected(db, vault, "test-topic-abc12345");
+    expect(readFileSync(dest, "utf8")).not.toContain("verified");
+  });
+
   it("restoreRejected refuses to overwrite a note already at the destination", () => {
     seedRow(SID);
     writeRejected(
@@ -299,6 +311,20 @@ describe("rejections reach the database", () => {
     );
     const dest = restoreRejected(db, vault, "test-topic-abc12345");
     expect(readFileSync(dest, "utf8")).not.toContain("rejected_by");
+  });
+
+  // Restoring a machine reject is a human verdict: it must outrank a still-fresh
+  // audit row exactly like a plain `vir review` approve does.
+  it("restoreRejected stamps verified on a restored machine (audit) reject", () => {
+    seedRow(SID);
+    writeRejected(
+      "test-topic-abc12345.md",
+      noteContent({ sessionId: SID, extra: ["rejected_at: 2026-09-25T00:00:00.000Z", "rejected_by: audit"] }),
+    );
+    const dest = restoreRejected(db, vault, "test-topic-abc12345", "2026-09-26T00:00:00.000Z");
+    const content = readFileSync(dest, "utf8");
+    expect(content).toContain("verified: true");
+    expect(content).toContain("reviewed_at: 2026-09-26T00:00:00.000Z");
   });
 });
 

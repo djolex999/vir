@@ -65,7 +65,7 @@ import {
 } from "./pipeline/distiller.js";
 import { applyAuditRejects, selectRejectsToApply } from "./audit/apply.js";
 import { batchByProject } from "./audit/batch.js";
-import { noteIsVerified, runAudit, selectAuditRows } from "./audit/run.js";
+import { noteIsVerified, parseLimitOption, runAudit, selectAuditRows } from "./audit/run.js";
 import {
   composeFromSources,
   estimateComposeCostTokens,
@@ -1803,6 +1803,15 @@ program
       yes?: boolean;
       applyRejects?: boolean;
     }) => {
+      const limit = parseLimitOption(opts.limit);
+      if (limit === null) {
+        ui.header("audit");
+        ui.blank();
+        ui.row(ui.errorColor(ui.CROSS), ui.text(`--limit must be a positive integer, got "${opts.limit}"`));
+        process.exitCode = 1;
+        return;
+      }
+
       const cfg = loadConfig();
       const db = new StateDb();
       try {
@@ -1832,12 +1841,12 @@ program
             moved: { value: s.moved, color: ui.info },
             "missing file": { value: s.missingFile, color: ui.muted },
             collision: { value: s.collision, color: s.collision > 0 ? ui.warn : ui.muted },
+            verified: { value: s.verified, color: s.verified > 0 ? ui.warn : ui.muted },
           });
           ui.line(ui.dim("  undo any of them with `vir review --restore <note>`"));
           return;
         }
 
-        const limit = opts.limit ? Number.parseInt(opts.limit, 10) : undefined;
         const auditOpts = { project: opts.project, limit, all: opts.all };
         const isVerified = (r: DistilledRow): boolean => noteIsVerified(root, r);
         const model = normalizeModelName(
@@ -1882,19 +1891,26 @@ program
 
         const client = maybeAnthropicClient(cfg);
         const sp = ui.spinner(`auditing ${batches.length} batches`).start();
-        const summary = await runAudit(db, auditOpts, {
-          isVerified,
-          llm: (prompt) =>
-            withRateLimitRetry(() =>
-              callLLM(cfg, client, {
-                prompt,
-                model,
-                maxTokens: 4000,
-                cost: { stage: "audit" },
-              }),
-            ),
-        });
-        sp.stop();
+        let summary: Awaited<ReturnType<typeof runAudit>>;
+        try {
+          summary = await runAudit(db, auditOpts, {
+            isVerified,
+            llm: (prompt) =>
+              withRateLimitRetry(() =>
+                callLLM(cfg, client, {
+                  prompt,
+                  model,
+                  maxTokens: 4000,
+                  cost: { stage: "audit" },
+                }),
+              ),
+          });
+          sp.stop();
+        } catch (err) {
+          sp.fail(ui.errorColor((err as Error).message));
+          process.exitCode = 1;
+          return;
+        }
 
         ui.summary({
           audited: { value: summary.audited, color: ui.info },

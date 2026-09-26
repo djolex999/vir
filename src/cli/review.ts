@@ -157,6 +157,7 @@ export function restoreRejected(
   db: StateDb,
   vaultRoot: string,
   name: string,
+  now: string = new Date().toISOString(),
 ): string {
   const file = name.endsWith(".md") ? name : `${name}.md`;
   const src = join(vaultRoot, REJECTED_DIR, basename(file));
@@ -174,7 +175,14 @@ export function restoreRejected(
     throw new Error(`${join(subDir, basename(file))} already exists — not overwriting it`);
   }
   mkdirSync(join(vaultRoot, subDir), { recursive: true });
-  writeFileSync(dest, removeFrontmatterKeys(content, ["rejected_at", "rejected_by"]));
+  let restored = removeFrontmatterKeys(content, ["rejected_at", "rejected_by"]);
+  // Restoring a machine reject (`rejected_by: audit`) is itself a human
+  // verdict — stamp it verified so neither `vir audit` nor `--apply-rejects`
+  // ever act on it again. A human reject (no `rejected_by`) is left as-is.
+  if (fm.rejected_by === "audit") {
+    restored = setFrontmatter(restored, { verified: "true", reviewed_at: now });
+  }
+  writeFileSync(dest, restored);
   rmSync(src);
   if (fm.session_id) db.clearRejected(fm.session_id);
   return dest;

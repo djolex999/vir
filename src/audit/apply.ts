@@ -5,6 +5,7 @@ import { LOCK_PATH, acquireLock, releaseLock } from "../pipeline/lock.js";
 import { makeSlug } from "../pipeline/slug.js";
 import { REJECTED_DIR } from "../pipeline/vaultDirs.js";
 import { CATEGORY_DIR } from "../pipeline/writer.js";
+import { noteIsVerified } from "./run.js";
 import type { AuditRow, DistilledRow, StateDb } from "../state/db.js";
 
 export interface ApplyRejectsSummary {
@@ -13,6 +14,9 @@ export interface ApplyRejectsSummary {
   missingFile: number;
   // `.rejected/` already holds a file of that name; it is not ours to overwrite.
   collision: number;
+  // A human already approved this note (`verified: true`) — a human verdict
+  // outranks a model one, exactly like `runAudit` skipping verified rows.
+  verified: number;
 }
 
 // Only fresh reject verdicts. verify and merge mean editing text, which stays
@@ -39,11 +43,18 @@ export function applyAuditRejects(
   // A concurrent `vir run` may be rewriting these very notes.
   acquireLock(opts.lockPath ?? LOCK_PATH);
   try {
-    const summary: ApplyRejectsSummary = { moved: 0, missingFile: 0, collision: 0 };
+    const summary: ApplyRejectsSummary = { moved: 0, missingFile: 0, collision: 0, verified: 0 };
     for (const row of selectRejectsToApply(db.listDistilled(), db.listAudits(), opts.project)) {
       const file = join(vaultRoot, CATEGORY_DIR[row.category], `${makeSlug(row.topic, row.sessionId)}.md`);
       if (!existsSync(file)) {
         summary.missingFile += 1;
+        continue;
+      }
+      // `vir review` approve/edit stamps `verified` on the file only — the DB
+      // verdict stays fresh, so this is the one place the file's own state
+      // must override a stale-but-fresh reject verdict.
+      if (noteIsVerified(vaultRoot, row)) {
+        summary.verified += 1;
         continue;
       }
       if (existsSync(join(vaultRoot, REJECTED_DIR, basename(file)))) {
