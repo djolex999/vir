@@ -523,7 +523,7 @@ improvements. Delete it any time; disable it with `"logQueries": false` in
 
 |                |                                           |
 | -------------- | ----------------------------------------- |
-| Version        | 0.21.0                                    |
+| Version        | 0.22.0                                    |
 | Tests          | 887 passing                               |
 | Platforms      | macOS (launchd), Linux (systemd/cron)     |
 | Node           | 20+                                       |

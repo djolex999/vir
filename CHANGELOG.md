@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.22.0 — 2026-09-26
 
 **`vir audit` and `vir review --audited`: a model judges the vault, a human
 still decides.** Every served session note is a candidate for keep, verify,
