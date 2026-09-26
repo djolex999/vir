@@ -13,10 +13,11 @@ itself.
 
 - **Verdicts are suggestions, not gates.** `tasks/lessons.md` (2026-09-18)
   found two model judges "agree on levels and flip a coin on direction" —
-  so there is no `--apply`. `vir review --audited` walks only the notes with
-  a fresh non-`keep` verdict, worst first (reject, then merge, then verify),
-  showing the auditor's reason under each one; the human approves, edits or
-  rejects exactly as in plain `vir review`.
+  so `vir review --audited` walks only the notes with a fresh non-`keep`
+  verdict, worst first (reject, then merge, then verify), showing the
+  auditor's reason under each one; the human approves, edits or rejects
+  exactly as in plain `vir review` (`--apply-rejects` is the one exception,
+  see below).
 - **State lives on the row, like `pruned_at`/`rejected_at`.** Five columns —
   `audit_verdict`, `audit_reason`, `audit_merge_into`, `audit_content_hash`,
   `audited_at` — added the normal additive way. A verdict is stale once the
@@ -38,8 +39,18 @@ itself.
   `keep`/`verify`/`merge` are untouched; a stale verdict (content hash no
   longer matches) and an already-occupied `.rejected/` destination are both
   skipped and counted, never overwritten. Fully reversible with
-  `vir review --restore <note>`. Ships gated on calibration rule 5 below.
-- **Calibration:** pending the pre-release gate (see the plan's Task 7).
+  `vir review --restore <note>`. A note you approved in review, or restored
+  after an audit reject, is never moved.
+- **Calibration.** On the reference vault (185 notes), the first prompt sent
+  76% of notes to verify for title and filler polish; after the fix: 65
+  keep, 85 verify, 14 merge, 21 reject, 0 failed batches, 2% of notes the
+  reference audit kept came back as reject, 45% exact agreement with an
+  Opus audit that could read the repos. A 20-note human sample was agreed
+  20/20, but by deference to the model rather than an independent check, so
+  it does not confirm the verdicts. `--apply-rejects` ships anyway because
+  every move asks first (default No) and is undone by `vir review
+  --restore`. A usefulness eval (does Claude answer project questions
+  better with the note than without) is the planned replacement gate.
 
 ## 0.21.0 — 2026-09-25
 
