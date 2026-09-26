@@ -5,6 +5,12 @@ import type { DistilledRow } from "../state/db.js";
 // every provider's context and keep one failure cheap.
 export const AUDIT_BATCH_CHARS = 40_000;
 
+// maxTokens for an audit call is 4000, and each verdict costs ~70 output
+// tokens (id + verdict + reason) — past ~55 notes the model's reply itself
+// gets truncated before every verdict fits, even though 30 tiny notes are
+// nowhere near the char budget. Caps rows per batch independently of size.
+export const AUDIT_BATCH_MAX_ROWS = 30;
+
 export interface AuditBatch {
   project: string;
   rows: DistilledRow[];
@@ -13,6 +19,7 @@ export interface AuditBatch {
 export function batchByProject(
   rows: DistilledRow[],
   maxChars: number = AUDIT_BATCH_CHARS,
+  maxRows: number = AUDIT_BATCH_MAX_ROWS,
 ): AuditBatch[] {
   const byProject = new Map<string, DistilledRow[]>();
   for (const r of rows) {
@@ -29,7 +36,7 @@ export function batchByProject(
     let size = 0;
     for (const r of sorted) {
       const len = r.content.length + r.topic.length;
-      if (current.length > 0 && size + len > maxChars) {
+      if (current.length > 0 && (size + len > maxChars || current.length >= maxRows)) {
         out.push({ project, rows: current });
         current = [];
         size = 0;

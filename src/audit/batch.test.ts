@@ -37,4 +37,12 @@ describe("batchByProject", () => {
     expect(b).toHaveLength(1);
     expect(b[0]?.rows).toHaveLength(1);
   });
+
+  // 35 tiny notes stay well under the char budget but must still split — a
+  // batch of 55+ verdicts doesn't fit in maxTokens 4000 at ~70 tokens each.
+  it("caps rows per batch even when the char budget has room to spare", () => {
+    const rows = Array.from({ length: 35 }, (_, i) => row(`n${i}`, "vir", "tiny"));
+    const b = batchByProject(rows);
+    expect(b.map((x) => x.rows.length)).toEqual([30, 5]);
+  });
 });
