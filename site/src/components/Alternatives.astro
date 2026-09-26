@@ -22,8 +22,8 @@ const cols = [
     <p class="eyebrow reveal">Why not the alternatives</p>
     <h2 class="reveal mt-3 font-display text-4xl leading-tight md:text-5xl">Two things that don't quite work, and one that does.</h2>
 
-    <div class="reveal mt-12 -mx-5 overflow-x-auto px-5 md:mx-0 md:px-0">
-      <ul class="grid min-w-[42rem] grid-cols-3 gap-px border border-rule bg-rule md:min-w-0">
+    <div class="reveal mt-12">
+      <ul class="grid grid-cols-1 gap-px border border-rule bg-rule md:grid-cols-3">
         {cols.map((c) => (
           <li class="bg-paper-2 p-6 md:p-8">
             <span class:list={["font-mono text-[1.4rem] leading-none", c.ok ? "text-accent-text" : "text-ink-muted"]} aria-hidden="true">{c.ok ? "✓" : "✕"}</span>
