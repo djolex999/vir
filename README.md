@@ -369,6 +369,10 @@ with your distro, init system, and Node version.
 | `vir dedupe`                | cheap | Interactive duplicate detection + merge   |
 | `vir review`                | free  | Walk new notes: approve/edit/reject       |
 | `vir review --restore <note>` | free | Put one rejected note back            |
+| `vir audit`                 | cheap | Model judges each note; verdicts feed `vir review --audited` |
+| `vir audit --dry-run`       | free  | Notes, batches and est. cost, no model call |
+| `vir review --audited`      | free  | Walk notes vir audit flagged, worst first |
+| `vir audit --apply-rejects` | free  | Move fresh reject verdicts to `.rejected/` (reversible) |
 | `vir lint --strays`         | free  | Note files with no live DB row (retitle debris) |
 | `vir lint --strays --fix`   | free  | Move retitle debris to `archived/` (only when a live copy exists) |
 | `vir lint --legacy-related` | free  | Pre-0.12.0 notes whose stored Related holds content a rewrite drops |
@@ -519,8 +523,8 @@ improvements. Delete it any time; disable it with `"logQueries": false` in
 
 |                |                                           |
 | -------------- | ----------------------------------------- |
-| Version        | 0.21.0                                    |
-| Tests          | 841 passing                               |
+| Version        | 0.22.0                                    |
+| Tests          | 887 passing                               |
 | Platforms      | macOS (launchd), Linux (systemd/cron)     |
 | Node           | 20+                                       |
 | First-run cost | $1 to $5 (Kie.ai optional, ~72% cheaper)  |

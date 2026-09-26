@@ -13,6 +13,7 @@ import { StateDb } from "../state/db.js";
 import {
   approveNote,
   collectNotes,
+  orderForAudit,
   parseFrontmatter,
   rejectNote,
   restoreRejected,
@@ -271,6 +272,18 @@ describe("rejections reach the database", () => {
     expect(db.listDistilled()).toHaveLength(1);
   });
 
+  // A restore of a human reject (no rejected_by) is not itself extra review
+  // signal — only restoring a MACHINE reject counts as a human verdict.
+  it("restoreRejected does not verify a note that a human (not audit) rejected", () => {
+    seedRow(SID);
+    writeRejected(
+      "test-topic-abc12345.md",
+      noteContent({ sessionId: SID, extra: ["rejected_at: 2026-09-25T00:00:00.000Z"] }),
+    );
+    const dest = restoreRejected(db, vault, "test-topic-abc12345");
+    expect(readFileSync(dest, "utf8")).not.toContain("verified");
+  });
+
   it("restoreRejected refuses to overwrite a note already at the destination", () => {
     seedRow(SID);
     writeRejected(
@@ -288,5 +301,68 @@ describe("rejections reach the database", () => {
 
   it("restoreRejected names the missing note instead of guessing", () => {
     expect(() => restoreRejected(db, vault, "nope")).toThrow(/nope/);
+  });
+
+  it("restoreRejected also drops the auditor's rejected_by stamp", () => {
+    seedRow(SID);
+    writeRejected(
+      "test-topic-abc12345.md",
+      noteContent({ sessionId: SID, extra: ["rejected_at: 2026-09-25T00:00:00.000Z", "rejected_by: audit"] }),
+    );
+    const dest = restoreRejected(db, vault, "test-topic-abc12345");
+    expect(readFileSync(dest, "utf8")).not.toContain("rejected_by");
+  });
+
+  // Restoring a machine reject is a human verdict: it must outrank a still-fresh
+  // audit row exactly like a plain `vir review` approve does.
+  it("restoreRejected stamps verified on a restored machine (audit) reject", () => {
+    seedRow(SID);
+    writeRejected(
+      "test-topic-abc12345.md",
+      noteContent({ sessionId: SID, extra: ["rejected_at: 2026-09-25T00:00:00.000Z", "rejected_by: audit"] }),
+    );
+    const dest = restoreRejected(db, vault, "test-topic-abc12345", "2026-09-26T00:00:00.000Z");
+    const content = readFileSync(dest, "utf8");
+    expect(content).toContain("verified: true");
+    expect(content).toContain("reviewed_at: 2026-09-26T00:00:00.000Z");
+  });
+});
+
+describe("orderForAudit", () => {
+  const note = (sessionId: string, date: string) => ({
+    filePath: `/v/patterns/${sessionId}.md`,
+    relPath: `patterns/${sessionId}.md`,
+    topic: sessionId,
+    category: "pattern",
+    project: "demo",
+    confidence: 0.9,
+    date,
+    verified: false,
+    sessionId,
+  });
+  const audit = (sessionId: string, verdict: "keep" | "verify" | "merge" | "reject", fresh = true) => ({
+    path: `/p/x/${sessionId}.jsonl`,
+    sessionId,
+    verdict,
+    reason: "r",
+    mergeInto: null,
+    auditedAt: "2026-09-25",
+    fresh,
+  });
+
+  it("walks rejects, then merges, then verifies; keeps and stale verdicts are left out", () => {
+    const out = orderForAudit(
+      [note("a", "2026-05-01"), note("b", "2026-05-02"), note("c", "2026-05-03"), note("d", "2026-05-04"), note("e", "2026-05-05")],
+      [audit("a", "verify"), audit("b", "reject"), audit("c", "keep"), audit("d", "merge"), audit("e", "reject", false)],
+    );
+    expect(out.map((n) => [n.sessionId, n.audit.verdict])).toEqual([
+      ["b", "reject"],
+      ["d", "merge"],
+      ["a", "verify"],
+    ]);
+  });
+
+  it("ignores notes with no verdict at all", () => {
+    expect(orderForAudit([note("a", "2026-05-01")], [])).toEqual([]);
   });
 });

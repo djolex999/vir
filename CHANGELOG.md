@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.22.0 — 2026-09-26
+
+**`vir audit` and `vir review --audited`: a model judges the vault, a human
+still decides.** Every served session note is a candidate for keep, verify,
+merge or reject, one at a time, forever — nothing has ever re-graded the
+whole vault at once. `vir audit` batches each project's notes (~40k chars a
+batch, so near-duplicates usually share one) and asks `models.distill`
+(`--model` overrides) for a verdict and a one-line reason per note. It only
+ever writes to the `sessions` row — it never moves, rejects or merges a note
+itself.
+
+- **Verdicts are suggestions, not gates.** `tasks/lessons.md` (2026-09-18)
+  found two model judges "agree on levels and flip a coin on direction" —
+  so `vir review --audited` walks only the notes with a fresh non-`keep`
+  verdict, worst first (reject, then merge, then verify), showing the
+  auditor's reason under each one; the human approves, edits or rejects
+  exactly as in plain `vir review` (`--apply-rejects` is the one exception,
+  see below).
+- **State lives on the row, like `pruned_at`/`rejected_at`.** Five columns —
+  `audit_verdict`, `audit_reason`, `audit_merge_into`, `audit_content_hash`,
+  `audited_at` — added the normal additive way. A verdict is stale once the
+  note's content hash no longer matches; every reader ignores a stale
+  verdict, so no upsert path has to know audits exist.
+  `vir audit --all` re-audits fresh verdicts anyway.
+- **Skips what a human has already settled.** A verified note (`verified:
+  true` in frontmatter) is never audited — a human verdict outranks a model
+  one. A garbled reply fails only its own batch (exit code 1, the rest keep
+  going); a claude-cli subscription limit halts the whole run, the same as
+  every other LLM path.
+- **`--dry-run`** shows notes, batches and estimated cost with no model
+  call. Cost is recorded under stage `audit` in `cost.log`, same chokepoint
+  as every other LLM caller.
+- **`vir audit --apply-rejects`: the one exception, and only for rejects.**
+  It moves notes with a fresh `reject` verdict straight to `.rejected/` —
+  no model call, gated behind the pipeline lock like `vir run`, and stamps
+  `rejected_by: audit` so the note reads as machine-, not human-, rejected.
+  `keep`/`verify`/`merge` are untouched; a stale verdict (content hash no
+  longer matches) and an already-occupied `.rejected/` destination are both
+  skipped and counted, never overwritten. Fully reversible with
+  `vir review --restore <note>`. A note you approved in review, or restored
+  after an audit reject, is never moved.
+- **Calibration.** On the reference vault (185 notes), the first prompt sent
+  76% of notes to verify for title and filler polish; after the fix: 65
+  keep, 85 verify, 14 merge, 21 reject, 0 failed batches, 2% of notes the
+  reference audit kept came back as reject, 45% exact agreement with an
+  Opus audit that could read the repos. A 20-note human sample was agreed
+  20/20, but by deference to the model rather than an independent check, so
+  it does not confirm the verdicts. `--apply-rejects` ships anyway because
+  every move asks first (default No) and is undone by `vir review
+  --restore`. A usefulness eval (does Claude answer project questions
+  better with the note than without) is the planned replacement gate.
+
 ## 0.21.0 — 2026-09-25
 
 **`vir dedupe` merges render like the writer and survive a rewrite.** A

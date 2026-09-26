@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { LEGACY_STATE_PATH, STATE_PATH } from "../config.js";
 import type { Category } from "../pipeline/types.js";
 import { makeSlug } from "../pipeline/slug.js";
+import { contentHash, type AuditVerdict } from "../audit/types.js";
 
 export interface SessionRow {
   path: string;
@@ -158,6 +159,24 @@ export interface DistilledRow {
   content: string;
 }
 
+export interface AuditRecordInput {
+  verdict: AuditVerdict;
+  reason: string;
+  // Session id of the note this one duplicates; only for verdict "merge".
+  mergeInto: string | null;
+  contentHash: string;
+}
+
+export interface AuditRow {
+  path: string;
+  sessionId: string;
+  verdict: AuditVerdict;
+  reason: string;
+  mergeInto: string | null;
+  auditedAt: string;
+  fresh: boolean;
+}
+
 export interface ArticleRow {
   path: string;
   notePath: string | null;
@@ -253,6 +272,22 @@ const ADDED_COLUMNS: Array<{ name: string; ddl: string }> = [
     name: "rejected_at",
     ddl: "ALTER TABLE sessions ADD COLUMN rejected_at TEXT",
   },
+  {
+    // `vir audit` suggestion. Never a gate: servingGate() does not read it.
+    name: "audit_verdict",
+    ddl: "ALTER TABLE sessions ADD COLUMN audit_verdict TEXT",
+  },
+  { name: "audit_reason", ddl: "ALTER TABLE sessions ADD COLUMN audit_reason TEXT" },
+  {
+    name: "audit_merge_into",
+    ddl: "ALTER TABLE sessions ADD COLUMN audit_merge_into TEXT",
+  },
+  {
+    // SHA-256 of `content` at judgment time; a mismatch makes the verdict stale.
+    name: "audit_content_hash",
+    ddl: "ALTER TABLE sessions ADD COLUMN audit_content_hash TEXT",
+  },
+  { name: "audited_at", ddl: "ALTER TABLE sessions ADD COLUMN audited_at TEXT" },
 ];
 
 // After this many consecutive failed distills, `vir run` stops retrying the
@@ -463,6 +498,53 @@ export class StateDb {
         "UPDATE sessions SET rejected_at = NULL WHERE rejected_at IS NOT NULL AND path LIKE ?",
       )
       .run(pattern).changes;
+  }
+
+  recordAudit(
+    path: string,
+    a: AuditRecordInput,
+    now: string = new Date().toISOString(),
+  ): number {
+    return this.db
+      .prepare(
+        `UPDATE sessions SET audit_verdict = ?, audit_reason = ?, audit_merge_into = ?,
+           audit_content_hash = ?, audited_at = ?
+         WHERE path = ?`,
+      )
+      .run(a.verdict, a.reason, a.mergeInto, a.contentHash, now, path).changes;
+  }
+
+  // Verdicts for rows that still serve notes. Rejected, pruned and archived rows
+  // are left out: their verdict has already been acted on.
+  listAudits(): AuditRow[] {
+    if (!this.columnsOf("sessions").has("audit_verdict")) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT path, content, audit_verdict, audit_reason, audit_merge_into,
+                audit_content_hash, audited_at
+         FROM sessions
+         WHERE audit_verdict IS NOT NULL
+           AND skipped = 0
+           AND COALESCE(archived, 0) = 0${this.servingGate()}`,
+      )
+      .all() as Array<{
+      path: string;
+      content: string | null;
+      audit_verdict: AuditVerdict;
+      audit_reason: string | null;
+      audit_merge_into: string | null;
+      audit_content_hash: string | null;
+      audited_at: string;
+    }>;
+    return rows.map((r) => ({
+      path: r.path,
+      sessionId: deriveSessionId(r.path),
+      verdict: r.audit_verdict,
+      reason: r.audit_reason ?? "",
+      mergeInto: r.audit_merge_into,
+      auditedAt: r.audited_at,
+      fresh: r.audit_content_hash === contentHash(r.content ?? ""),
+    }));
   }
 
   // Demote a distilled row: it stops serving every read path but keeps its
