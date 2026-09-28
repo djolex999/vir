@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Note-usefulness eval (`eval/usefulness/`, never shipped): the first measured verdict on `vir audit --apply-rejects` is FAIL, narrowly.** `npm run eval -- usefulness mine|run|show` mines real later-session questions and the facts that session established (82 questions from 71 human sessions), answers each with production retrieval and `synthesize()` against the full vault, the vault with the audit's 18 fresh rejects removed in a DB copy, and no notes, then grades every fact as stated, missing or contradicted. The grader passed all four probes (oracle recall 1.00, null clean 1.00, negation 1.00, re-grade agreement 0.99). On the 38 exposed questions, removing the rejects left 34 answers unchanged, improved 2 and hurt 2: Δrecall −0.007, 95% CI [−0.053, +0.039], against a bound of > −0.05; Δcontradiction +0.013, CI [0.000, +0.033], against a bound of ≤ +0.02. Both bounds miss, so non-inferiority is not shown. The mean effect is near zero and 38 questions leave a wide interval, so this says "not proven safe", not "the rejects are useful". Two rejects did carry facts a later session needed (popis snapshot/backup details, a pripremi.rs migration). Notes overall lift recall by only +0.05 over no notes, CI [+0.02, +0.09]. Run record: `~/.vir/eval/usefulness/runs/2026-09-28T13-04-40-271Z.json` (git abe6e8e, reject-set sha256 d0b4c5bc0f6c…).
+
 ## 0.22.0 — 2026-09-26
 
 **`vir audit` and `vir review --audited`: a model judges the vault, a human
