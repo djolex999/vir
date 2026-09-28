@@ -29,8 +29,16 @@ description: Every vir subcommand with what it costs.
 | `vir projects` | free | Per-project decisions, counts, pending cost. `--json` |
 | `vir projects include <name>` / `exclude <name>` | free | Change one decision |
 | `vir review` | free | Approve / edit / reject new notes. `--all`, `--project`, `--limit` |
+| `vir review --restore <note>` | free | Put one rejected note back out of `.rejected/` |
+| `vir audit` | cheap | A model judges every note: keep / verify / merge / reject. `--project`, `--limit`, `--all`, `--model` |
+| `vir audit --dry-run` | free | Notes, batches and estimated cost, no model call |
+| `vir review --audited` | free | Walk the notes `vir audit` flagged, worst first, with its reason |
+| `vir audit --apply-rejects` | free | Move fresh reject verdicts to `.rejected/`, asks first, reversible |
 | `vir lint` | free–cheap | Orphans and stale are free; `--contradictions` calls Haiku |
+| `vir lint --strays` | free | Note files with no live DB row. `--fix` moves them to `archived/` |
+| `vir lint --legacy-related` | free | Pre-0.12.0 notes whose Related holds content a rewrite drops. `--fix` |
 | `vir dedupe` | cheap | Interactive duplicate detection and merge |
+| `vir prune` | free | Dry run: agent-derived notes to demote. `--apply`, `--restore` |
 
 ## Retrieve
 
@@ -54,6 +62,7 @@ description: Every vir subcommand with what it costs.
 | `vir schedule install` / `uninstall` | free | Daemon. `--run-now` |
 | `vir status` | free | Knowledge base breakdown + daemon state |
 | `vir doctor` | cheap | 15 install/config checks. `--json` |
+| `vir notifications` | free | Allow vir's macOS notifications and send a test |
 | `vir cost` | free | Actual spend from cost.log. `--since`, `--top`, `--by-session` |
 
 `vir query --json` and `vir doctor --json` are stable contracts consumed by the [Obsidian plugin](/docs/obsidian-plugin/). Other `--json` outputs are for scripting and may change.

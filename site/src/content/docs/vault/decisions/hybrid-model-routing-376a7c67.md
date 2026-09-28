@@ -38,10 +38,18 @@ A hybrid model-routing feature was added to the `vir` project's distillation pip
 - **Category:** decision
 - **Date:** 2026-05-29T14:44:41.573Z
 
+## Details
+
+- `src/pipeline/distiller.ts` — `Distiller.modelFor`, `Distiller.distill`, `selectDistillModel`
+- `src/config.ts` — schema for `distillFast`, `distillThreshold`
+- `src/cli.ts` — `init` command defaults
+- `src/pipeline/run.ts` — caller of routed model, prints tip line
+- Pattern: category-based routing with token-count threshold is reusable for any tiered LLM cost-optimization feature
+
 ## Related
 
 - [cost-logging-architecture](/vault/decisions/cost-logging-architecture-e16e7aec/)
-- [mcp-tools-architecture](/vault/decisions/mcp-tools-architecture-953519c3/)
-- [tool-output-bounding-strategy](/vault/decisions/tool-output-bounding-strategy-7eef1373/)
-- [exit-code-propagation-strategy](/vault/decisions/exit-code-propagation-strategy-1d4fa0af/)
-- [embedding-model-tradeoff-bundleable](/vault/decisions/embedding-model-tradeoff-bundleable-2608f39e/)
+- explicit-thinking-disable-on-model-upgrade
+- auth-onboarding-routing
+- v1-architecture-and-sequencing
+- [model-judge-human-mismatch](/vault/gotchas/model-judge-human-mismatch-b147175c/)

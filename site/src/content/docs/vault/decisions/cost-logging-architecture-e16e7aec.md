@@ -36,10 +36,19 @@ This session shipped vir 0.7.0, adding cost visibility (`src/cost/` module, `cal
 - **Category:** decision
 - **Date:** 2026-05-27T01:09:43.261Z
 
+## Details
+
+- `src/cost/{pricing,log,report}.ts` — the cost module (provider-aware pricing, JSONL log, pure aggregation)
+- `src/pipeline/distiller.ts` — `callLLM` cost chokepoint, `resolveModelShorthand`, `Distiller` constructor `forceDistillModel` option
+- `src/pipeline/toolCallFilter.ts` — skill-strip (`SKILL_PAIR_RE`, `stripSkillResults`, always-applied)
+- `src/pipeline/run.ts` — `RunOptions.forceDistillModel`, `RunOptions.dryRun`, dry-run estimation branch
+- `/tmp/calib/REPORT.md` — Haiku vs Sonnet calibration report (5 sessions × 2 models, 167 lines)
+- v0.8.0 backlog: P0 exit-code propagation fix, P1 Kie 404 retry, hybrid model routing, `kieTopUpTier`
+
 ## Related
 
-- [mcp-tools-architecture](/vault/decisions/mcp-tools-architecture-953519c3/)
-- [tool-output-bounding-strategy](/vault/decisions/tool-output-bounding-strategy-7eef1373/)
-- [embedding-model-tradeoff-bundleable](/vault/decisions/embedding-model-tradeoff-bundleable-2608f39e/)
-- [queryable-retrieval-audit-trail](/vault/patterns/queryable-retrieval-audit-trail-a2bc5634/)
-- [retroactive-transcript-archaeology-positioning](/vault/decisions/retroactive-transcript-archaeology-positioning-b86ba9dc/)
+- [schema-enumeration-stops-drops](/vault/patterns/schema-enumeration-stops-drops-a2bc5634/)
+- [model-judge-human-mismatch](/vault/gotchas/model-judge-human-mismatch-b147175c/)
+- v1-architecture-and-sequencing
+- documentation-code-drift-at-scale
+- explicit-thinking-disable-on-model-upgrade
