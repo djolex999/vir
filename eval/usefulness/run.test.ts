@@ -35,6 +35,9 @@ function deps(dir: string, over: Partial<RunDeps> & { ablatedLosesFact?: boolean
   return {
     questionsPath, runsDir: join(dir, "runs"), cache: createCache(join(dir, "cache")),
     rejectIds: () => ["rej"], prepareHomes: async () => {}, retrieve,
+    answerModel: "test-model",
+    // Keep test output quiet (M1) — no summary/progress lines on stdout.
+    log: () => {},
     answer: async (question, hits) => {
       const i = question.replace(/\D/g, "");
       const hasGood = hits.some((h) => h.sessionId === "good");
@@ -74,6 +77,17 @@ describe("usefulnessRun", () => {
     expect(rec?.rejectSet.sessionIds).toEqual(["rej"]);
     expect(rec?.rejectSet.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(readdirSync(join(dir, "runs"))).toHaveLength(1);
+
+    // I3: the record must explain itself without re-running anything —
+    // which sessions each arm surfaced and what each arm was graded as.
+    expect(rec?.answerModel).toBe("test-model");
+    expect(rec?.arms.full.id).toBe("usefulness-full");
+    expect(rec?.arms.ablated.id).toBe("usefulness-ablated");
+    const q0 = rec?.questions.find((o) => o.questionId === "q0");
+    expect(q0?.retrieved.full).toEqual({ sessionIds: ["good", "rej"], method: "embedding", degraded: false, droppedNonSession: 0, droppedLeak: 0 });
+    expect(q0?.retrieved.ablated).toEqual({ sessionIds: ["good"], method: "embedding", degraded: false, droppedNonSession: 0, droppedLeak: 0 });
+    expect(q0?.verdicts.full).toEqual(["stated", "stated"]);
+    expect(q0?.verdicts.none).toEqual(["missing", "missing"]);
   });
 
   it("fails when answers get worse without the rejects", async () => {
@@ -82,18 +96,71 @@ describe("usefulnessRun", () => {
     expect(rec?.report.worse.length).toBeGreaterThan(0);
   });
 
-  // Review Focus 2.
-  it("excludes degraded questions and gives no verdict when too many degrade", async () => {
+  // Review Focus 2 / I1: too much retrieval degradation must be reported as
+  // exactly that, never as "grader unreliable" or "insufficient sample" —
+  // and it must cost nothing (no answer or grade call at all).
+  it("excludes degraded questions and gives no verdict when too many degrade, spending nothing on grading", async () => {
     const degradedFor = new Set(Array.from({ length: 8 }, (_, i) => `q${i}`));
-    const rec = await usefulnessRun({ seed: 1, dryRun: false, deps: deps(dir, { degradedFor }) });
+    let answerCalls = 0;
+    let llmCalls = 0;
+    const base = deps(dir, { degradedFor });
+    const counting: Partial<RunDeps> = {
+      ...base,
+      answer: async (...args) => {
+        answerCalls += 1;
+        return base.answer!(...args);
+      },
+      llm: async (...args) => {
+        llmCalls += 1;
+        return base.llm!(...args);
+      },
+    };
+    const rec = await usefulnessRun({ seed: 1, dryRun: false, deps: counting });
     expect(rec?.excluded.degraded).toBe(8);
     expect(rec?.gate.verdict).toBe("NO VERDICT");
+    expect(rec?.gate.reason).toMatch(/retrieval degraded/);
+    expect(rec?.probes.pass).toBe(false);
+    expect(rec?.probes.failures).toEqual(["not run: retrieval degraded"]);
+    expect(answerCalls).toBe(0);
+    expect(llmCalls).toBe(0);
   });
 
-  // Review Focus 1.
-  it("gives no verdict when there are no fresh rejects", async () => {
-    const rec = await usefulnessRun({ seed: 1, dryRun: false, deps: deps(dir, { rejectIds: () => [] }) });
+  // Review Focus 1 / I4: an empty reject set must short-circuit before
+  // prepareHomes, retrieval or any model call — there is nothing to test.
+  it("gives no verdict when there are no fresh rejects, without spending anything", async () => {
+    let prepareHomesCalls = 0;
+    let retrieveCalls = 0;
+    let answerCalls = 0;
+    let llmCalls = 0;
+    const rec = await usefulnessRun({
+      seed: 1, dryRun: false,
+      deps: deps(dir, {
+        rejectIds: () => [],
+        prepareHomes: async () => {
+          prepareHomesCalls += 1;
+        },
+        retrieve: async () => {
+          retrieveCalls += 1;
+          return [];
+        },
+        answer: async () => {
+          answerCalls += 1;
+          return "";
+        },
+        llm: async () => {
+          llmCalls += 1;
+          return "[]";
+        },
+      }),
+    });
     expect(rec?.gate.reason).toBe("no fresh reject verdicts to test");
+    expect(rec?.probes.pass).toBe(false);
+    expect(rec?.probes.failures).toEqual(["not run: no fresh rejects"]);
+    expect(rec?.questions).toEqual([]);
+    expect(prepareHomesCalls).toBe(0);
+    expect(retrieveCalls).toBe(0);
+    expect(answerCalls).toBe(0);
+    expect(llmCalls).toBe(0);
   });
 
   // Review Focus 3.
@@ -103,7 +170,9 @@ describe("usefulnessRun", () => {
     ).rejects.toThrow(/usefulness mine/);
   });
 
-  // Review Focus 4: a re-run pays for nothing already computed.
+  // Review Focus 4 / M3: a re-run pays for nothing already computed. Every
+  // real cache key (including re-grades, which are cached under their own
+  // seeded key) is already warm, so a second run makes zero new calls.
   it("makes no new model calls on a re-run with the same inputs", async () => {
     let calls = 0;
     const d = deps(dir);
@@ -117,8 +186,23 @@ describe("usefulnessRun", () => {
     await usefulnessRun({ seed: 1, dryRun: false, deps: counting });
     const first = calls;
     await usefulnessRun({ seed: 1, dryRun: false, deps: counting });
-    // Only the seeded re-grades bypass the cache by design.
-    expect(calls - first).toBeLessThanOrEqual(Math.ceil(first * 0.2));
+    expect(calls).toBe(first);
+  });
+
+  // I2: the answer cache key includes the model, so a model change must
+  // invalidate every cached answer and pay for fresh ones.
+  it("a changed answerModel invalidates the answer cache and pays for new answers", async () => {
+    let calls = 0;
+    const d = deps(dir);
+    const countingAnswer: Partial<RunDeps>["answer"] = async (...args) => {
+      calls += 1;
+      return d.answer!(...args);
+    };
+    await usefulnessRun({ seed: 1, dryRun: false, deps: { ...d, answerModel: "model-a", answer: countingAnswer } });
+    const first = calls;
+    expect(first).toBeGreaterThan(0);
+    await usefulnessRun({ seed: 1, dryRun: false, deps: { ...d, answerModel: "model-b", answer: countingAnswer } });
+    expect(calls).toBeGreaterThan(first);
   });
 
   it("dry-run makes no model calls and writes no record", async () => {

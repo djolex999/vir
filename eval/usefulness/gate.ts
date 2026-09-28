@@ -11,6 +11,12 @@ export const BOOTSTRAP_ROUNDS = 2000;
 // Bootstrap means of repeated decimals drift by ~1e-17; per spec §7, a value within tolerance counts as on the bound.
 export const FLOAT_TOLERANCE = 1e-14;
 
+// Named so run.ts can report the same reason without any model call when the
+// short-circuit (I1) fires before grading even starts.
+export function degradedReason(excludedDegraded: number, sampledExposed: number): string {
+  return `retrieval degraded: ${excludedDegraded}/${sampledExposed} exposed questions fell back to TF-IDF — is Ollama running?`;
+}
+
 export interface GateInput {
   rejectCount: number;
   probesPass: boolean;
@@ -36,7 +42,7 @@ export function computeVerdict(i: GateInput): GateResult {
   if (!i.probesPass) return result("NO VERDICT", `grader unreliable: ${i.probeFailures.join("; ")}`);
   if (i.pairs.length < MIN_EXPOSED) return result("NO VERDICT", `insufficient sample: ${i.pairs.length} < ${MIN_EXPOSED} exposed questions`);
   if (i.sampledExposed > 0 && i.excludedDegraded / i.sampledExposed > MAX_DEGRADED_SHARE) {
-    return result("NO VERDICT", `retrieval degraded: ${i.excludedDegraded}/${i.sampledExposed} exposed questions fell back to TF-IDF — is Ollama running?`);
+    return result("NO VERDICT", degradedReason(i.excludedDegraded, i.sampledExposed));
   }
   if (recall.lo <= NONINFERIORITY_RECALL + FLOAT_TOLERANCE) return result("FAIL", `recall CI lower bound ${recall.lo.toFixed(3)} ≤ ${NONINFERIORITY_RECALL}`);
   if (contradiction.hi > MAX_CONTRA_RISE + FLOAT_TOLERANCE) return result("FAIL", `contradiction CI upper bound ${contradiction.hi.toFixed(3)} > +${MAX_CONTRA_RISE}`);

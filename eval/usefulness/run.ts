@@ -3,24 +3,27 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig, STATE_PATH } from "../../src/config.js";
-import { synthesize } from "../../src/search/synthesizer.js";
+import { normalizeModelName } from "../../src/pipeline/distiller.js";
+import type { SearchHit } from "../../src/search/retriever.js";
+import { buildSynthesisPrompt, synthesize } from "../../src/search/synthesizer.js";
 import { StateDb } from "../../src/state/db.js";
 import { callJudge, EVAL_MODEL } from "../llm.js";
+import type { BootstrapCI } from "../metrics/bootstrap.js";
 import { pairedBootstrapCI } from "../metrics/bootstrap.js";
 import { USEFULNESS_CACHE_DIR, USEFULNESS_QUESTIONS_PATH, USEFULNESS_RUNS_DIR } from "../paths.js";
 import { REPO_ROOT } from "../repo.js";
 import { makeRng, sample, shuffle } from "../rng.js";
 import { createCache, type ResultCache } from "./cache.js";
-import { BOOTSTRAP_ROUNDS, computeVerdict } from "./gate.js";
+import { BOOTSTRAP_ROUNDS, computeVerdict, degradedReason, MAX_DEGRADED_SHARE } from "./gate.js";
 import { buildGraderPrompt, GRADER_PROMPT_VERSION, parseGrade, scoreAnswer } from "./grade.js";
-import { prepareUsefulnessHomes } from "./homes.js";
+import { prepareUsefulnessHomes, USEFULNESS_ARM_SPECS } from "./homes.js";
 import { MINER_PROMPT_VERSION } from "./mine.js";
 import { buildNegationPrompt, evaluateProbes, NEGATION_PROMPT_VERSION, NULL_ANSWER, oracleAnswer, parseNegation } from "./probes.js";
 import { runUsefulnessArm } from "./retrieve.js";
 import { exposedTo, filterForCutoff, sampleSets } from "./select.js";
 import type {
-  AnswerScore, ArmRetrieval, FactVerdict, MinedQuestion, QuestionFile, QuestionOutcome, RetrievalArm,
-  RetrievedHit, RunRecord, UsefulnessArm,
+  AnswerScore, ArmRetrieval, FactVerdict, GateResult, MinedQuestion, ProbeSummary, QuestionFile, QuestionOutcome,
+  RetrievalArm, RetrievedHit, RunRecord, UsefulnessArm,
 } from "./types.js";
 
 export interface RunDeps {
@@ -32,19 +35,46 @@ export interface RunDeps {
   cache: ResultCache;
   now(): string;
   git(): { sha: string; dirty: boolean };
+  // The model synthesize() will actually call — pinned once per run so the
+  // answer cache key can invalidate on a model change (I2). Tests supply a
+  // fixed string; production resolves it the same way synthesize() does.
+  answerModel: string;
+  // Injectable so tests never print progress/summary lines to stdout (M1).
+  log(line: string): void;
   questionsPath: string;
   runsDir: string;
 }
 
+interface Job {
+  q: MinedQuestion;
+  arm: UsefulnessArm;
+  answer: string;
+  out: QuestionOutcome;
+}
+
 const REGRADE_SHARE = 0.2;
-const ANSWER_KEY_VERSION = "answer-v1";
 const sha = (s: string): string => createHash("sha256").update(s).digest("hex");
 
-function defaults(): RunDeps {
+function toSearchHits(hits: readonly RetrievedHit[]): SearchHit[] {
+  return hits.map((h) => ({ filePath: h.filePath, title: h.title, content: h.content, score: h.score, method: h.method }));
+}
+
+// A "not run" probe summary for a short-circuit (I1, I4): every numeric field
+// is 0 (there is nothing to average), and pass is false so nothing downstream
+// mistakes this for a grader that was checked and found reliable.
+function notRunProbes(reason: string): ProbeSummary {
+  return { oracleRecall: 0, oracleZeroContraShare: 0, nullCleanShare: 0, negationContra: 0, regradeAgreement: 0, pass: false, failures: [`not run: ${reason}`] };
+}
+
+function computeDefaultAnswerModel(): string {
+  const cfg = loadConfig();
+  return normalizeModelName(cfg.models.distill, cfg.provider);
+}
+
+function defaults(answerModel: string): RunDeps {
   return {
     llm: async (stage, prompt, session) => (await callJudge(stage, prompt, session)).text,
-    answer: (question, hits) =>
-      synthesize(loadConfig(), question, hits.map((h) => ({ filePath: h.filePath, title: h.title, content: h.content, score: h.score, method: h.method })), "eval-usefulness-answer"),
+    answer: (question, hits) => synthesize(loadConfig(), question, toSearchHits(hits), "eval-usefulness-answer"),
     retrieve: runUsefulnessArm,
     rejectIds: () => {
       const db = new StateDb(STATE_PATH, { readonly: true });
@@ -64,24 +94,61 @@ function defaults(): RunDeps {
       const dirty = execFileSync("git", ["status", "--porcelain"], { cwd: REPO_ROOT, encoding: "utf8" }).trim() !== "";
       return { sha: s, dirty };
     },
+    answerModel,
+    log: (line) => process.stdout.write(line),
     questionsPath: USEFULNESS_QUESTIONS_PATH,
     runsDir: USEFULNESS_RUNS_DIR,
   };
 }
 
 export async function usefulnessRun(opts: { seed: number; dryRun: boolean; deps?: Partial<RunDeps> }): Promise<RunRecord | null> {
-  const d: RunDeps = { ...defaults(), ...opts.deps };
+  // Lazy: only touches the real config (loadConfig) when the caller didn't
+  // already pin a model — every test does, so this never runs there.
+  const answerModel = opts.deps?.answerModel ?? computeDefaultAnswerModel();
+  const d: RunDeps = { ...defaults(answerModel), ...opts.deps };
   if (!existsSync(d.questionsPath)) throw new Error(`no questions at ${d.questionsPath} — run \`npm run eval -- usefulness mine\` first`);
   const qfText = readFileSync(d.questionsPath, "utf8");
   const qf = JSON.parse(qfText) as QuestionFile;
   if (qf.questions.length === 0) throw new Error("the questions file is empty — run `npm run eval -- usefulness mine` again");
   const byId = new Map(qf.questions.map((q) => [q.id, q]));
+  const ci = (xs: number[]): BootstrapCI => pairedBootstrapCI(xs, BOOTSTRAP_ROUNDS, makeRng(opts.seed + 2));
+
+  const writeRecord = (record: RunRecord): RunRecord => {
+    mkdirSync(d.runsDir, { recursive: true });
+    writeFileSync(join(d.runsDir, `${record.createdAt.replace(/[:.]/g, "-")}.json`), JSON.stringify(record, null, 1));
+    d.log(`${formatSummary(record)}\n`);
+    return record;
+  };
+
   const rejectIds = [...d.rejectIds()].sort();
+
+  // I4: nothing to test — never touch prepareHomes, retrieval or the model.
+  if (rejectIds.length === 0) {
+    const gate = computeVerdict({
+      rejectCount: 0, probesPass: false, probeFailures: [], sampledExposed: 0, excludedDegraded: 0, pairs: [], rng: makeRng(opts.seed + 1),
+    });
+    return writeRecord({
+      createdAt: d.now(), git: d.git(), seed: opts.seed,
+      rejectSet: { sessionIds: [], sha256: sha("") },
+      questionsSha256: sha(qfText),
+      prompts: { miner: MINER_PROMPT_VERSION, grader: GRADER_PROMPT_VERSION, negation: NEGATION_PROMPT_VERSION },
+      model: EVAL_MODEL, answerModel: d.answerModel, arms: USEFULNESS_ARM_SPECS,
+      sampled: { exposed: 0, control: 0, minedTotal: qf.questions.length, exposedAvailable: 0 },
+      excluded: { degraded: 0, ungraded: 0 },
+      probes: notRunProbes("no fresh rejects"),
+      gate,
+      report: { fullVsNoneRecall: ci([]), controlRecall: ci([]), controlContradiction: ci([]), perRejectExposure: {}, worse: [] },
+      questions: [],
+    });
+  }
+
   const rejectSet = new Set(rejectIds);
   await d.prepareHomes(rejectIds);
 
   const fullAll = new Map((await d.retrieve("full", qf.questions)).map((r) => [r.questionId, r]));
-  const topOf = (r: ArmRetrieval | undefined, q: MinedQuestion): RetrievedHit[] => (r ? filterForCutoff(r.hits, q).top : []);
+  const filterFor = (r: ArmRetrieval | undefined, q: MinedQuestion): { top: RetrievedHit[]; droppedNonSession: number; droppedLeak: number } =>
+    r ? filterForCutoff(r.hits, q) : { top: [], droppedNonSession: 0, droppedLeak: 0 };
+  const topOf = (r: ArmRetrieval | undefined, q: MinedQuestion): RetrievedHit[] => filterFor(r, q).top;
   const exposure = new Map(qf.questions.map((q) => [q.id, exposedTo(topOf(fullAll.get(q.id), q), rejectSet)]));
   const exposedIds = qf.questions.filter((q) => (exposure.get(q.id) ?? []).length > 0).map((q) => q.id);
   const otherIds = qf.questions.filter((q) => (exposure.get(q.id) ?? []).length === 0).map((q) => q.id);
@@ -91,7 +158,7 @@ export async function usefulnessRun(opts: { seed: number; dryRun: boolean; deps?
 
   if (opts.dryRun) {
     const n = sampled.length;
-    process.stdout.write(
+    d.log(
       `usefulness run (dry run): ${rejectIds.length} rejects, ${exposedIds.length} exposed available, sampling ${sets.exposed.length} exposed + ${sets.control.length} control\n` +
         `  expected model calls ≈ ${3 * n} answers + ${3 * n} grades + ${n} negations + ${3 * n} probe grades + ${Math.ceil(2 * n * REGRADE_SHARE)} re-grades\n`,
     );
@@ -100,6 +167,55 @@ export async function usefulnessRun(opts: { seed: number; dryRun: boolean; deps?
 
   const ablAll = new Map((await d.retrieve("ablated", sampled)).map((r) => [r.questionId, r]));
   const isDegraded = (r: ArmRetrieval | undefined): boolean => !r || r.degraded || r.method === "tfidf";
+
+  // Phase A: retrieval-only trace + degraded exclusion. No model call yet, so
+  // I1's short-circuit below can fire before a single answer or grade is spent.
+  const outcomes: QuestionOutcome[] = [];
+  for (const q of sampled) {
+    const set = sets.exposed.includes(q.id) ? "exposed" : "control";
+    const out: QuestionOutcome = { questionId: q.id, set, exposedTo: exposure.get(q.id) ?? [], excluded: null, retrieved: {}, answers: {}, verdicts: {}, scores: {} };
+    for (const arm of ["full", "ablated"] as const) {
+      const r = (arm === "full" ? fullAll : ablAll).get(q.id);
+      if (r) {
+        const meta = filterFor(r, q);
+        out.retrieved[arm] = {
+          sessionIds: meta.top.flatMap((h) => (h.sessionId !== null ? [h.sessionId] : [])),
+          method: r.method, degraded: r.degraded,
+          droppedNonSession: meta.droppedNonSession, droppedLeak: meta.droppedLeak,
+        };
+      }
+    }
+    if (isDegraded(fullAll.get(q.id)) || isDegraded(ablAll.get(q.id))) out.excluded = "degraded";
+    outcomes.push(out);
+  }
+
+  // I1: Ollama down (or partially down past the tolerance) means the answers
+  // we'd grade are meaningless — say so directly instead of letting an empty
+  // probe set masquerade as "grader unreliable", or an under-15 sample
+  // masquerade as "insufficient sample".
+  const sampledExposedCount = sets.exposed.length;
+  const excludedDegradedCount = outcomes.filter((o) => o.set === "exposed" && o.excluded === "degraded").length;
+  if (sampledExposedCount > 0 && excludedDegradedCount / sampledExposedCount > MAX_DEGRADED_SHARE) {
+    const reason = degradedReason(excludedDegradedCount, sampledExposedCount);
+    const gate: GateResult = {
+      verdict: "NO VERDICT", reason, n: 0,
+      recall: pairedBootstrapCI([], BOOTSTRAP_ROUNDS, makeRng(opts.seed + 1)),
+      contradiction: pairedBootstrapCI([], BOOTSTRAP_ROUNDS, makeRng(opts.seed + 1)),
+    };
+    return writeRecord({
+      createdAt: d.now(), git: d.git(), seed: opts.seed,
+      rejectSet: { sessionIds: rejectIds, sha256: sha(rejectIds.join("\n")) },
+      questionsSha256: sha(qfText),
+      prompts: { miner: MINER_PROMPT_VERSION, grader: GRADER_PROMPT_VERSION, negation: NEGATION_PROMPT_VERSION },
+      model: EVAL_MODEL, answerModel: d.answerModel, arms: USEFULNESS_ARM_SPECS,
+      sampled: { exposed: sets.exposed.length, control: sets.control.length, minedTotal: qf.questions.length, exposedAvailable: exposedIds.length },
+      excluded: { degraded: outcomes.filter((o) => o.excluded === "degraded").length, ungraded: 0 },
+      probes: notRunProbes("retrieval degraded"),
+      gate,
+      report: { fullVsNoneRecall: ci([]), controlRecall: ci([]), controlContradiction: ci([]), perRejectExposure: Object.fromEntries(rejectIds.map((id) => [id, 0])), worse: [] },
+      questions: outcomes,
+    });
+  }
 
   const grade = async (stage: "eval-usefulness-grade" | "eval-usefulness-probe", q: MinedQuestion, answer: string, bypass = false): Promise<FactVerdict[] | null> => {
     const prompt = buildGraderPrompt(q.question, q.facts, answer);
@@ -111,19 +227,17 @@ export async function usefulnessRun(opts: { seed: number; dryRun: boolean; deps?
     return parseGrade((await d.cache.cached(["retry", ...k1], () => d.llm(stage, prompt, q.sessionId))).value, q.facts.length);
   };
 
-  const outcomes: QuestionOutcome[] = [];
-  const jobs: Array<{ q: MinedQuestion; arm: UsefulnessArm; answer: string; out: QuestionOutcome }> = [];
-  for (const q of sampled) {
-    const set = sets.exposed.includes(q.id) ? "exposed" : "control";
-    const out: QuestionOutcome = { questionId: q.id, set, exposedTo: exposure.get(q.id) ?? [], excluded: null, answers: {}, scores: {} };
-    outcomes.push(out);
-    if (isDegraded(fullAll.get(q.id)) || isDegraded(ablAll.get(q.id))) {
-      out.excluded = "degraded";
-      continue;
-    }
+  // Phase B: answer + grade, only for outcomes that survived Phase A.
+  const jobs: Job[] = [];
+  for (const out of outcomes) {
+    if (out.excluded !== null) continue;
+    const q = byId.get(out.questionId)!;
     for (const arm of ["full", "ablated", "none"] as const) {
       const hits = arm === "none" ? [] : topOf((arm === "full" ? fullAll : ablAll).get(q.id), q);
-      const key = ["answer", ANSWER_KEY_VERSION, q.question, ...hits.map((h) => `${h.filePath}\u0001${h.content}`)];
+      // I2 (spec §8): key by stage, model and the exact rendered prompt, so a
+      // model or prompt change can never mix answerers inside one pair.
+      const prompt = buildSynthesisPrompt(q.question, toSearchHits(hits));
+      const key = ["eval-usefulness-answer", d.answerModel, prompt];
       const { value } = await d.cache.cached(key, () => d.answer(q.question, hits));
       out.answers[arm] = value;
       jobs.push({ q, arm, answer: value, out });
@@ -134,8 +248,10 @@ export async function usefulnessRun(opts: { seed: number; dryRun: boolean; deps?
   for (const j of shuffle(jobs, rng)) {
     const v = await grade("eval-usefulness-grade", j.q, j.answer);
     graded.set(`${j.q.id}|${j.arm}`, v);
-    if (v) j.out.scores[j.arm] = scoreAnswer(v);
-    else if (j.arm !== "none" && j.out.excluded === null) j.out.excluded = "ungraded";
+    if (v) {
+      j.out.scores[j.arm] = scoreAnswer(v);
+      j.out.verdicts[j.arm] = v;
+    } else if (j.arm !== "none" && j.out.excluded === null) j.out.excluded = "ungraded";
   }
 
   const live = outcomes.filter((o) => o.excluded === null).map((o) => byId.get(o.questionId)!);
@@ -158,8 +274,18 @@ export async function usefulnessRun(opts: { seed: number; dryRun: boolean; deps?
     }
   }
   const realJobs = jobs.filter((j) => j.arm !== "none" && graded.get(`${j.q.id}|${j.arm}`));
+  // M4: when full and ablated answers land on the identical text (and so the
+  // identical grader prompt), they share one cache entry and one grade — a
+  // re-grade sample of each would agree by construction with no evidence
+  // about the grader. Dedupe by grader prompt before sampling the 20%.
+  const uniqueByPrompt = new Map<string, Job>();
+  for (const j of realJobs) {
+    const key = buildGraderPrompt(j.q.question, j.q.facts, j.answer);
+    if (!uniqueByPrompt.has(key)) uniqueByPrompt.set(key, j);
+  }
+  const regradeCandidates = [...uniqueByPrompt.values()];
   const regrade: Array<[FactVerdict[], FactVerdict[]]> = [];
-  for (const j of sample(realJobs, Math.ceil(realJobs.length * REGRADE_SHARE), rng)) {
+  for (const j of sample(regradeCandidates, Math.ceil(regradeCandidates.length * REGRADE_SHARE), rng)) {
     const again = await grade("eval-usefulness-grade", j.q, j.answer, true);
     const first = graded.get(`${j.q.id}|${j.arm}`);
     if (again && first) regrade.push([first, again]);
@@ -179,7 +305,6 @@ export async function usefulnessRun(opts: { seed: number; dryRun: boolean; deps?
     rng: makeRng(opts.seed + 1),
   });
 
-  const ci = (xs: number[]) => pairedBootstrapCI(xs, BOOTSTRAP_ROUNDS, makeRng(opts.seed + 2));
   const withNone = outcomes.filter((o) => complete(o) && o.scores.none !== undefined);
   const controlLive = outcomes.filter((o) => o.set === "control" && complete(o)) as typeof exposedLive;
   const perRejectExposure: Record<string, number> = Object.fromEntries(rejectIds.map((id) => [id, 0]));
@@ -188,7 +313,7 @@ export async function usefulnessRun(opts: { seed: number; dryRun: boolean; deps?
     .filter((o) => o.scores.ablated.recall < o.scores.full.recall || o.scores.ablated.contradiction > o.scores.full.contradiction)
     .map((o) => o.questionId);
 
-  const record: RunRecord = {
+  return writeRecord({
     createdAt: d.now(),
     git: d.git(),
     seed: opts.seed,
@@ -196,6 +321,8 @@ export async function usefulnessRun(opts: { seed: number; dryRun: boolean; deps?
     questionsSha256: sha(qfText),
     prompts: { miner: MINER_PROMPT_VERSION, grader: GRADER_PROMPT_VERSION, negation: NEGATION_PROMPT_VERSION },
     model: EVAL_MODEL,
+    answerModel: d.answerModel,
+    arms: USEFULNESS_ARM_SPECS,
     sampled: { exposed: sets.exposed.length, control: sets.control.length, minedTotal: qf.questions.length, exposedAvailable: exposedIds.length },
     excluded: {
       degraded: outcomes.filter((o) => o.excluded === "degraded").length,
@@ -211,20 +338,19 @@ export async function usefulnessRun(opts: { seed: number; dryRun: boolean; deps?
       worse,
     },
     questions: outcomes,
-  };
-  mkdirSync(d.runsDir, { recursive: true });
-  writeFileSync(join(d.runsDir, `${record.createdAt.replace(/[:.]/g, "-")}.json`), JSON.stringify(record, null, 1));
-  process.stdout.write(`${formatSummary(record)}\n`);
-  return record;
+  });
 }
+
+const meanOrNA = (ci: BootstrapCI): string => (ci.n === 0 ? "n/a" : ci.meanDiff.toFixed(3));
+const ciOrNA = (ci: BootstrapCI): string => (ci.n === 0 ? "n/a" : `${ci.meanDiff.toFixed(3)} CI [${ci.lo.toFixed(3)}, ${ci.hi.toFixed(3)}]`);
 
 export function formatSummary(r: RunRecord): string {
   const g = r.gate;
   return [
     `usefulness gate: ${g.verdict} — ${g.reason}`,
     `  rejects ${r.rejectSet.sessionIds.length} · exposed ${g.n}/${r.sampled.exposed} (available ${r.sampled.exposedAvailable}) · control ${r.sampled.control} · excluded degraded ${r.excluded.degraded}, ungraded ${r.excluded.ungraded}`,
-    `  Δrecall (ablated − full) ${g.recall.meanDiff.toFixed(3)} CI [${g.recall.lo.toFixed(3)}, ${g.recall.hi.toFixed(3)}] · Δcontradiction ${g.contradiction.meanDiff.toFixed(3)} CI [${g.contradiction.lo.toFixed(3)}, ${g.contradiction.hi.toFixed(3)}]`,
-    `  probes ${r.probes.pass ? "pass" : `FAIL (${r.probes.failures.join("; ")})`} · full − none recall ${r.report.fullVsNoneRecall.meanDiff.toFixed(3)} · ablated scored worse on ${r.report.worse.length} exposed questions`,
+    `  Δrecall (ablated − full) ${ciOrNA(g.recall)} · Δcontradiction ${ciOrNA(g.contradiction)}`,
+    `  probes ${r.probes.pass ? "pass" : `FAIL (${r.probes.failures.join("; ")})`} · full − none recall ${meanOrNA(r.report.fullVsNoneRecall)} · ablated scored worse on ${r.report.worse.length} exposed questions`,
   ].join("\n");
 }
 

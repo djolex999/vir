@@ -84,7 +84,6 @@ async function main(): Promise<void> {
           process.stderr.write(`${USAGE}\n`);
           process.exit(2);
       }
-      return;
     }
     default:
       process.stderr.write(`${USAGE}\n`);

@@ -1,3 +1,4 @@
+import type { ArmSpec } from "../arms.js";
 import type { BootstrapCI } from "../metrics/bootstrap.js";
 
 export type UsefulnessArm = "full" | "ablated" | "none";
@@ -90,7 +91,15 @@ export interface QuestionOutcome {
   set: "exposed" | "control";
   exposedTo: string[];
   excluded: null | "degraded" | "ungraded";
+  // Traces enough of the retrieval that a FAIL is explainable without ever
+  // storing full hit content (spec §7): which sessions each arm actually
+  // surfaced, and why some of the top 30 never reached the top 8.
+  retrieved: Partial<
+    Record<RetrievalArm, { sessionIds: string[]; method: "embedding" | "tfidf"; degraded: boolean; droppedNonSession: number; droppedLeak: number }>
+  >;
   answers: Partial<Record<UsefulnessArm, string>>;
+  // Per-fact grades, one array per arm that was graded.
+  verdicts: Partial<Record<UsefulnessArm, FactVerdict[]>>;
   scores: Partial<Record<UsefulnessArm, AnswerScore>>;
 }
 
@@ -102,6 +111,10 @@ export interface RunRecord {
   questionsSha256: string;
   prompts: { miner: string; grader: string; negation: string };
   model: string;
+  // The model synthesize() actually used for answers, resolved once per run
+  // (spec §8: the answer cache key needs this to invalidate on a model change).
+  answerModel: string;
+  arms: Record<RetrievalArm, ArmSpec>;
   sampled: { exposed: number; control: number; minedTotal: number; exposedAvailable: number };
   excluded: { degraded: number; ungraded: number };
   probes: ProbeSummary;

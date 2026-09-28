@@ -18,6 +18,8 @@ export interface MineDeps {
   cache: ResultCache;
   now(): string;
   out: string;
+  // Injectable so tests never print progress/summary lines to stdout (M1).
+  log(line: string): void;
 }
 
 export async function mineQuestions(opts: { dryRun: boolean; deps?: Partial<MineDeps> }): Promise<QuestionFile | null> {
@@ -26,6 +28,7 @@ export async function mineQuestions(opts: { dryRun: boolean; deps?: Partial<Mine
     cache: createCache(USEFULNESS_CACHE_DIR),
     now: () => new Date().toISOString(),
     out: USEFULNESS_QUESTIONS_PATH,
+    log: (line) => process.stdout.write(line),
     ...opts.deps,
   };
   const cfg = loadConfig();
@@ -64,7 +67,7 @@ export async function mineQuestions(opts: { dryRun: boolean; deps?: Partial<Mine
   const key = (prompt: string): string[] => ["mine", MINER_PROMPT_VERSION, EVAL_MODEL, prompt];
   if (opts.dryRun) {
     const cached = prompts.filter((x) => d.cache.has(key(x.prompt))).length;
-    process.stdout.write(`usefulness mine (dry run): ${scanned.length} transcripts, ${chosen.length} candidates, ${prompts.length - cached} model calls needed (${cached} cached)\n`);
+    d.log(`usefulness mine (dry run): ${scanned.length} transcripts, ${chosen.length} candidates, ${prompts.length - cached} model calls needed (${cached} cached)\n`);
     return null;
   }
   const drops: Record<DropReason, number> = { unparsed: 0, "fact-count": 0, "answer-in-question": 0, "bad-evidence": 0 };
@@ -86,6 +89,6 @@ export async function mineQuestions(opts: { dryRun: boolean; deps?: Partial<Mine
   };
   mkdirSync(dirname(d.out), { recursive: true });
   writeFileSync(d.out, JSON.stringify(file, null, 1));
-  process.stdout.write(`usefulness mine: ${questions.length} questions from ${chosen.length} candidates; drops ${JSON.stringify(drops)}\n`);
+  d.log(`usefulness mine: ${questions.length} questions from ${chosen.length} candidates; drops ${JSON.stringify(drops)}\n`);
   return file;
 }
