@@ -8,6 +8,8 @@ export const MAX_CONTRA_RISE = 0.02;
 export const MIN_EXPOSED = 15;
 export const MAX_DEGRADED_SHARE = 0.25;
 export const BOOTSTRAP_ROUNDS = 2000;
+// Bootstrap means of repeated decimals drift by ~1e-17; per spec §7, a value within tolerance counts as on the bound.
+export const FLOAT_TOLERANCE = 1e-14;
 
 export interface GateInput {
   rejectCount: number;
@@ -36,7 +38,7 @@ export function computeVerdict(i: GateInput): GateResult {
   if (i.sampledExposed > 0 && i.excludedDegraded / i.sampledExposed > MAX_DEGRADED_SHARE) {
     return result("NO VERDICT", `retrieval degraded: ${i.excludedDegraded}/${i.sampledExposed} exposed questions fell back to TF-IDF — is Ollama running?`);
   }
-  if (recall.lo <= NONINFERIORITY_RECALL) return result("FAIL", `recall CI lower bound ${recall.lo.toFixed(3)} ≤ ${NONINFERIORITY_RECALL}`);
-  if (contradiction.hi > MAX_CONTRA_RISE + 1e-14) return result("FAIL", `contradiction CI upper bound ${contradiction.hi.toFixed(3)} > +${MAX_CONTRA_RISE}`);
+  if (recall.lo <= NONINFERIORITY_RECALL + FLOAT_TOLERANCE) return result("FAIL", `recall CI lower bound ${recall.lo.toFixed(3)} ≤ ${NONINFERIORITY_RECALL}`);
+  if (contradiction.hi > MAX_CONTRA_RISE + FLOAT_TOLERANCE) return result("FAIL", `contradiction CI upper bound ${contradiction.hi.toFixed(3)} > +${MAX_CONTRA_RISE}`);
   return result("PASS", `recall CI [${recall.lo.toFixed(3)}, ${recall.hi.toFixed(3)}], contradiction CI [${contradiction.lo.toFixed(3)}, ${contradiction.hi.toFixed(3)}]`);
 }

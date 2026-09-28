@@ -42,6 +42,13 @@ describe("computeVerdict", () => {
     expect(computeVerdict(base({ pairs: Array.from({ length: 20 }, () => pair(0.55, 0.5)) })).verdict).toBe("FAIL");
   });
 
+  it("fails when recall CI just crosses −0.05 due to float arithmetic", () => {
+    // Bootstrap means of repeated decimals drift: a sequence of values computing to
+    // ~−0.04999999999999999 (just above −0.05 due to IEEE 754) should fail as on-bound.
+    const pairs = Array.from({ length: 20 }, () => pair(0.550000000000001, 0.5));
+    expect(computeVerdict(base({ pairs })).verdict).toBe("FAIL");
+  });
+
   it("fails when contradictions rise by more than 2 points", () => {
     expect(computeVerdict(base({ pairs: Array.from({ length: 20 }, () => pair(0.5, 0.5, 0, 0.05)) })).verdict).toBe("FAIL");
   });
