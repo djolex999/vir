@@ -1,5 +1,6 @@
 // `npm run eval -- <command>`. Not a vir CLI command: nothing here ships
 // (package.json `files` whitelists dist/ only; this tree compiles to eval/dist).
+import { ClaudeCliLimitError } from "../src/pipeline/claudeCli.js";
 import { ARMS, armById } from "./arms.js";
 import { prepareHomes } from "./prepareHomes.js";
 import { buildQuerySet } from "./queries/build.js";
@@ -95,7 +96,17 @@ async function main(): Promise<void> {
   }
 }
 
+// M1: the eval harness has no distiller run to pick sessions back up — say so
+// in the harness's own terms instead of the distiller's "Distillation halted"
+// wording, which would be actively misleading here.
 main().catch((err: unknown) => {
+  if (err instanceof ClaudeCliLimitError) {
+    const reason = err.message.replace(/\. Distillation halted.*$/, "");
+    process.stderr.write(
+      `subscription limit reached — ${reason}; re-run the same command after the reset, the cache resumes\n`,
+    );
+    process.exit(1);
+  }
   process.stderr.write(`eval failed: ${(err as Error).stack ?? String(err)}\n`);
   process.exit(1);
 });

@@ -1,3 +1,4 @@
+import { extractJsonArray } from "./json.js";
 import type { AnswerScore, FactVerdict } from "./types.js";
 
 export const GRADER_PROMPT_VERSION = "grade-v1";
@@ -25,14 +26,7 @@ Reply with a JSON array only, one object per fact:
 }
 
 export function parseGrade(reply: string, factCount: number): FactVerdict[] | null {
-  const match = reply.match(/\[[\s\S]*\]/);
-  if (!match) return null;
-  let raw: unknown;
-  try {
-    raw = JSON.parse(match[0]);
-  } catch {
-    return null;
-  }
+  const raw = extractJsonArray(reply);
   if (!Array.isArray(raw)) return null;
   const out: (FactVerdict | undefined)[] = new Array(factCount).fill(undefined);
   for (const e of raw as Array<{ fact?: unknown; verdict?: unknown }>) {

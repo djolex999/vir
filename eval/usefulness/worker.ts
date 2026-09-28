@@ -20,6 +20,7 @@ function arg(name: string): string {
 async function main(): Promise<void> {
   const armId = arg("arm");
   const limit = Number.parseInt(arg("limit"), 10);
+  if (!Number.isInteger(limit) || limit < 1) throw new Error("usefulness worker: --limit must be ≥ 1");
   const questions = JSON.parse(readFileSync(arg("questions"), "utf8")) as Array<{ id: string; question: string }>;
   const cfg = loadConfig();
   const db = new StateDb(STATE_PATH, { readonly: true });
