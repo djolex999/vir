@@ -45,7 +45,9 @@ describe("computeVerdict", () => {
   it("fails when recall CI just crosses −0.05 due to float arithmetic", () => {
     // Bootstrap means of repeated decimals drift: a sequence of values computing to
     // ~−0.04999999999999999 (just above −0.05 due to IEEE 754) should fail as on-bound.
-    const pairs = Array.from({ length: 20 }, () => pair(0.550000000000001, 0.5));
+    // Verify the diff is actually > −0.05, so the tolerance (not raw comparison) causes failure.
+    expect(0.1 - 0.15).toBeGreaterThan(-0.05);
+    const pairs = Array.from({ length: 20 }, () => pair(0.15, 0.1));
     expect(computeVerdict(base({ pairs })).verdict).toBe("FAIL");
   });
 
