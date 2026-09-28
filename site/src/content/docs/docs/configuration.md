@@ -10,7 +10,7 @@ description: Every key in ~/.vir/config.json.
 | `vaultPath` | *(required)* | Absolute path to the Obsidian vault |
 | `outputDir` | `vir` | Folder inside the vault that vir owns |
 | `topicsDir` | `topics` | Subfolder for `vir compose` pages |
-| `claudeProjectsDir` | `~/.claude/projects` | Where Claude Code keeps transcripts |
+| `claudeProjectsDir` | required (`vir init` sets `~/.claude/projects`) | Where Claude Code keeps transcripts |
 | `cadenceHours` | `3` | Daemon interval |
 | `provider` | `anthropic` | `anthropic` \| `claude-cli` \| `kie` |
 | `anthropicApiKey` | — | Required for `anthropic` |

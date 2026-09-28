@@ -33,7 +33,7 @@ vir has no server, no account, and no telemetry. Nothing phones home. Uninstall 
 | Retrieval logging | `"logQueries": false` |
 | Desktop notifications | `"notifications": false` |
 | What reaches CLAUDE.md | Nothing without a diff and your confirmation (`vir sync-claude`) |
-| MCP exposure | Read-only server; `vir mcp uninstall` removes it |
+| MCP exposure | Never writes the vault; `vir_query` sends the matched notes to your provider to synthesize, like `vir query`. `vir mcp uninstall` removes it |
 
 ## The website
 

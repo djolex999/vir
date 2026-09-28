@@ -32,6 +32,7 @@ export default defineConfig({
             href: "/changelog.xml",
           },
         },
+        { tag: "script", attrs: { src: "/_vercel/insights/script.js", defer: true } },
       ],
       editLink: { baseUrl: "https://github.com/djolex999/vir/edit/main/site/" },
       lastUpdated: true,

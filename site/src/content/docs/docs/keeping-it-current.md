@@ -43,7 +43,7 @@ vir review --project <p>   # one project
 vir review --all           # include already-verified notes
 ```
 
-Approve stamps `verified: true` + `reviewed_at` into the note's frontmatter. Verified notes rank first in `vir query` and MCP. Reject moves the note to `.rejected/` — recoverable, never deleted. `vir review --restore <note>` puts one back.
+Approve stamps `verified: true` + `reviewed_at` into the note's frontmatter. Verified notes get a ranking boost in `vir query` and MCP. Reject moves the note to `.rejected/` — recoverable, never deleted. `vir review --restore <note>` puts one back.
 
 ## Audit
 
@@ -65,7 +65,7 @@ Before trusting it, the rejects were measured: on real later-session questions, 
 ## Lint and dedupe
 
 ```bash
-vir lint                    # orphans + stale + contradictions
+vir lint                    # orphans, stale, contradictions, strays, legacy Related
 vir lint --orphans          # free
 vir lint --stale            # free
 vir lint --contradictions   # a Haiku call per pair
@@ -83,4 +83,4 @@ vir summarize --week [N]       # period digest → summaries/ (never indexed)
 vir summarize --month [N]
 ```
 
-All take `--dry-run` (sources + cost, no call) and `--yes`.
+All take `--dry-run` (sources + cost, no call). `compose` and the period digests also take `--yes`.
