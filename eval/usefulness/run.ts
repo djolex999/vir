@@ -7,6 +7,7 @@ import { normalizeModelName } from "../../src/pipeline/distiller.js";
 import type { SearchHit } from "../../src/search/retriever.js";
 import { buildSynthesisPrompt, synthesize } from "../../src/search/synthesizer.js";
 import { StateDb } from "../../src/state/db.js";
+import { noteIsVerified } from "../../src/audit/run.js";
 import { callJudge, EVAL_MODEL, mapLimit } from "../llm.js";
 import type { BootstrapCI } from "../metrics/bootstrap.js";
 import { pairedBootstrapCI } from "../metrics/bootstrap.js";
@@ -21,6 +22,7 @@ import { MINER_PROMPT_VERSION } from "./mine.js";
 import {
   buildNegationPrompt, evaluatePreAnswerProbes, evaluateProbes, NEGATION_PROMPT_VERSION, NULL_ANSWER, oracleAnswer, parseNegation,
 } from "./probes.js";
+import { rejectsToTest } from "./rejects.js";
 import { runUsefulnessArm } from "./retrieve.js";
 import { exposedTo, filterForCutoff, sampleSets } from "./select.js";
 import type {
@@ -79,9 +81,15 @@ function defaults(answerModel: string): RunDeps {
     answer: (question, hits) => synthesize(loadConfig(), question, toSearchHits(hits), "eval-usefulness-answer"),
     retrieve: runUsefulnessArm,
     rejectIds: () => {
+      const cfg = loadConfig();
+      const root = join(cfg.vaultPath, cfg.outputDir);
       const db = new StateDb(STATE_PATH, { readonly: true });
       try {
-        return db.listAudits().filter((a) => a.fresh && a.verdict === "reject").map((a) => a.sessionId).sort();
+        const rows = new Map(db.listDistilled().map((r) => [r.sessionId, r]));
+        return rejectsToTest(db.listAudits(), (id) => {
+          const row = rows.get(id);
+          return row !== undefined && noteIsVerified(root, row);
+        });
       } finally {
         db.close();
       }
@@ -103,7 +111,16 @@ function defaults(answerModel: string): RunDeps {
   };
 }
 
-export async function usefulnessRun(opts: { seed: number; dryRun: boolean; deps?: Partial<RunDeps> }): Promise<RunRecord | null> {
+export async function usefulnessRun(opts: {
+  seed: number;
+  dryRun: boolean;
+  // The none arm is a report-only floor (spec §4) — it never feeds the gate —
+  // so skipping it cuts a third of the answer + grade calls at no cost to the verdict.
+  skipNone?: boolean;
+  deps?: Partial<RunDeps>;
+}): Promise<RunRecord | null> {
+  const noneArm = opts.skipNone !== true;
+  const answerArms: readonly UsefulnessArm[] = noneArm ? ["full", "ablated", "none"] : ["full", "ablated"];
   // Lazy: only touches the real config (loadConfig) when the caller didn't
   // already pin a model — every test does, so this never runs there.
   const answerModel = opts.deps?.answerModel ?? computeDefaultAnswerModel();
@@ -138,7 +155,7 @@ export async function usefulnessRun(opts: { seed: number; dryRun: boolean; deps?
       rejectCount: 0, probesPass: false, probeFailures: [], sampledExposed: 0, excludedDegraded: 0, pairs: [], rng: makeRng(opts.seed + 1),
     });
     return writeRecord({
-      createdAt: d.now(), git: d.git(), seed: opts.seed,
+      createdAt: d.now(), git: d.git(), seed: opts.seed, noneArm,
       rejectSet: { sessionIds: [], sha256: sha("") },
       questionsSha256: sha(qfText),
       prompts: { miner: MINER_PROMPT_VERSION, grader: GRADER_PROMPT_VERSION, negation: NEGATION_PROMPT_VERSION },
@@ -170,7 +187,7 @@ export async function usefulnessRun(opts: { seed: number; dryRun: boolean; deps?
     const n = sampled.length;
     d.log(
       `usefulness run (dry run): ${rejectIds.length} rejects, ${exposedIds.length} exposed available, sampling ${sets.exposed.length} exposed + ${sets.control.length} control\n` +
-        `  expected model calls ≈ ${3 * n} answers + ${3 * n} grades + ${n} negations + ${3 * n} probe grades + ${Math.ceil(2 * n * REGRADE_SHARE)} re-grades\n`,
+        `  expected model calls ≈ ${answerArms.length * n} answers + ${answerArms.length * n} grades + ${n} negations + ${3 * n} probe grades + ${Math.ceil(2 * n * REGRADE_SHARE)} re-grades\n`,
     );
     return null;
   }
@@ -213,7 +230,7 @@ export async function usefulnessRun(opts: { seed: number; dryRun: boolean; deps?
       contradiction: pairedBootstrapCI([], BOOTSTRAP_ROUNDS, makeRng(opts.seed + 1)),
     };
     return writeRecord({
-      createdAt: d.now(), git: d.git(), seed: opts.seed,
+      createdAt: d.now(), git: d.git(), seed: opts.seed, noneArm,
       rejectSet: { sessionIds: rejectIds, sha256: sha(rejectIds.join("\n")) },
       questionsSha256: sha(qfText),
       prompts: { miner: MINER_PROMPT_VERSION, grader: GRADER_PROMPT_VERSION, negation: NEGATION_PROMPT_VERSION },
@@ -279,7 +296,7 @@ export async function usefulnessRun(opts: { seed: number; dryRun: boolean; deps?
       sampledExposed: sets.exposed.length, excludedDegraded: excludedDegradedCount, pairs: [], rng: makeRng(opts.seed + 1),
     });
     return writeRecord({
-      createdAt: d.now(), git: d.git(), seed: opts.seed,
+      createdAt: d.now(), git: d.git(), seed: opts.seed, noneArm,
       rejectSet: { sessionIds: rejectIds, sha256: sha(rejectIds.join("\n")) },
       questionsSha256: sha(qfText),
       prompts: { miner: MINER_PROMPT_VERSION, grader: GRADER_PROMPT_VERSION, negation: NEGATION_PROMPT_VERSION },
@@ -304,7 +321,7 @@ export async function usefulnessRun(opts: { seed: number; dryRun: boolean; deps?
   for (const out of outcomes) {
     if (out.excluded !== null) continue;
     const q = byId.get(out.questionId)!;
-    const tasks = (["full", "ablated", "none"] as const).map((arm) => ({
+    const tasks = answerArms.map((arm) => ({
       arm,
       hits: arm === "none" ? [] : topOf((arm === "full" ? fullAll : ablAll).get(q.id), q),
     }));
@@ -401,6 +418,7 @@ export async function usefulnessRun(opts: { seed: number; dryRun: boolean; deps?
 
   return writeRecord({
     createdAt: d.now(),
+    noneArm,
     git: d.git(),
     seed: opts.seed,
     rejectSet: { sessionIds: rejectIds, sha256: sha(rejectIds.join("\n")) },
@@ -436,7 +454,7 @@ export function formatSummary(r: RunRecord): string {
     `usefulness gate: ${g.verdict} — ${g.reason}`,
     `  rejects ${r.rejectSet.sessionIds.length} · exposed ${g.n}/${r.sampled.exposed} (available ${r.sampled.exposedAvailable}) · control ${r.sampled.control} · excluded degraded ${r.excluded.degraded}, ungraded ${r.excluded.ungraded}`,
     `  Δrecall (ablated − full) ${ciOrNA(g.recall)} · Δcontradiction ${ciOrNA(g.contradiction)}`,
-    `  probes ${r.probes.pass ? "pass" : `FAIL (${r.probes.failures.join("; ")})`} · full − none recall ${meanOrNA(r.report.fullVsNoneRecall)} · ablated scored worse on ${r.report.worse.length} exposed questions`,
+    `  probes ${r.probes.pass ? "pass" : `FAIL (${r.probes.failures.join("; ")})`} · full − none recall ${r.noneArm === false ? "skipped" : meanOrNA(r.report.fullVsNoneRecall)} · ablated scored worse on ${r.report.worse.length} exposed questions`,
   ].join("\n");
 }
 
