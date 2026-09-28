@@ -41,7 +41,9 @@ npm run eval -- show      [--per-class N]          # labeled queries with grades
 npm run eval -- run       [--seed N]               # every arm at top-8 → ~/.vir/eval/runs/<ts>.json
 npm run eval -- arms
 npm run eval -- usefulness mine [--max N] [--dry-run]  # mine questions + facts from transcripts → ~/.vir/eval/usefulness/questions.json
-npm run eval -- usefulness run  [--seed N] [--dry-run] # full vs ablated vs none → PASS/FAIL/NO VERDICT for the audit's fresh rejects
+npm run eval -- usefulness run  [--seed N] [--dry-run] [--skip-none]
+                                                        # full vs ablated (vs none) → PASS/FAIL/NO VERDICT for the audit's fresh rejects;
+                                                        # --skip-none drops the report-only no-notes arm (~1/3 fewer answer + grade calls)
 npm run eval -- usefulness show                        # summary of the latest usefulness run
 ```
 

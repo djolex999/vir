@@ -115,6 +115,8 @@ export interface RunRecord {
   // (spec §8: the answer cache key needs this to invalidate on a model change).
   answerModel: string;
   arms: Record<RetrievalArm, ArmSpec>;
+  // false when the run skipped the report-only none arm (--skip-none).
+  noneArm: boolean;
   sampled: { exposed: number; control: number; minedTotal: number; exposedAvailable: number };
   excluded: { degraded: number; ungraded: number };
   probes: ProbeSummary;

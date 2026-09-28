@@ -33,7 +33,7 @@ const USAGE = `usage: npm run eval -- <command> [--seed N] [--dry-run]
   run         run every arm at top-8 against the labels; write ~/.vir/eval/runs/<ts>.json
   arms        list arms
   usefulness mine   mine questions + facts from recent transcripts (--dry-run) [--max N]
-  usefulness run    full vs ablated vs none → PASS/FAIL/NO VERDICT for the audit's rejects (--seed, --dry-run)
+  usefulness run    full vs ablated vs none → PASS/FAIL/NO VERDICT for the audit's rejects (--seed, --dry-run, --skip-none)
   usefulness show   summary of the latest usefulness run`;
 
 async function main(): Promise<void> {
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
           return;
         }
         case "run":
-          await usefulnessRun({ seed: opt("seed") ? seed : 20260926, dryRun });
+          await usefulnessRun({ seed: opt("seed") ? seed : 20260926, dryRun, skipNone: flag("skip-none") });
           return;
         case "show":
           process.stdout.write(`${showLatestRun()}\n`);

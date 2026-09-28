@@ -70,6 +70,23 @@ describe("usefulnessRun", () => {
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
+  // --skip-none: the no-notes arm is report-only (it never feeds the gate), so
+  // skipping it must cut a third of the answer calls and leave the verdict alone.
+  it("skips the none arm when asked, with the same verdict and no none answers", async () => {
+    let answers = 0;
+    const d = deps(dir);
+    const rec = await usefulnessRun({
+      seed: 1, dryRun: false, skipNone: true,
+      deps: { ...d, answer: async (q, h) => { answers += 1; return d.answer!(q, h); } },
+    });
+    expect(rec?.gate.verdict).toBe("PASS");
+    expect(rec?.noneArm).toBe(false);
+    expect(rec?.report.fullVsNoneRecall.n).toBe(0);
+    expect(rec?.questions.every((o) => o.answers.none === undefined && o.scores.none === undefined)).toBe(true);
+    // 20 questions × 2 arms, and full/ablated share one call when their prompts match.
+    expect(answers).toBeLessThanOrEqual(40);
+  });
+
   it("passes when the rejects contribute nothing, and writes a traceable record", async () => {
     const rec = await usefulnessRun({ seed: 1, dryRun: false, deps: deps(dir) });
     expect(rec?.gate.verdict).toBe("PASS");
