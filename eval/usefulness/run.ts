@@ -7,6 +7,7 @@ import { normalizeModelName } from "../../src/pipeline/distiller.js";
 import type { SearchHit } from "../../src/search/retriever.js";
 import { buildSynthesisPrompt, synthesize } from "../../src/search/synthesizer.js";
 import { StateDb } from "../../src/state/db.js";
+import { noteIsVerified } from "../../src/audit/run.js";
 import { callJudge, EVAL_MODEL, mapLimit } from "../llm.js";
 import type { BootstrapCI } from "../metrics/bootstrap.js";
 import { pairedBootstrapCI } from "../metrics/bootstrap.js";
@@ -21,6 +22,7 @@ import { MINER_PROMPT_VERSION } from "./mine.js";
 import {
   buildNegationPrompt, evaluatePreAnswerProbes, evaluateProbes, NEGATION_PROMPT_VERSION, NULL_ANSWER, oracleAnswer, parseNegation,
 } from "./probes.js";
+import { rejectsToTest } from "./rejects.js";
 import { runUsefulnessArm } from "./retrieve.js";
 import { exposedTo, filterForCutoff, sampleSets } from "./select.js";
 import type {
@@ -79,9 +81,15 @@ function defaults(answerModel: string): RunDeps {
     answer: (question, hits) => synthesize(loadConfig(), question, toSearchHits(hits), "eval-usefulness-answer"),
     retrieve: runUsefulnessArm,
     rejectIds: () => {
+      const cfg = loadConfig();
+      const root = join(cfg.vaultPath, cfg.outputDir);
       const db = new StateDb(STATE_PATH, { readonly: true });
       try {
-        return db.listAudits().filter((a) => a.fresh && a.verdict === "reject").map((a) => a.sessionId).sort();
+        const rows = new Map(db.listDistilled().map((r) => [r.sessionId, r]));
+        return rejectsToTest(db.listAudits(), (id) => {
+          const row = rows.get(id);
+          return row !== undefined && noteIsVerified(root, row);
+        });
       } finally {
         db.close();
       }
