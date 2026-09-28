@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.23.0 — 2026-09-29
+
+**`vir review --json`: review from the Obsidian plugin.** The terminal review
+loop now has a non-interactive twin with a stable JSON contract, so the
+Obsidian plugin can list the queue and approve, reject or restore one note
+without spawning a TTY. The interactive loop is unchanged.
+
+- **Queue mode.** `vir review --audited --json` prints the notes `vir audit` flagged, worst first, as `{"items":[...],"counts":{"unaudited":n,"stale":n}}` (`--project` filters). Each item carries the note path, session id, title, category, project, verdict and reason; `counts` says how many notes have no audit yet or a stale one.
+- **Actions.** `--approve`, `--reject` and `--restore` with `--json` act on exactly one note and print the result as JSON. Use the one-token `--flag=<path>` form so a path starting with `-` is never read as a flag.
+- **Reject stops serving immediately.** `--reject` moves the note into `.rejected/` and calls `markRejected`, so `vir query` no longer returns it before the next run.
+- **Path guard.** Actions accept only paths inside the category directories (and `.rejected/` for restore), and only session notes; anything else, including `../` escapes, fails `invalid_args` before touching a file.
+- **No racing a run.** The three actions take the pipeline lock and fail with `busy` while a lock-holding run (a normal `vir run`, `vir reconcile`, `vir audit --apply-rejects`) is in progress; `vir run --rewrite-only` and `--dry-run` take no lock.
+- **Two new error kinds:** `busy` and `not_found`, alongside the existing ones. Errors follow the `vir query --json` contract: empty stdout, one-line error payload on stderr, exit 1.
+
 ## 0.22.1 — 2026-09-28
 
 **`vir audit --apply-rejects` asks only about the notes it will move, and the

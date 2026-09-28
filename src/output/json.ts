@@ -6,6 +6,8 @@
  */
 import { relative } from "node:path";
 import type { SearchHit } from "../search/retriever.js";
+import type { AuditedNote, ReviewNote } from "../cli/review.js";
+import type { AuditRow } from "../state/db.js";
 
 export type VirQueryCategory =
   | "pattern"
@@ -30,7 +32,9 @@ export type VirErrorKind =
   | "ollama_unavailable"
   | "internal"
   | "invalid_args"
-  | "no_vault";
+  | "no_vault"
+  | "busy"
+  | "not_found";
 
 export interface VirErrorPayload {
   error: string;
@@ -204,4 +208,84 @@ export function buildDoctorResult(i: DoctorInputs): VirDoctorResult {
     ollama: { reachable: i.ollamaReachable, model: i.ollamaModel },
     version: i.version,
   };
+}
+
+// ---- vir review --json (the plugin's review queue) ----
+
+export type VirReviewVerdict = "reject" | "merge" | "verify";
+
+export interface VirReviewMergeTarget {
+  sessionId: string;
+  path: string | null; // null when the target no longer serves
+  title: string | null;
+}
+
+export interface VirReviewItem {
+  path: string; // relative to vaultPath/outputDir, like VirQueryResult.path
+  sessionId: string;
+  title: string;
+  category: VirQueryCategory;
+  project: string | null;
+  date: string;
+  confidence: number;
+  verdict: VirReviewVerdict;
+  reason: string;
+  mergeInto: VirReviewMergeTarget | null;
+  auditedAt: string;
+}
+
+export interface VirReviewQueue {
+  items: VirReviewItem[];
+  counts: { unaudited: number; stale: number };
+}
+
+export type VirReviewAction = "approve" | "reject" | "restore";
+
+export interface VirReviewActionResult {
+  action: VirReviewAction;
+  path: string; // where the note is now; `.rejected/<name>` after a reject
+  sessionId: string;
+}
+
+// Pure: `ordered` is orderForAudit(unverified, audits), so the JSON queue and
+// the terminal `--audited` walk share one membership and order rule. Counts
+// cover unverified notes only: a verified note needs no review either way.
+export function buildReviewQueue(
+  ordered: AuditedNote[],
+  unverified: ReviewNote[],
+  audits: AuditRow[],
+  allNotes: ReviewNote[],
+): VirReviewQueue {
+  const bySession = new Map(allNotes.map((n) => [n.sessionId, n]));
+  const items = ordered.map((n): VirReviewItem => {
+    const targetId = n.audit.mergeInto;
+    const target = targetId !== null ? bySession.get(targetId) : undefined;
+    const dir = n.relPath.split("/")[0] ?? "";
+    return {
+      path: n.relPath,
+      sessionId: n.sessionId,
+      title: n.topic,
+      category: CATEGORY_DIRS[dir] ?? "pattern",
+      project: n.project.length > 0 ? n.project : null,
+      date: n.date,
+      confidence: n.confidence,
+      verdict: n.audit.verdict as VirReviewVerdict,
+      reason: n.audit.reason,
+      mergeInto:
+        targetId !== null
+          ? { sessionId: targetId, path: target?.relPath ?? null, title: target?.topic ?? null }
+          : null,
+      auditedAt: n.audit.auditedAt,
+    };
+  });
+
+  const auditBySession = new Map(audits.map((a) => [a.sessionId, a]));
+  let unaudited = 0;
+  let stale = 0;
+  for (const n of unverified) {
+    const a = auditBySession.get(n.sessionId);
+    if (a === undefined) unaudited += 1;
+    else if (!a.fresh) stale += 1;
+  }
+  return { items, counts: { unaudited, stale } };
 }
