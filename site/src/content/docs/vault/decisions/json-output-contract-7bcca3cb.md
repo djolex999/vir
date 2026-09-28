@@ -59,10 +59,23 @@ Added `--json` output mode to `vir query` and `vir doctor` commands in the vir C
 - **Category:** decision
 - **Date:** 2026-05-27 (query JSON contract design: 18:22 UTC; security review: 18:55 UTC)
 
+## Details
+
+- `src/output/json.ts` — pure JSON builder, no I/O; the canonical builder module and wire schema types (`VirQueryResult`, `VirDoctorResult`, `VirErrorPayload`)
+- `src/output/json.test.ts` — 14 unit tests covering schema shape, daemon health classification, and error payloads
+- `src/cli.ts` — `runQueryJson`, `runDoctorJson` entry points
+- `src/diagnostics/doctor.ts` — diagnostic payload, secret exclusion pattern
+- `src/search/retriever.ts` — MMR rerank, verified boost, embedding/TF-IDF fallback logic
+- `src/search/embedder.ts` — Ollama embedding client (`nomic-embed-text`)
+- `src/mcp/server.ts` — existing `parseFrontmatter` / `categoryFromTitle
+
 ## Related
 
-- [parser-fallback-robustness](/vault/decisions/parser-fallback-robustness-67301cf4/)
-- [mcp-tools-architecture](/vault/decisions/mcp-tools-architecture-953519c3/)
-- [exit-code-propagation-strategy](/vault/decisions/exit-code-propagation-strategy-1d4fa0af/)
 - [cost-logging-architecture](/vault/decisions/cost-logging-architecture-e16e7aec/)
-- [tool-output-bounding-strategy](/vault/decisions/tool-output-bounding-strategy-7eef1373/)
+- anchor-plugin-scaffold
+- [hybrid-model-routing](/vault/decisions/hybrid-model-routing-376a7c67/)
+- [schema-enumeration-stops-drops](/vault/patterns/schema-enumeration-stops-drops-a2bc5634/)
+- v1-architecture-and-sequencing
+
+## Archived Duplicates
+- json-output-contract-82ea5cef

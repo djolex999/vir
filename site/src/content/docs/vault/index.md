@@ -7,7 +7,7 @@ editUrl: false
 
 Every tool in this category asks you to trust that its output is worth reading. Most can't show you, because their memory is a vector store or a YAML file written for a machine.
 
-vir's output is markdown, so here it is: **40 notes vir wrote about vir**, distilled from the Claude Code sessions that built this project. Nothing was written by hand and nothing was picked to flatter the tool. Some of these are sharp. Some are thin, or say the same thing twice because two sessions covered the same ground. That ratio is the honest answer to "is this worth it".
+vir's output is markdown, so here it is: **17 notes vir wrote about vir**, distilled from the Claude Code sessions that built this project. Nothing was written by hand and nothing was picked to flatter the tool. Some of these are sharp. Some are thin, or say the same thing twice because two sessions covered the same ground. That ratio is the honest answer to "is this worth it".
 
 Each page shows the session it came from, the date, and the classifier's confidence — the same frontmatter that sits in the vault, in Obsidian, on my disk.
 

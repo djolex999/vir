@@ -14,7 +14,7 @@ export const INSTALL_CMD = `npm install -g ${NPM_PKG}`;
 
 // Every figure on the page. null = not yet measured; the block that needs it
 // is omitted and the build prints the key. See spec §11.
-// Measured 2026-09-04 on the author's machine. How each was derived:
+// Measured 2026-09-28 on the author's machine. How each was derived:
 // Run `npm run refresh` to regenerate the graph and see which of these drifted.
 // Vault size and link count are NOT here: the hero reads them from graph.json,
 // so the sample and the totals cannot disagree.
@@ -23,18 +23,18 @@ export const INSTALL_CMD = `npm install -g ${NPM_PKG}`;
 //   transcriptsSeen  — rows in the sessions table
 //   transcriptsNoise — skip_reason in (workflow-transcript, agent-transcript, sidechain-transcript)
 //   transcriptsNotes — skipped=0 and note_paths != '[]'
-//   tests            — `npx vitest run src` at the repo root, 2026-09-24 (612 CLI; the eval
+//   tests            — `npx vitest run src` at the repo root, 2026-09-28 (767 CLI; the eval
 //                      harness's and the site's tests are separate)
 //   cost*            — `vir cost --since 180d`
 export const NUMBERS = {
-  sessionsRescued: 396,
-  transcriptsSeen: 1429,
-  transcriptsNoise: 601,
-  transcriptsNotes: 411,
-  tests: 612 as number | null,
+  sessionsRescued: 397,
+  transcriptsSeen: 2012,
+  transcriptsNoise: 1128,
+  transcriptsNotes: 460,
+  tests: 767 as number | null,
   costWindow: "six months",
-  costSessions: 296,
-  costTotal: "$22.23" as string | null,
+  costSessions: 297,
+  costTotal: "$25.85" as string | null,
   costMedian: "$0.004" as string | null,
   costP90: "$0.14" as string | null,
   measuredOn: "September 2026",

@@ -43,7 +43,24 @@ vir review --project <p>   # one project
 vir review --all           # include already-verified notes
 ```
 
-Approve stamps `verified: true` + `reviewed_at` into the note's frontmatter. Verified notes rank first in `vir query` and MCP. Reject moves the note to `.rejected/` — recoverable, never deleted.
+Approve stamps `verified: true` + `reviewed_at` into the note's frontmatter. Verified notes rank first in `vir query` and MCP. Reject moves the note to `.rejected/` — recoverable, never deleted. `vir review --restore <note>` puts one back.
+
+## Audit
+
+`vir review` walks new notes one at a time. `vir audit` looks at the whole vault at once: it batches each project's notes, so near-duplicates usually land together, and asks a model for a verdict (keep, verify, merge or reject) and a one-line reason per note.
+
+```bash
+vir audit --dry-run          # notes, batches, estimated cost — no call
+vir audit                    # judge every note without a fresh verdict
+vir review --audited         # walk the flagged notes, rejects first
+vir audit --apply-rejects    # move fresh rejects to .rejected/
+```
+
+Verdicts are suggestions. The audit only writes to the database; `vir review --audited` shows each flagged note with the auditor's reason, and you approve, edit or reject it as usual. A verdict goes stale when the note's content changes, and a note you've approved (`verified: true`) is never audited.
+
+`--apply-rejects` is the one shortcut, and only for rejects: it lists exactly the notes it will move, asks (default No), and stamps them `rejected_by: audit`. Notes you approved or restored are skipped. Every move is undone with `vir review --restore`.
+
+Before trusting it, the rejects were measured: on real later-session questions, Claude answered with and without the rejected notes. Of 34 affected answers, 32 were unchanged, and every worse one traced to retrieval noise, not a lost fact. Details are in the [changelog](/docs/changelog/).
 
 ## Lint and dedupe
 
