@@ -43,6 +43,16 @@ export async function runArm(
 
   const out = JSON.parse(readFileSync(outPath, "utf8")) as ArmRunOutput;
   unlinkSync(outPath);
+  assertArmIsolation(out, home, arm.id);
+  return out;
+}
+
+// Shared by every arm worker: the isolation claim is checked on every run.
+export function assertArmIsolation(
+  out: { home: string; dbPath: string; configPath: string; embedderDir: string },
+  home: string,
+  armId: string,
+): void {
   for (const [k, v] of [
     ["home", out.home],
     ["dbPath", out.dbPath],
@@ -50,8 +60,7 @@ export async function runArm(
     ["embedderDir", out.embedderDir],
   ] as const) {
     if (!v.startsWith(home + "/") && v !== home) {
-      throw new Error(`isolation violated: arm ${arm.id} resolved ${k}=${v}, expected under ${home}`);
+      throw new Error(`isolation violated: arm ${armId} resolved ${k}=${v}, expected under ${home}`);
     }
   }
-  return out;
 }
