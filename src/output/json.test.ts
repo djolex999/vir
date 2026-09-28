@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   buildDoctorResult,
   buildQueryResults,
+  buildReviewQueue,
   classifyDaemonHealth,
   errorPayload,
   type DoctorInputs,
 } from "./json.js";
 import type { SearchHit } from "../search/retriever.js";
+import type { AuditedNote, ReviewNote } from "../cli/review.js";
+import type { AuditRow } from "../state/db.js";
 
 const VAULT_ROOT = "/vault/vir";
 
@@ -240,5 +243,85 @@ describe("buildDoctorResult", () => {
   it("reports ollama model as null when unreachable", () => {
     const r = buildDoctorResult({ ...base, ollamaReachable: false, ollamaModel: null });
     expect(r.ollama).toEqual({ reachable: false, model: null });
+  });
+});
+
+describe("buildReviewQueue", () => {
+  const note = (sessionId: string, over: Partial<ReviewNote> = {}): ReviewNote => ({
+    filePath: `/v/patterns/${sessionId}.md`,
+    relPath: `patterns/${sessionId}.md`,
+    topic: `topic ${sessionId}`,
+    category: "pattern",
+    project: "demo",
+    confidence: 0.9,
+    date: "2026-09-01T00:00:00.000Z",
+    verified: false,
+    sessionId,
+    ...over,
+  });
+  const audit = (
+    sessionId: string,
+    verdict: AuditRow["verdict"],
+    fresh = true,
+    mergeInto: string | null = null,
+  ): AuditRow => ({
+    path: `/p/x/${sessionId}.jsonl`,
+    sessionId,
+    verdict,
+    reason: `why ${sessionId}`,
+    mergeInto,
+    auditedAt: "2026-09-26T00:00:00.000Z",
+    fresh,
+  });
+  const audited = (n: ReviewNote, a: AuditRow): AuditedNote => ({ ...n, audit: a });
+
+  it("maps ordered notes to wire items, keeping the given order", () => {
+    const a = note("a");
+    const b = note("b", { relPath: "gotchas/b.md", category: "gotcha", project: "" });
+    const q = buildReviewQueue(
+      [audited(b, audit("b", "reject")), audited(a, audit("a", "verify"))],
+      [a, b],
+      [audit("a", "verify"), audit("b", "reject")],
+      [a, b],
+    );
+    expect(q.items.map((i) => [i.sessionId, i.verdict])).toEqual([["b", "reject"], ["a", "verify"]]);
+    expect(q.items[0]).toEqual({
+      path: "gotchas/b.md",
+      sessionId: "b",
+      title: "topic b",
+      category: "gotcha",
+      project: null,
+      date: "2026-09-01T00:00:00.000Z",
+      confidence: 0.9,
+      verdict: "reject",
+      reason: "why b",
+      mergeInto: null,
+      auditedAt: "2026-09-26T00:00:00.000Z",
+    });
+  });
+
+  it("resolves a merge target from all notes, including verified ones", () => {
+    const a = note("a");
+    const target = note("t", { relPath: "patterns/t.md", topic: "the target", verified: true });
+    const q = buildReviewQueue([audited(a, audit("a", "merge", true, "t"))], [a], [audit("a", "merge", true, "t")], [a, target]);
+    expect(q.items[0]?.mergeInto).toEqual({ sessionId: "t", path: "patterns/t.md", title: "the target" });
+  });
+
+  it("gives null path/title for a merge target that no longer serves", () => {
+    const a = note("a");
+    const q = buildReviewQueue([audited(a, audit("a", "merge", true, "gone"))], [a], [audit("a", "merge", true, "gone")], [a]);
+    expect(q.items[0]?.mergeInto).toEqual({ sessionId: "gone", path: null, title: null });
+  });
+
+  it("counts unaudited and stale among unverified notes", () => {
+    const notes = [note("a"), note("b"), note("c"), note("d")];
+    const audits = [audit("a", "verify"), audit("b", "keep", false), audit("c", "reject", false)];
+    const q = buildReviewQueue([], notes, audits, notes);
+    expect(q.counts).toEqual({ unaudited: 1, stale: 2 });
+  });
+
+  it("returns an empty queue when nothing was ever audited", () => {
+    const notes = [note("a"), note("b")];
+    expect(buildReviewQueue([], notes, [], notes)).toEqual({ items: [], counts: { unaudited: 2, stale: 0 } });
   });
 });
