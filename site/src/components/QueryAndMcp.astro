@@ -2,15 +2,18 @@
 import Terminal from "./Terminal.astro";
 const lines = [
   { kind: "cmd" as const, text: 'vir query "how did we handle kie 200 errors"' },
-  { kind: "dim" as const, text: "searching 1,208 notes · 3 sources" },
   { kind: "out" as const, text: "" },
-  { kind: "out" as const, text: "Kie.ai answers HTTP 200 even when generation fails; the" },
-  { kind: "out" as const, text: "failure only shows as code 422 in the body. Parse the body" },
-  { kind: "out" as const, text: "first, throw on code !== 200, and retry only on 5xx." },
+  { kind: "out" as const, text: "Kie.ai answers HTTP 200 even when" },
+  { kind: "out" as const, text: "generation fails; the failure only shows" },
+  { kind: "out" as const, text: "as code 422 in the body. Parse the body" },
+  { kind: "out" as const, text: "first, throw on code !== 200, and retry" },
+  { kind: "out" as const, text: "only on 5xx." },
   { kind: "out" as const, text: "" },
-  { kind: "dim" as const, text: "sources" },
-  { kind: "link" as const, text: "  gotchas/kie-ai-returns-200-with-an-error-body-4f2a9c31.md" },
-  { kind: "link" as const, text: "  patterns/retry-with-backoff-on-idempotent-writes-0c91be7a.md" },
+  { kind: "dim" as const, text: "────────────────────────────────────────" },
+  { kind: "link" as const, text: "  · gotchas/kie-200-error-body-4f2a9c31  0.81" },
+  { kind: "link" as const, text: "  · patterns/retry-with-backoff-0c91be7a  0.64" },
+  { kind: "dim" as const, text: "────────────────────────────────────────" },
+  { kind: "dim" as const, text: "sources 2 · via embedding · searched 460" },
 ];
 ---
 <section class="section container">

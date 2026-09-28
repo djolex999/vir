@@ -25,7 +25,7 @@ Every step records its outcome in `~/.vir/vir.db`, so nothing is silently skippe
 
 ## What gets filtered, and why
 
-On the author's machine, 1,386 transcripts produced 410 notes. That ratio is the point: most of what Claude Code writes to disk isn't a session you drove.
+On the author's machine, 2,012 transcripts produced 460 notes. That ratio is the point: most of what Claude Code writes to disk isn't a session you drove.
 
 | Skipped as | What it is | Reversible? |
 | --- | --- | --- |
@@ -42,37 +42,43 @@ Detection is structural — directory shape and the first line's `entrypoint` fi
 
 ```markdown
 ---
-topic: "Kie.ai returns 200 with an error body"
+topic: "kie-200-error-body"
 aliases:
-  - "kie-ai-returns-200-with-an-error-body"
+  - "kie-200-error-body"
 category: gotcha
 project: "growthq"
-session_id: 4f2a9c31
+session_id: 4f2a9c31-7d0e-4b8a-9c55-1e2f3a4b5c6d
 date: 2026-06-01T09:14:22.000Z
 confidence: 0.86
 themes:
-  - kie error handling
-  - retry safety
+  - "kie-error-handling"
+  - "retry-safety"
+branches:
+  - "fix/blank-posts"
 ---
 Project: [[growthq]]
 Category: [[gotcha]]
 
 ## Summary
+
 This session debugged image generation failing silently in growthq's post
 pipeline. The Kie.ai endpoint answers HTTP 200 even when generation fails: the
 error arrives in the body as `{code: 402, msg: …}`, so `response.ok` never
 catches it …
 
 ## What Was Learned
+
 - **Check the body's `code`, not the HTTP status** — the client now throws on
   an in-body 4xx before trusting `response.ok`. Chosen over retrying on empty
   content, which hid insufficient-credit failures …
 
 ## Context
+
 The generation queue had been producing blank posts for two days …
 
 ## Related
-- [[retry-with-backoff-on-idempotent-writes-0c91be7a|retry-with-backoff-on-idempotent-writes]]
+
+- [[retry-with-backoff-0c91be7a|retry-with-backoff]]
 ```
 
 - **`topic`** is the title, chosen by the classifier after the single most durable lesson in the session — that's what makes retrieval rank a pointed note above a diary.
@@ -89,7 +95,7 @@ Auto-distilled notes can be wrong, and a wrong note that reaches CLAUDE.md makes
 
 - Transcript and project filtering before any API call.
 - The `0.6` confidence floor between classify and distill.
-- `vir review` — walk new notes, approve, edit, or reject. Verified notes rank first in retrieval; rejected ones move to `.rejected/`, recoverable.
+- `vir review` — walk new notes, approve, edit, or reject. Verified notes get a ranking boost in retrieval; rejected ones move to `.rejected/`, recoverable.
 - `vir lint` flags orphans, stale notes, and contradictions; `vir dedupe` merges near-duplicates.
 - `vir sync-claude` never writes without showing the diff first.
 - Everything is a markdown file. Read it, edit it, delete it.

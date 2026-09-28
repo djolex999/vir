@@ -12,13 +12,15 @@ vir query "how did we handle kie 200 errors"
 Searches the vault, then synthesizes an answer with cited notes:
 
 ```
-Kie.ai answers HTTP 200 even when generation fails; the failure only
-shows as code 422 in the body. Parse the body first, throw on
-code !== 200, and retry only on 5xx.
+Kie.ai answers HTTP 200 even when generation fails; the
+failure only shows as code 422 in the body. Parse the body
+first, throw on code !== 200, and retry only on 5xx.
 
-sources
-  gotchas/kie-ai-returns-200-with-an-error-body-4f2a9c31.md
-  patterns/retry-with-backoff-on-idempotent-writes-0c91be7a.md
+────────────────────────────────────────────────
+  · gotchas/kie-200-error-body-4f2a9c31  0.81
+  · patterns/retry-with-backoff-0c91be7a  0.64
+────────────────────────────────────────────────
+sources 2  ·  via embedding  ·  searched 460
 ```
 
 `--limit <n>` controls how many notes are retrieved (default 8). `--json` returns the machine-readable form the Obsidian plugin consumes.
@@ -60,14 +62,14 @@ Restart Claude Code. The vault is now available mid-session through six read-onl
 
 | Tool | What it does |
 | --- | --- |
-| `vir_query` | Search + synthesize. `type` filter: `session` \| `article` \| `topic` \| `pdf` \| `all`. `verified_only: true` restricts to reviewed notes. |
-| `vir_status` | Note counts, categories, daemon state |
-| `vir_recent_notes` | Latest session notes |
+| `vir_query` | Search + synthesize. `type` filter: `session` \| `article` \| `topic` \| `pdf` \| `all`; `category`, `project`, `top_k` (default 5, max 10). `verified_only: true` restricts to reviewed notes. |
+| `vir_status` | Note counts, confidence, categories, per-project breakdown, date range, gaps |
+| `vir_recent_notes` | Latest session notes (`limit`, default 10, max 20) |
 | `vir_recent_articles` | Latest article notes |
 | `vir_project_summary` | The cached `projects/<slug>.md`, or a pointer to `vir summarize` |
 | `vir_compose` | The cached `topics/<slug>.md`, or a pointer to `vir compose` |
 
-The server is strictly read-only: it never spends tokens and never writes files. Synthesis that costs money stays behind the CLI.
+The server never changes the vault. `vir_query` is the one tool that spends tokens: it synthesizes its answer with `models.distill`, the same small call as `vir query`, and appends to the query log. Everything else reads files or caches; the expensive syntheses (`vir compose`, `vir summarize`) stay behind the CLI.
 
 `vir mcp status` checks registration; `vir mcp uninstall` removes it.
 

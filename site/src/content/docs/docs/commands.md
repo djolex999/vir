@@ -3,7 +3,7 @@ title: Commands
 description: Every vir subcommand with what it costs.
 ---
 
-`free` = no model call. `cheap` = classify-sized calls. `$$` = distill-sized calls per item. Every command takes `--help`.
+`free` = no model call. `cheap` = a few small calls. `$$` = a full distill-sized call per item. Every command takes `--help`.
 
 ## Ingest
 
@@ -14,13 +14,13 @@ description: Every vir subcommand with what it costs.
 | `vir run --dry-run` | free | Per-session estimate, exit before any call |
 | `vir run --full` | $$ | Ignore the cache, reprocess everything |
 | `vir run --rewrite-only` | free | Re-render notes from stored content, no scan, no calls |
-| `vir run --articles-only` | cheap | Only the article phase |
+| `vir run --articles-only` | $$ | Only the article phase |
 | `vir run --pdfs-only` | $$ | Only the PDF phase |
 | `vir run --yes` | | Skip the >20-sessions confirmation |
 | `vir run --force-model haiku\|sonnet` | | Override the distill model this run |
 | `vir run --only <project>` / `--exclude-project <p>` | | Scope one run; records nothing |
-| `vir reconcile` | $$ | Retry sessions that failed; `--force` includes parked ones |
-| `vir calibrate <sessionId>` | $$ | Distill one session to stdout, write nothing |
+| `vir reconcile` | $$ | Retry sessions that failed; `--force` includes parked ones. `--dry-run`, `--yes` |
+| `vir calibrate <sessionId>` | $$ | Distill one session to stdout, write nothing. `--model` |
 
 ## Triage
 
@@ -45,13 +45,13 @@ description: Every vir subcommand with what it costs.
 | Command | Cost | |
 | --- | --- | --- |
 | `vir query "<question>"` | cheap | Search + synthesize. `--json`, `--limit` |
-| `vir queries` | free | Retrieval report: method split, dead-weight notes. `--json` |
+| `vir queries` | free | Retrieval report: method split, dead-weight notes. `--json`, `--top` |
 | `vir compose "<topic>"` | $$ | Topic page from related notes. `--dry-run`, `--limit`, `--model` |
 | `vir summarize <project>` / `--all` | cheap | Per-project synthesis |
 | `vir summarize --week [N]` / `--month [N]` | cheap | Period digest |
 | `vir embed` | free | Embed notes with the detected provider. `--force` re-embeds all |
 | `vir embed --setup` | free | Install the local embedding provider |
-| `vir mcp install` / `uninstall` / `status` | free | Register with Claude Code |
+| `vir mcp install` / `uninstall` / `status` | free | Register with Claude Code. `install --scope user\|project` |
 | `vir mcp` | free | Run the MCP server over stdio |
 
 ## Sync and operate
@@ -61,7 +61,7 @@ description: Every vir subcommand with what it costs.
 | `vir sync-claude [project]` | free | Diff, confirm, write between VIR markers. `--dry-run`, `--force`, `--global` |
 | `vir schedule install` / `uninstall` | free | Daemon. `--run-now` |
 | `vir status` | free | Knowledge base breakdown + daemon state |
-| `vir doctor` | cheap | 15 install/config checks. `--json` |
+| `vir doctor` | cheap | 13–20 install/config checks. `--json` |
 | `vir notifications` | free | Allow vir's macOS notifications and send a test |
 | `vir cost` | free | Actual spend from cost.log. `--since`, `--top`, `--by-session` |
 

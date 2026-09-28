@@ -23,10 +23,10 @@ From the author's machine, six months, Anthropic API:
 
 | | |
 | --- | --- |
-| Sessions distilled | 295 |
-| Total | $20.38 |
+| Sessions distilled | 297 |
+| Total | $25.85 |
 | Median per session | $0.004 |
-| 90th percentile | $0.13 |
+| 90th percentile | $0.14 |
 
 Long sessions with hundreds of tool calls are the tail. vir strips large tool outputs and oversized skill loads before distilling; on one 517-tool-call session that cut input from ~217k to ~95k tokens without losing signal.
 
