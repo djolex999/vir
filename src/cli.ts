@@ -63,7 +63,7 @@ import {
   resolveModelShorthand,
   withRateLimitRetry,
 } from "./pipeline/distiller.js";
-import { applyAuditRejects, selectRejectsToApply } from "./audit/apply.js";
+import { applyAuditRejects, previewRejects } from "./audit/apply.js";
 import { batchByProject } from "./audit/batch.js";
 import { noteIsVerified, parseLimitOption, runAudit, selectAuditRows } from "./audit/run.js";
 import {
@@ -1818,10 +1818,18 @@ program
         const root = vaultRoot(cfg);
 
         if (opts.applyRejects) {
-          const targets = selectRejectsToApply(db.listDistilled(), db.listAudits(), opts.project);
+          const { toMove: targets, verified } = previewRejects(
+            db.listDistilled(),
+            db.listAudits(),
+            (r) => noteIsVerified(root, r),
+            opts.project,
+          );
           ui.header("audit");
           ui.blank();
-          ui.summary({ rejects: { value: targets.length, color: ui.errorColor } });
+          ui.summary({
+            rejects: { value: targets.length, color: ui.errorColor },
+            "approved, skipped": { value: verified.length, color: verified.length > 0 ? ui.warn : ui.muted },
+          });
           for (const r of targets.slice(0, 20)) ui.line(`  ${ui.dim(ui.BULLET)} ${ui.text(r.topic)} ${ui.dim(r.project)}`);
           if (targets.length > 20) ui.line(ui.dim(`  … and ${targets.length - 20} more`));
           ui.divider();

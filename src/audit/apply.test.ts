@@ -4,8 +4,8 @@ import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { restoreRejected } from "../cli/review.js";
 import { LockHeldError } from "../pipeline/lock.js";
-import { StateDb } from "../state/db.js";
-import { applyAuditRejects } from "./apply.js";
+import { StateDb, type AuditRow, type DistilledRow } from "../state/db.js";
+import { applyAuditRejects, previewRejects } from "./apply.js";
 import { contentHash } from "./types.js";
 
 const sid = (n: number): string => `abc1234${n}-0000-4000-8000-000000000001`;
@@ -133,5 +133,30 @@ describe("applyAuditRejects", () => {
     writeFileSync(lockPath, String(process.pid));
     expect(() => applyAuditRejects(db, vault, { lockPath })).toThrow(LockHeldError);
     expect(existsSync(file)).toBe(true);
+  });
+});
+
+describe("previewRejects", () => {
+  const row = (id: string, project = "app"): DistilledRow => ({
+    path: `/p/${id}.jsonl`, sessionId: id, startedAt: null, category: "gotcha",
+    topic: `t-${id}`, project, confidence: 0.9, content: "c",
+  });
+  const audit = (id: string, verdict: AuditRow["verdict"] = "reject", fresh = true): AuditRow => ({
+    path: `/p/${id}.jsonl`, sessionId: id, verdict, reason: "", mergeInto: null, auditedAt: "x", fresh,
+  });
+
+  // The confirmation must promise only what applyAuditRejects will do: a note a
+  // human approved is skipped at move time, so it must not be counted as moving.
+  it("splits fresh rejects into notes that will move and approved notes that won't", () => {
+    const rows = [row("a"), row("v"), row("k"), row("s")];
+    const audits = [audit("a"), audit("v"), audit("k", "keep"), audit("s", "reject", false)];
+    const p = previewRejects(rows, audits, (r) => r.sessionId === "v");
+    expect(p.toMove.map((r) => r.sessionId)).toEqual(["a"]);
+    expect(p.verified.map((r) => r.sessionId)).toEqual(["v"]);
+  });
+
+  it("honours the project filter", () => {
+    const p = previewRejects([row("a", "x"), row("b", "y")], [audit("a"), audit("b")], () => false, "y");
+    expect(p.toMove.map((r) => r.sessionId)).toEqual(["b"]);
   });
 });

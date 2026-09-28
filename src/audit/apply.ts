@@ -34,6 +34,22 @@ export function selectRejectsToApply(
   );
 }
 
+// What `--apply-rejects` will actually do, for the confirmation prompt. A note a
+// human approved is skipped at move time (noteIsVerified below), so the preview
+// must not count it as moving. applyAuditRejects re-checks at act time anyway:
+// a note can be approved between the preview and the confirmation.
+export function previewRejects(
+  rows: DistilledRow[],
+  audits: AuditRow[],
+  isVerified: (row: DistilledRow) => boolean,
+  project?: string,
+): { toMove: DistilledRow[]; verified: DistilledRow[] } {
+  const toMove: DistilledRow[] = [];
+  const verified: DistilledRow[] = [];
+  for (const r of selectRejectsToApply(rows, audits, project)) (isVerified(r) ? verified : toMove).push(r);
+  return { toMove, verified };
+}
+
 export function applyAuditRejects(
   db: StateDb,
   vaultRoot: string,
