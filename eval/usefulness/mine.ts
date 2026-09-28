@@ -1,3 +1,4 @@
+import { extractJsonArray } from "./json.js";
 import type { DropReason, MinedItem } from "./types.js";
 
 export const MINER_PROMPT_VERSION = "mine-v1";
@@ -53,6 +54,21 @@ export function distinctiveTokens(fact: string): string[] {
   return [...out];
 }
 
+// F2: every candidate costs one claude -p call of up to 60k chars, and a
+// vault this size can produce 300-450 of them against the spec's "about 200".
+// With no cap, behaviour is unchanged; capped, keep the newest by startedAt
+// rather than an arbitrary slice, so the sample stays recent.
+export function capCandidates(cands: readonly Candidate[], max?: number): Candidate[] {
+  if (max === undefined) return [...cands];
+  return [...cands]
+    .sort((a, b) => {
+      const av = a.startedAt ?? "";
+      const bv = b.startedAt ?? "";
+      return av < bv ? 1 : av > bv ? -1 : 0;
+    })
+    .slice(0, max);
+}
+
 const norm = (s: string): string => s.replace(/\s+/g, " ").trim().toLowerCase();
 
 function emptyDrops(): Record<DropReason, number> {
@@ -61,13 +77,7 @@ function emptyDrops(): Record<DropReason, number> {
 
 export function validateMined(reply: string, transcript: string): { items: MinedItem[]; drops: Record<DropReason, number> } {
   const drops = emptyDrops();
-  const match = reply.match(/\[[\s\S]*\]/);
-  let raw: unknown;
-  try {
-    raw = match ? JSON.parse(match[0]) : undefined;
-  } catch {
-    raw = undefined;
-  }
+  const raw = extractJsonArray(reply);
   if (!Array.isArray(raw)) {
     drops.unparsed += 1;
     return { items: [], drops };

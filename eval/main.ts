@@ -31,7 +31,7 @@ const USAGE = `usage: npm run eval -- <command> [--seed N] [--dry-run]
   show        print labeled queries with grades and arm ranks [--per-class N]
   run         run every arm at top-8 against the labels; write ~/.vir/eval/runs/<ts>.json
   arms        list arms
-  usefulness mine   mine questions + facts from recent transcripts (--dry-run)
+  usefulness mine   mine questions + facts from recent transcripts (--dry-run) [--max N]
   usefulness run    full vs ablated vs none → PASS/FAIL/NO VERDICT for the audit's rejects (--seed, --dry-run)
   usefulness show   summary of the latest usefulness run`;
 
@@ -71,9 +71,13 @@ async function main(): Promise<void> {
     case "usefulness": {
       const sub = process.argv[3];
       switch (sub) {
-        case "mine":
-          await mineQuestions({ dryRun });
+        case "mine": {
+          const maxOpt = opt("max");
+          const max = maxOpt !== undefined ? Number.parseInt(maxOpt, 10) : undefined;
+          if (max !== undefined && (!Number.isInteger(max) || max < 1)) throw new Error("usefulness mine: --max must be an integer ≥ 1");
+          await mineQuestions({ dryRun, max });
           return;
+        }
         case "run":
           await usefulnessRun({ seed: opt("seed") ? seed : 20260926, dryRun });
           return;

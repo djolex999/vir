@@ -10,7 +10,7 @@ import { StateDb } from "../../src/state/db.js";
 import { callJudge, EVAL_MODEL, mapLimit } from "../llm.js";
 import { USEFULNESS_CACHE_DIR, USEFULNESS_QUESTIONS_PATH } from "../paths.js";
 import { createCache, type ResultCache } from "./cache.js";
-import { buildMinerPrompt, MAX_TRANSCRIPT_CHARS, MINER_PROMPT_VERSION, selectCandidates, validateMined, type Candidate } from "./mine.js";
+import { buildMinerPrompt, capCandidates, MAX_TRANSCRIPT_CHARS, MINER_PROMPT_VERSION, selectCandidates, validateMined, type Candidate } from "./mine.js";
 import type { DropReason, MinedQuestion, QuestionFile } from "./types.js";
 
 export interface MineDeps {
@@ -22,7 +22,7 @@ export interface MineDeps {
   log(line: string): void;
 }
 
-export async function mineQuestions(opts: { dryRun: boolean; deps?: Partial<MineDeps> }): Promise<QuestionFile | null> {
+export async function mineQuestions(opts: { dryRun: boolean; max?: number; deps?: Partial<MineDeps> }): Promise<QuestionFile | null> {
   const d: MineDeps = {
     llm: async (prompt, session) => (await callJudge("eval-usefulness-mine", prompt, session)).text,
     cache: createCache(USEFULNESS_CACHE_DIR),
@@ -59,7 +59,10 @@ export async function mineQuestions(opts: { dryRun: boolean; deps?: Partial<Mine
     });
   }
   const chosen = selectCandidates(cands, noteStarts);
-  const prompts = chosen.map((c) => {
+  // F2: cap the candidate list before it turns into model calls. No --max ⇒
+  // capped === chosen, so behaviour is unchanged.
+  const capped = capCandidates(chosen, opts.max);
+  const prompts = capped.map((c) => {
     const p = parsedBy.get(c.path)!;
     const text = `${scrub(p.rawSummary)}\n\n${scrub(filterToolCalls(p.transcriptText, "moderate").filtered)}`.slice(0, MAX_TRANSCRIPT_CHARS);
     return { c, text, prompt: buildMinerPrompt(c.project, text) };
@@ -67,7 +70,8 @@ export async function mineQuestions(opts: { dryRun: boolean; deps?: Partial<Mine
   const key = (prompt: string): string[] => ["mine", MINER_PROMPT_VERSION, EVAL_MODEL, prompt];
   if (opts.dryRun) {
     const cached = prompts.filter((x) => d.cache.has(key(x.prompt))).length;
-    d.log(`usefulness mine (dry run): ${scanned.length} transcripts, ${chosen.length} candidates, ${prompts.length - cached} model calls needed (${cached} cached)\n`);
+    const capNote = opts.max !== undefined ? `, capped to ${capped.length}` : "";
+    d.log(`usefulness mine (dry run): ${scanned.length} transcripts, ${chosen.length} candidates${capNote}, ${prompts.length - cached} model calls needed (${cached} cached)\n`);
     return null;
   }
   const drops: Record<DropReason, number> = { unparsed: 0, "fact-count": 0, "answer-in-question": 0, "bad-evidence": 0 };
@@ -85,10 +89,10 @@ export async function mineQuestions(opts: { dryRun: boolean; deps?: Partial<Mine
   }
   const file: QuestionFile = {
     createdAt: d.now(), minerPromptVersion: MINER_PROMPT_VERSION, model: EVAL_MODEL,
-    transcriptsSeen: scanned.length, candidates: chosen.length, drops, questions,
+    transcriptsSeen: scanned.length, candidates: capped.length, drops, questions,
   };
   mkdirSync(dirname(d.out), { recursive: true });
   writeFileSync(d.out, JSON.stringify(file, null, 1));
-  d.log(`usefulness mine: ${questions.length} questions from ${chosen.length} candidates; drops ${JSON.stringify(drops)}\n`);
+  d.log(`usefulness mine: ${questions.length} questions from ${capped.length} candidates; drops ${JSON.stringify(drops)}\n`);
   return file;
 }

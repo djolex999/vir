@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMinerPrompt, distinctiveTokens, selectCandidates, validateMined, type Candidate } from "./mine.js";
+import { buildMinerPrompt, capCandidates, distinctiveTokens, selectCandidates, validateMined, type Candidate } from "./mine.js";
 
 const cand = (over: Partial<Candidate>): Candidate => ({
   path: "/p/a.jsonl", project: "vir", sessionId: "s1", startedAt: "2026-09-10T00:00:00.000Z",
@@ -17,6 +17,31 @@ describe("selectCandidates", () => {
   });
   it("drops sessions with no earlier note in their project, and sessions with no start time", () => {
     expect(selectCandidates([cand({ project: "late" }), cand({ project: "none" }), cand({ startedAt: null })], notes)).toEqual([]);
+  });
+});
+
+// F2: an uncapped vault can produce 300-450 candidates against the spec's
+// "about 200" — every one is a claude -p call, so a cap must be available.
+describe("capCandidates", () => {
+  const c = (sessionId: string, startedAt: string): Candidate => cand({ sessionId, startedAt });
+
+  it("keeps every candidate when no max is given", () => {
+    const cands = [c("a", "2026-09-01T00:00:00.000Z"), c("b", "2026-09-10T00:00:00.000Z")];
+    expect(capCandidates(cands)).toEqual(cands);
+  });
+
+  it("keeps the newest N by startedAt", () => {
+    const cands = [
+      c("old", "2026-09-01T00:00:00.000Z"),
+      c("newest", "2026-09-20T00:00:00.000Z"),
+      c("mid", "2026-09-10T00:00:00.000Z"),
+    ];
+    expect(capCandidates(cands, 2).map((x) => x.sessionId)).toEqual(["newest", "mid"]);
+  });
+
+  it("does not pad or drop anything when max is at or above the count", () => {
+    const cands = [c("a", "2026-09-01T00:00:00.000Z")];
+    expect(capCandidates(cands, 5)).toHaveLength(1);
   });
 });
 
