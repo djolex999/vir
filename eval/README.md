@@ -40,7 +40,15 @@ npm run eval:spotcheck                             # blind human grading, agreem
 npm run eval -- show      [--per-class N]          # labeled queries with grades and arm ranks
 npm run eval -- run       [--seed N]               # every arm at top-8 → ~/.vir/eval/runs/<ts>.json
 npm run eval -- arms
+npm run eval -- usefulness mine [--max N] [--dry-run]  # mine questions + facts from transcripts → ~/.vir/eval/usefulness/questions.json
+npm run eval -- usefulness run  [--seed N] [--dry-run] # full vs ablated vs none → PASS/FAIL/NO VERDICT for the audit's fresh rejects
+npm run eval -- usefulness show                        # summary of the latest usefulness run
 ```
+
+`usefulness run` re-copies the DB and re-reads the fresh reject set on every
+invocation. After a subscription limit, re-run the same command and the
+result cache resumes it — but do not run `vir` or `vir audit` in between, or
+the reject set and sample change and part of the cache is orphaned.
 
 ## Metrics (`metrics/`, all TDD with hand-computed fixtures)
 

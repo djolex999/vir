@@ -28,3 +28,4 @@ export const REPO_ROOT = findRepoRoot(import.meta.dirname);
 // the harness never reimplements an embedding write.
 export const CLI_JS = join(REPO_ROOT, "dist", "cli.js");
 export const ARM_WORKER_JS = join(REPO_ROOT, "eval", "dist", "eval", "armWorker.js");
+export const USEFULNESS_WORKER_JS = join(REPO_ROOT, "eval", "dist", "eval", "usefulness", "worker.js");
