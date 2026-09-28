@@ -14,7 +14,8 @@
  *   }
  *
  * After restarting Claude Code, the agent can call vir_query, vir_status,
- * vir_recent_notes, and vir_project_summary as tools.
+ * vir_recent_notes, vir_recent_articles, vir_project_summary, and
+ * vir_compose as tools.
  *
  * Transport is stdio: stdout is reserved for the MCP JSON-RPC protocol, so
  * every log line goes to stderr. The SQLite DB is opened read-only — this
