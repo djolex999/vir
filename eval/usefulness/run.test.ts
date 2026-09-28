@@ -170,6 +170,50 @@ describe("usefulnessRun", () => {
     ).rejects.toThrow(/usefulness mine/);
   });
 
+  // M4: mineRun.ts ids a question `${sessionId}#${i}` — the same session id in
+  // two transcript files would otherwise let byId silently keep the last one.
+  it("throws a clear error when the questions file has duplicate ids", async () => {
+    const base = deps(dir);
+    const dup = Q(0);
+    const qf: QuestionFile = {
+      createdAt: "x", minerPromptVersion: "mine-v1", model: "m", transcriptsSeen: 1, candidates: 1,
+      drops: { unparsed: 0, "fact-count": 0, "answer-in-question": 0, "bad-evidence": 0 },
+      questions: [dup, { ...dup }],
+    };
+    writeFileSync(base.questionsPath!, JSON.stringify(qf));
+    await expect(usefulnessRun({ seed: 1, dryRun: false, deps: base })).rejects.toThrow(/duplicate question id/);
+  });
+
+  // F1: the oracle/null/negation probes must run before any answer call, so a
+  // broken grader is caught for the cost of ~320 calls, not ~750. Here the
+  // negation-generator returns the facts unchanged (no actual negation), so
+  // the grader calls every fact "stated" instead of "contradicted" and the
+  // negation probe's contradiction rate stays near zero.
+  it("fails the negation probe before any answer call, giving no verdict", async () => {
+    const base = deps(dir);
+    let answerCalls = 0;
+    const brokenNegation: Partial<RunDeps> = {
+      ...base,
+      llm: async (stage, prompt, session) => {
+        if (prompt.startsWith("Rewrite each statement")) {
+          const facts = [...prompt.matchAll(/^\d+\. (.+)$/gm)].map((m) => m[1]!);
+          return JSON.stringify(facts);
+        }
+        return base.llm!(stage, prompt, session);
+      },
+      answer: async (...args) => {
+        answerCalls += 1;
+        return base.answer!(...args);
+      },
+    };
+    const rec = await usefulnessRun({ seed: 1, dryRun: false, deps: brokenNegation });
+    expect(rec?.gate.verdict).toBe("NO VERDICT");
+    expect(rec?.gate.reason).toMatch(/^grader unreliable: /);
+    expect(rec?.probes.pass).toBe(false);
+    expect(rec?.probes.failures.some((f) => f.includes("negation"))).toBe(true);
+    expect(answerCalls).toBe(0);
+  });
+
   // Review Focus 4 / M3: a re-run pays for nothing already computed. Every
   // real cache key (including re-grades, which are cached under their own
   // seeded key) is already warm, so a second run makes zero new calls.
@@ -203,6 +247,30 @@ describe("usefulnessRun", () => {
     expect(first).toBeGreaterThan(0);
     await usefulnessRun({ seed: 1, dryRun: false, deps: { ...d, answerModel: "model-b", answer: countingAnswer } });
     expect(calls).toBeGreaterThan(first);
+  });
+
+  // M3: the ungraded path was untested. A grader reply that never parses, even
+  // after the one retry, must exclude the question (never crash or silently
+  // drop it), and the retry must actually reach the model a second time under
+  // its own cache key.
+  it("marks a question ungraded when the grader returns garbage twice, using the retry key", async () => {
+    const base = deps(dir, { ablatedLosesFact: true });
+    let gradeCallsForTarget = 0;
+    const badGrader: Partial<RunDeps> = {
+      ...base,
+      llm: async (stage, prompt, session) => {
+        if (stage === "eval-usefulness-grade" && prompt.includes("Answer:\nanswer fact-0 other-0\n")) {
+          gradeCallsForTarget += 1;
+          return "not json";
+        }
+        return base.llm!(stage, prompt, session);
+      },
+    };
+    const rec = await usefulnessRun({ seed: 1, dryRun: false, deps: badGrader });
+    expect(gradeCallsForTarget).toBe(2);
+    expect(rec?.excluded.ungraded).toBe(1);
+    const q0 = rec?.questions.find((o) => o.questionId === "q0");
+    expect(q0?.excluded).toBe("ungraded");
   });
 
   it("dry-run makes no model calls and writes no record", async () => {

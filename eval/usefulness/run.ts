@@ -7,7 +7,7 @@ import { normalizeModelName } from "../../src/pipeline/distiller.js";
 import type { SearchHit } from "../../src/search/retriever.js";
 import { buildSynthesisPrompt, synthesize } from "../../src/search/synthesizer.js";
 import { StateDb } from "../../src/state/db.js";
-import { callJudge, EVAL_MODEL } from "../llm.js";
+import { callJudge, EVAL_MODEL, mapLimit } from "../llm.js";
 import type { BootstrapCI } from "../metrics/bootstrap.js";
 import { pairedBootstrapCI } from "../metrics/bootstrap.js";
 import { USEFULNESS_CACHE_DIR, USEFULNESS_QUESTIONS_PATH, USEFULNESS_RUNS_DIR } from "../paths.js";
@@ -18,7 +18,9 @@ import { BOOTSTRAP_ROUNDS, computeVerdict, degradedReason, MAX_DEGRADED_SHARE } 
 import { buildGraderPrompt, GRADER_PROMPT_VERSION, parseGrade, scoreAnswer } from "./grade.js";
 import { prepareUsefulnessHomes, USEFULNESS_ARM_SPECS } from "./homes.js";
 import { MINER_PROMPT_VERSION } from "./mine.js";
-import { buildNegationPrompt, evaluateProbes, NEGATION_PROMPT_VERSION, NULL_ANSWER, oracleAnswer, parseNegation } from "./probes.js";
+import {
+  buildNegationPrompt, evaluatePreAnswerProbes, evaluateProbes, NEGATION_PROMPT_VERSION, NULL_ANSWER, oracleAnswer, parseNegation,
+} from "./probes.js";
 import { runUsefulnessArm } from "./retrieve.js";
 import { exposedTo, filterForCutoff, sampleSets } from "./select.js";
 import type {
@@ -110,6 +112,14 @@ export async function usefulnessRun(opts: { seed: number; dryRun: boolean; deps?
   const qfText = readFileSync(d.questionsPath, "utf8");
   const qf = JSON.parse(qfText) as QuestionFile;
   if (qf.questions.length === 0) throw new Error("the questions file is empty — run `npm run eval -- usefulness mine` again");
+  // M4: mineRun.ts ids a question `${sessionId}#${i}`, so the same session id
+  // appearing in two transcript files would collide silently — byId would
+  // just keep the last one written. Fail loudly instead.
+  const seenIds = new Set<string>();
+  for (const q of qf.questions) {
+    if (seenIds.has(q.id)) throw new Error(`duplicate question id ${q.id} — re-run \`usefulness mine\``);
+    seenIds.add(q.id);
+  }
   const byId = new Map(qf.questions.map((q) => [q.id, q]));
   const ci = (xs: number[]): BootstrapCI => pairedBootstrapCI(xs, BOOTSTRAP_ROUNDS, makeRng(opts.seed + 2));
 
@@ -227,52 +237,115 @@ export async function usefulnessRun(opts: { seed: number; dryRun: boolean; deps?
     return parseGrade((await d.cache.cached(["retry", ...k1], () => d.llm(stage, prompt, q.sessionId))).value, q.facts.length);
   };
 
-  // Phase B: answer + grade, only for outcomes that survived Phase A.
-  const jobs: Job[] = [];
+  // F3(c): oracle/null/negation for one question, with bounded concurrency
+  // (mapLimit(items, 2, fn), same helper mine.ts uses). No rng draw happens in
+  // here, so running it concurrently cannot disturb draw order, and the mean/
+  // share statistics evaluateProbes computes from the result don't care about
+  // array order either.
+  const runProbeSet = async (
+    qs: readonly MinedQuestion[],
+  ): Promise<{ oracle: FactVerdict[][]; nulls: FactVerdict[][]; negation: FactVerdict[][] }> => {
+    const results = await mapLimit(qs, 2, async (q) => {
+      const o = await grade("eval-usefulness-probe", q, oracleAnswer(q.facts));
+      const n = await grade("eval-usefulness-probe", q, NULL_ANSWER);
+      const negPrompt = buildNegationPrompt(q.facts);
+      const neg = parseNegation(
+        (await d.cache.cached(["negate", NEGATION_PROMPT_VERSION, EVAL_MODEL, negPrompt], () => d.llm("eval-usefulness-probe", negPrompt, q.sessionId))).value,
+        q.facts.length,
+      );
+      const g = neg ? await grade("eval-usefulness-probe", q, neg) : null;
+      return { o, n, g };
+    });
+    return {
+      oracle: results.flatMap((r) => (r.o ? [r.o] : [])),
+      nulls: results.flatMap((r) => (r.n ? [r.n] : [])),
+      negation: results.flatMap((r) => (r.g ? [r.g] : [])),
+    };
+  };
+
+  // F1: run the answer-independent probes on every sampled, non-degraded
+  // question BEFORE any answer call — a broken grader is caught after ~320
+  // calls instead of after Phase B's ~750. The probe set here is "sampled,
+  // non-degraded" rather than "sampled, non-degraded, graded": the "ungraded"
+  // exclusion only exists once Phase B has graded a real answer, and it is
+  // rare. The re-grade probe isn't available yet (it needs real answers), so
+  // it is simply left out of this check rather than counted as a pass or fail.
+  const preAnswerQs = outcomes.filter((o) => o.excluded === null).map((o) => byId.get(o.questionId)!);
+  const { oracle: earlyOracle, nulls: earlyNulls, negation: earlyNegation } = await runProbeSet(preAnswerQs);
+  const preAnswer = evaluatePreAnswerProbes(earlyOracle, earlyNulls, earlyNegation);
+  if (!preAnswer.pass) {
+    const gate = computeVerdict({
+      rejectCount: rejectIds.length, probesPass: false, probeFailures: preAnswer.failures,
+      sampledExposed: sets.exposed.length, excludedDegraded: excludedDegradedCount, pairs: [], rng: makeRng(opts.seed + 1),
+    });
+    return writeRecord({
+      createdAt: d.now(), git: d.git(), seed: opts.seed,
+      rejectSet: { sessionIds: rejectIds, sha256: sha(rejectIds.join("\n")) },
+      questionsSha256: sha(qfText),
+      prompts: { miner: MINER_PROMPT_VERSION, grader: GRADER_PROMPT_VERSION, negation: NEGATION_PROMPT_VERSION },
+      model: EVAL_MODEL, answerModel: d.answerModel, arms: USEFULNESS_ARM_SPECS,
+      sampled: { exposed: sets.exposed.length, control: sets.control.length, minedTotal: qf.questions.length, exposedAvailable: exposedIds.length },
+      excluded: { degraded: outcomes.filter((o) => o.excluded === "degraded").length, ungraded: 0 },
+      probes: { ...preAnswer, regradeAgreement: 0 },
+      gate,
+      report: { fullVsNoneRecall: ci([]), controlRecall: ci([]), controlContradiction: ci([]), perRejectExposure: Object.fromEntries(rejectIds.map((id) => [id, 0])), worse: [] },
+      questions: outcomes,
+    });
+  }
+
+  // Phase B: answer + grade, only for outcomes that survived Phase A and the
+  // pre-answer probe check above.
+  interface AnswerTask {
+    q: MinedQuestion;
+    arm: UsefulnessArm;
+    out: QuestionOutcome;
+    hits: RetrievedHit[];
+  }
+  const answerTasks: AnswerTask[] = [];
   for (const out of outcomes) {
     if (out.excluded !== null) continue;
     const q = byId.get(out.questionId)!;
     for (const arm of ["full", "ablated", "none"] as const) {
       const hits = arm === "none" ? [] : topOf((arm === "full" ? fullAll : ablAll).get(q.id), q);
-      // I2 (spec §8): key by stage, model and the exact rendered prompt, so a
-      // model or prompt change can never mix answerers inside one pair.
-      const prompt = buildSynthesisPrompt(q.question, toSearchHits(hits));
-      const key = ["eval-usefulness-answer", d.answerModel, prompt];
-      const { value } = await d.cache.cached(key, () => d.answer(q.question, hits));
-      out.answers[arm] = value;
-      jobs.push({ q, arm, answer: value, out });
+      answerTasks.push({ q, arm, out, hits });
     }
   }
+  // F3(a): answer calls run with bounded concurrency. answerTasks is built
+  // sequentially above with no rng draw, and mapLimit assembles `jobs` by
+  // task index (not completion order), so the result is deterministic.
+  const jobs: Job[] = await mapLimit(answerTasks, 2, async (t) => {
+    // I2 (spec §8): key by stage, model and the exact rendered prompt, so a
+    // model or prompt change can never mix answerers inside one pair.
+    const prompt = buildSynthesisPrompt(t.q.question, toSearchHits(t.hits));
+    const key = ["eval-usefulness-answer", d.answerModel, prompt];
+    const { value } = await d.cache.cached(key, () => d.answer(t.q.question, t.hits));
+    t.out.answers[t.arm] = value;
+    return { q: t.q, arm: t.arm, answer: value, out: t.out };
+  });
 
+  // The shuffle is one rng draw, done synchronously before any concurrent
+  // grading starts — the shuffled array fixes the submission order mapLimit
+  // uses below, so a re-run with the same seed always submits in the same
+  // order regardless of how the concurrent calls actually complete.
+  const shuffledJobs = shuffle(jobs, rng);
   const graded = new Map<string, FactVerdict[] | null>();
-  for (const j of shuffle(jobs, rng)) {
+  // F3(b): grade calls run with bounded concurrency, in the shuffled order.
+  await mapLimit(shuffledJobs, 2, async (j) => {
     const v = await grade("eval-usefulness-grade", j.q, j.answer);
     graded.set(`${j.q.id}|${j.arm}`, v);
     if (v) {
       j.out.scores[j.arm] = scoreAnswer(v);
       j.out.verdicts[j.arm] = v;
     } else if (j.arm !== "none" && j.out.excluded === null) j.out.excluded = "ungraded";
-  }
+  });
 
+  // After real grades: re-run the probe set on the questions still live (a
+  // subset of preAnswerQs, since Phase B's "ungraded" exclusion can only
+  // shrink it) to compute the full ProbeSummary, exactly as before F1's
+  // reorder. Every call here is a cache hit from the pre-answer check above,
+  // so this costs nothing extra.
   const live = outcomes.filter((o) => o.excluded === null).map((o) => byId.get(o.questionId)!);
-  const oracle: FactVerdict[][] = [];
-  const nulls: FactVerdict[][] = [];
-  const negation: FactVerdict[][] = [];
-  for (const q of live) {
-    const o = await grade("eval-usefulness-probe", q, oracleAnswer(q.facts));
-    if (o) oracle.push(o);
-    const n = await grade("eval-usefulness-probe", q, NULL_ANSWER);
-    if (n) nulls.push(n);
-    const negPrompt = buildNegationPrompt(q.facts);
-    const neg = parseNegation(
-      (await d.cache.cached(["negate", NEGATION_PROMPT_VERSION, EVAL_MODEL, negPrompt], () => d.llm("eval-usefulness-probe", negPrompt, q.sessionId))).value,
-      q.facts.length,
-    );
-    if (neg) {
-      const g = await grade("eval-usefulness-probe", q, neg);
-      if (g) negation.push(g);
-    }
-  }
+  const { oracle, nulls, negation } = await runProbeSet(live);
   const realJobs = jobs.filter((j) => j.arm !== "none" && graded.get(`${j.q.id}|${j.arm}`));
   // M4: when full and ablated answers land on the identical text (and so the
   // identical grader prompt), they share one cache entry and one grade — a

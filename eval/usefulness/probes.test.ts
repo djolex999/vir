@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FactVerdict } from "./types.js";
-import { evaluateProbes, oracleAnswer, parseNegation } from "./probes.js";
+import { evaluatePreAnswerProbes, evaluateProbes, oracleAnswer, parseNegation } from "./probes.js";
 
 const S: FactVerdict = "stated";
 const M: FactVerdict = "missing";
@@ -42,6 +42,27 @@ describe("evaluateProbes", () => {
   // An empty probe is not evidence the grader works.
   it("fails when a probe has no samples", () => {
     expect(evaluateProbes({ ...good, regrade: [] }).failures).toContain("regrade: no samples");
+  });
+});
+
+// F1: this must judge grader reliability from oracle/null/negation alone,
+// before any real answer exists — it never sees or needs a regrade sample.
+describe("evaluatePreAnswerProbes", () => {
+  it("passes on the same oracle/null/negation data evaluateProbes would accept", () => {
+    const r = evaluatePreAnswerProbes(good.oracle, good.nulls, good.negation);
+    expect(r.pass).toBe(true);
+    expect(r.failures).toEqual([]);
+  });
+
+  it("fails and reports the same message evaluateProbes would produce for the same failure", () => {
+    const negation = [...good.negation.slice(0, 16), [M, M], [M, M], [C, M], [C, M]];
+    const r = evaluatePreAnswerProbes(good.oracle, good.nulls, negation);
+    expect(r.pass).toBe(false);
+    expect(r.failures).toContain(evaluateProbes({ ...good, negation }).failures.find((f) => f.includes("negation")));
+  });
+
+  it("fails when a probe has no samples, same as evaluateProbes", () => {
+    expect(evaluatePreAnswerProbes([], good.nulls, good.negation).failures).toContain("oracle: no samples");
   });
 });
 
