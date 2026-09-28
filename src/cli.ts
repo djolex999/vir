@@ -1440,7 +1440,7 @@ program
         ui.row(
           ui.warn(ui.WARN_GLYPH),
           ui.text(
-            `${outcome.excludedMismatched} note(s) embedded under a different model were excluded — run \`vir embed\` to re-embed them`,
+            `${outcome.excludedMismatched} note(s) embedded under a different model were excluded — run \`vir embed --force\` to re-embed them`,
           ),
         );
       }
@@ -1987,7 +1987,8 @@ After installing, restart Claude Code. Tools become available:
   vir_status           knowledge base overview + gaps
   vir_recent_notes     most recently distilled session notes
   vir_recent_articles  most recently distilled web articles
-  vir_project_summary  synthesized per-project summary`,
+  vir_project_summary  synthesized per-project summary
+  vir_compose          cached synthesized topic page (vir compose)`,
   );
 
 // Shared by `vir mcp run` and the bare `vir mcp` alias below.
