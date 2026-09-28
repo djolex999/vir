@@ -273,6 +273,57 @@ describe("usefulnessRun", () => {
     expect(q0?.excluded).toBe("ungraded");
   });
 
+  // Review defect: the answer phase used to queue one task per (question,
+  // arm) and run mapLimit(answerTasks, 2, …), so a control question's full
+  // and ablated tasks (identical rendered prompt, since the full top-8 holds
+  // no reject) landed on the two workers at the same time. cache.cached has
+  // no in-flight dedupe (it only checks existsSync), so both missed the
+  // cache and both paid for a real answer call — and the two independent
+  // samples then differ. The fix makes the QUESTION the unit of concurrency:
+  // mapLimit runs per question, and within a question the arms are awaited
+  // in sequence, so the second identical prompt hits the cache.
+  it("shares one answer call between full and ablated when their rendered prompts are identical (control question)", async () => {
+    const base = deps(dir);
+    let totalCalls = 0;
+    let q0Calls = 0;
+    // Slow and unique per call: slow enough to open a real concurrency
+    // window for the bug (without a delay, synchronous-ish scheduling could
+    // accidentally mask it), and a fresh string per call so a double-pay
+    // shows up as answers.full !== answers.ablated.
+    const answerStub = async (question: string): Promise<string> => {
+      totalCalls += 1;
+      if (question === "question 0?") q0Calls += 1;
+      const mine = totalCalls;
+      await new Promise((r) => setTimeout(r, 5));
+      return `unique-answer-${mine}`;
+    };
+    // q0's full and ablated retrieval are made identical (both just "good",
+    // no "rej") so q0 has no reject in its top and becomes a control
+    // question, with full and ablated rendering the same synthesis prompt.
+    // Every other question keeps the default full=[good,rej] vs
+    // ablated=[good] shape, so it stays exposed and its two arms keep
+    // distinct prompts (unaffected by this bug).
+    const retrieve = async (arm: "full" | "ablated", qs: readonly MinedQuestion[]): Promise<ArmRetrieval[]> =>
+      qs.map((q) =>
+        q.id === "q0"
+          ? { questionId: q.id, method: "embedding", degraded: false, hits: [H("good", `good ${q.facts.join(" ")}`)] }
+          : {
+              questionId: q.id,
+              method: "embedding",
+              degraded: false,
+              hits: arm === "full" ? [H("good", `good ${q.facts.join(" ")}`), H("rej", "noise")] : [H("good", `good ${q.facts.join(" ")}`)],
+            },
+      );
+    const rec = await usefulnessRun({ seed: 1, dryRun: false, deps: { ...base, retrieve, answer: answerStub } });
+    const q0 = rec?.questions.find((o) => o.questionId === "q0");
+    expect(q0?.set).toBe("control");
+    expect(q0?.excluded).toBeNull();
+    // One shared call for full+ablated (identical prompt) plus one for
+    // none's distinct (no-hits) prompt — not three.
+    expect(q0Calls).toBe(2);
+    expect(q0?.answers.full).toBe(q0?.answers.ablated);
+  });
+
   it("dry-run makes no model calls and writes no record", async () => {
     let calls = 0;
     const d = deps(dir);

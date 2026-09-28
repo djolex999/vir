@@ -295,33 +295,46 @@ export async function usefulnessRun(opts: { seed: number; dryRun: boolean; deps?
 
   // Phase B: answer + grade, only for outcomes that survived Phase A and the
   // pre-answer probe check above.
-  interface AnswerTask {
+  interface AnswerGroup {
     q: MinedQuestion;
-    arm: UsefulnessArm;
     out: QuestionOutcome;
-    hits: RetrievedHit[];
+    tasks: Array<{ arm: UsefulnessArm; hits: RetrievedHit[] }>;
   }
-  const answerTasks: AnswerTask[] = [];
+  const answerGroups: AnswerGroup[] = [];
   for (const out of outcomes) {
     if (out.excluded !== null) continue;
     const q = byId.get(out.questionId)!;
-    for (const arm of ["full", "ablated", "none"] as const) {
-      const hits = arm === "none" ? [] : topOf((arm === "full" ? fullAll : ablAll).get(q.id), q);
-      answerTasks.push({ q, arm, out, hits });
-    }
+    const tasks = (["full", "ablated", "none"] as const).map((arm) => ({
+      arm,
+      hits: arm === "none" ? [] : topOf((arm === "full" ? fullAll : ablAll).get(q.id), q),
+    }));
+    answerGroups.push({ q, out, tasks });
   }
-  // F3(a): answer calls run with bounded concurrency. answerTasks is built
-  // sequentially above with no rng draw, and mapLimit assembles `jobs` by
-  // task index (not completion order), so the result is deterministic.
-  const jobs: Job[] = await mapLimit(answerTasks, 2, async (t) => {
-    // I2 (spec §8): key by stage, model and the exact rendered prompt, so a
-    // model or prompt change can never mix answerers inside one pair.
-    const prompt = buildSynthesisPrompt(t.q.question, toSearchHits(t.hits));
-    const key = ["eval-usefulness-answer", d.answerModel, prompt];
-    const { value } = await d.cache.cached(key, () => d.answer(t.q.question, t.hits));
-    t.out.answers[t.arm] = value;
-    return { q: t.q, arm: t.arm, answer: value, out: t.out };
+  // F3(a): the answer phase runs with bounded concurrency, with the QUESTION
+  // (not (question, arm)) as the unit of work. Within one question the three
+  // arms are answered strictly in sequence, so when full and ablated render
+  // the identical prompt — common for a control question, whose full top-8
+  // holds no reject — the second one is a guaranteed cache hit instead of a
+  // concurrent miss racing the first (cache.cached only checks existsSync,
+  // with no in-flight dedupe). answerGroups is built sequentially above with
+  // no rng draw, and mapLimit assembles the per-question results by group
+  // index (not completion order), so flattening them below reproduces the
+  // exact same (question, then arm full/ablated/none) order `jobs` had
+  // before — the shuffle downstream still sees an identical array.
+  const perQuestionJobs: Job[][] = await mapLimit(answerGroups, 2, async (g) => {
+    const groupJobs: Job[] = [];
+    for (const t of g.tasks) {
+      // I2 (spec §8): key by stage, model and the exact rendered prompt, so a
+      // model or prompt change can never mix answerers inside one pair.
+      const prompt = buildSynthesisPrompt(g.q.question, toSearchHits(t.hits));
+      const key = ["eval-usefulness-answer", d.answerModel, prompt];
+      const { value } = await d.cache.cached(key, () => d.answer(g.q.question, t.hits));
+      g.out.answers[t.arm] = value;
+      groupJobs.push({ q: g.q, arm: t.arm, answer: value, out: g.out });
+    }
+    return groupJobs;
   });
+  const jobs: Job[] = perQuestionJobs.flat();
 
   // The shuffle is one rng draw, done synchronously before any concurrent
   // grading starts — the shuffled array fixes the submission order mapLimit
