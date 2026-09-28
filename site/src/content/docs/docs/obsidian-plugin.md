@@ -24,4 +24,4 @@ Desktop only — the plugin needs a shell, which Obsidian mobile doesn't provide
 
 ## How it talks to vir
 
-Two stable JSON contracts: `vir query --json` for results and `vir doctor --json` for health. Both are versioned with the CLI; a CLI upgrade never breaks a plugin render without a matching plugin release.
+Three stable JSON contracts: `vir query --json` for results, `vir doctor --json` for health and `vir review --json` for the review queue and its approve, reject and restore actions (Review needs vir 0.23.0 or newer). All are versioned with the CLI; a CLI upgrade never breaks a plugin render without a matching plugin release.

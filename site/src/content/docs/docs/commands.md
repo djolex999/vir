@@ -33,6 +33,7 @@ description: Every vir subcommand with what it costs.
 | `vir audit` | cheap | A model judges every note: keep / verify / merge / reject. `--project`, `--limit`, `--all`, `--model` |
 | `vir audit --dry-run` | free | Notes, batches and estimated cost, no model call |
 | `vir review --audited` | free | Walk the notes `vir audit` flagged, worst first, with its reason |
+| `vir review --json` | free | Non-interactive review for the Obsidian plugin: `--audited` lists the queue; `--approve`, `--reject`, `--restore` act on one note |
 | `vir audit --apply-rejects` | free | Move fresh reject verdicts to `.rejected/`, asks first, reversible |
 | `vir lint` | free–cheap | Orphans and stale are free; `--contradictions` calls Haiku |
 | `vir lint --strays` | free | Note files with no live DB row. `--fix` moves them to `archived/` |

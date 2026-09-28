@@ -101,7 +101,8 @@ import { MIN_DEAD_WEIGHT_SAMPLE, buildQueriesReport } from "./cli/queries.js";
 import { buildQueryResults, errorPayload } from "./output/json.js";
 import { synthesize } from "./search/synthesizer.js";
 import { runMcpServer } from "./mcp/server.js";
-import { runReview } from "./cli/review.js";
+import { runReview, type ReviewCliOptions } from "./cli/review.js";
+import { runReviewJson, type ReviewJsonOptions } from "./cli/reviewJson.js";
 import { runAction } from "./cli/runAction.js";
 import { buildInitConfig } from "./cli/initConfig.js";
 import { runReconcile } from "./cli/reconcile.js";
@@ -1781,7 +1782,21 @@ program
   .option("--limit <n>", "Max notes to review in this session", "50")
   .option("--restore <note>", "Move one rejected note back out of .rejected/")
   .option("--audited", "Walk notes vir audit flagged, worst first")
-  .action(runAction(runReview));
+  .option("--approve <path>", "Approve one note (needs --json)")
+  .option("--reject <path>", "Reject one note into .rejected/ (needs --json)")
+  .option("--json", "Non-interactive: print the --audited queue or one action's result as JSON")
+  .action(
+    runAction(async (opts: ReviewCliOptions & ReviewJsonOptions & { json?: boolean }) => {
+      if (opts.json) {
+        runReviewJson(opts);
+        return;
+      }
+      if (opts.approve !== undefined || opts.reject !== undefined) {
+        throw new Error("--approve and --reject need --json (the terminal loop asks per note)");
+      }
+      await runReview(opts);
+    }),
+  );
 
 program
   .command("audit")

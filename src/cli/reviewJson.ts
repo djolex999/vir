@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   buildReviewQueue,
+  errorPayload,
   type VirErrorKind,
   type VirReviewAction,
   type VirReviewActionResult,
@@ -9,7 +10,8 @@ import {
 } from "../output/json.js";
 import { acquireLock, LOCK_PATH, LockHeldError, releaseLock } from "../pipeline/lock.js";
 import { CATEGORY_DIR, REJECTED_DIR } from "../pipeline/writer.js";
-import type { StateDb } from "../state/db.js";
+import { loadConfig } from "../config.js";
+import { StateDb } from "../state/db.js";
 import {
   approveNote,
   collectNotes,
@@ -141,4 +143,57 @@ function withLock<T>(lockPath: string, fn: () => T): T {
 
 function toWirePath(vaultRoot: string, abs: string): string {
   return relative(resolve(vaultRoot), abs).split(sep).join("/");
+}
+
+export interface ReviewJsonOptions {
+  audited?: boolean;
+  project?: string;
+  approve?: string;
+  reject?: string;
+  restore?: string;
+}
+
+// Same I/O contract as `vir query --json`: one JSON value on stdout and exit 0,
+// or an empty stdout, a one-line VirErrorPayload on stderr and exit 1.
+export function runReviewJson(opts: ReviewJsonOptions): void {
+  const actions: Array<[VirReviewAction, string]> = [];
+  if (opts.approve !== undefined) actions.push(["approve", opts.approve]);
+  if (opts.reject !== undefined) actions.push(["reject", opts.reject]);
+  if (opts.restore !== undefined) actions.push(["restore", opts.restore]);
+  if (actions.length + (opts.audited ? 1 : 0) !== 1) {
+    fail("invalid_args", "--json needs exactly one of --audited, --approve, --reject, --restore");
+    return;
+  }
+
+  let vaultRoot: string;
+  try {
+    const cfg = loadConfig();
+    vaultRoot = join(cfg.vaultPath, cfg.outputDir);
+  } catch (err) {
+    fail("no_vault", (err as Error).message);
+    return;
+  }
+  if (!existsSync(vaultRoot)) {
+    fail("no_vault", `vault not found: ${vaultRoot}`);
+    return;
+  }
+
+  const db = new StateDb();
+  try {
+    const action = actions[0];
+    const out =
+      action === undefined
+        ? reviewQueue(vaultRoot, db, opts.project)
+        : runReviewAction({ vaultRoot, db }, action[0], action[1]);
+    process.stdout.write(JSON.stringify(out) + "\n");
+  } catch (err) {
+    fail(err instanceof ReviewJsonError ? err.kind : "internal", (err as Error).message);
+  } finally {
+    db.close();
+  }
+}
+
+function fail(kind: VirErrorKind, message: string): void {
+  process.stderr.write(JSON.stringify(errorPayload(kind, message)) + "\n");
+  process.exitCode = 1;
 }
