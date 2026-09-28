@@ -11,6 +11,7 @@ export async function synthesize(
   cfg: Config,
   query: string,
   hits: SearchHit[],
+  stage: string = "query-synthesis",
 ): Promise<string> {
   const notes = hits
     .map(
@@ -40,7 +41,7 @@ Instructions:
       prompt,
       model,
       maxTokens: 600,
-      cost: { stage: "query-synthesis" },
+      cost: { stage },
     }),
   );
 }

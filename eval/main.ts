@@ -7,6 +7,8 @@ import { buildAndWritePool, labelPool } from "./labels/run.js";
 import { runSpotcheck } from "./labels/spotcheck.js";
 import { showLabels } from "./labels/show.js";
 import { runBaseline } from "./run.js";
+import { mineQuestions } from "./usefulness/mineRun.js";
+import { showLatestRun, usefulnessRun } from "./usefulness/run.js";
 
 const DEFAULT_SEED = 20260911;
 
@@ -28,7 +30,10 @@ const USAGE = `usage: npm run eval -- <command> [--seed N] [--dry-run]
   spotcheck   blind-grade 20 pairs yourself and report agreement with the model
   show        print labeled queries with grades and arm ranks [--per-class N]
   run         run every arm at top-8 against the labels; write ~/.vir/eval/runs/<ts>.json
-  arms        list arms`;
+  arms        list arms
+  usefulness mine   mine questions + facts from recent transcripts (--dry-run)
+  usefulness run    full vs ablated vs none → PASS/FAIL/NO VERDICT for the audit's rejects (--seed, --dry-run)
+  usefulness show   summary of the latest usefulness run`;
 
 async function main(): Promise<void> {
   const cmd = process.argv[2];
@@ -63,6 +68,24 @@ async function main(): Promise<void> {
     case "arms":
       for (const a of ARMS) process.stdout.write(`${a.id.padEnd(10)} ${a.label}\n`);
       return;
+    case "usefulness": {
+      const sub = process.argv[3];
+      switch (sub) {
+        case "mine":
+          await mineQuestions({ dryRun });
+          return;
+        case "run":
+          await usefulnessRun({ seed: opt("seed") ? seed : 20260926, dryRun });
+          return;
+        case "show":
+          process.stdout.write(`${showLatestRun()}\n`);
+          return;
+        default:
+          process.stderr.write(`${USAGE}\n`);
+          process.exit(2);
+      }
+      return;
+    }
     default:
       process.stderr.write(`${USAGE}\n`);
       process.exit(cmd ? 2 : 0);
