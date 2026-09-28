@@ -14,7 +14,7 @@ without spawning a TTY. The interactive loop is unchanged.
 - **Actions.** `--approve`, `--reject` and `--restore` with `--json` act on exactly one note and print the result as JSON. Use the one-token `--flag=<path>` form so a path starting with `-` is never read as a flag.
 - **Reject stops serving immediately.** `--reject` moves the note into `.rejected/` and calls `markRejected`, so `vir query` no longer returns it before the next run.
 - **Path guard.** Actions accept only paths inside the category directories (and `.rejected/` for restore), and only session notes; anything else, including `../` escapes, fails `invalid_args` before touching a file.
-- **No racing a run.** The three actions take the pipeline lock and fail with `busy` instead of racing a running `vir run`.
+- **No racing a run.** The three actions take the pipeline lock and fail with `busy` while a lock-holding run (a normal `vir run`, `vir reconcile`, `vir audit --apply-rejects`) is in progress; `vir run --rewrite-only` and `--dry-run` take no lock.
 - **Two new error kinds:** `busy` and `not_found`, alongside the existing ones. Errors follow the `vir query --json` contract: empty stdout, one-line error payload on stderr, exit 1.
 
 ## 0.22.1 — 2026-09-28

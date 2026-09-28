@@ -178,8 +178,9 @@ export function runReviewJson(opts: ReviewJsonOptions): void {
     return;
   }
 
-  const db = new StateDb();
+  let db: StateDb | undefined;
   try {
+    db = new StateDb();
     const action = actions[0];
     const out =
       action === undefined
@@ -189,7 +190,7 @@ export function runReviewJson(opts: ReviewJsonOptions): void {
   } catch (err) {
     fail(err instanceof ReviewJsonError ? err.kind : "internal", (err as Error).message);
   } finally {
-    db.close();
+    db?.close();
   }
 }
 
