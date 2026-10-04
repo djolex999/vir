@@ -1,0 +1,314 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Session Row Lifecycle",
+    "output": "docs/architecture/lifecycle-session-row.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:djolex999/vir.git",
+      "link_mode": "local-only",
+      "revision": "06c66063b90c9e5319b87d384d36cde351059634"
+    }
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Distill path"
+    },
+    {
+      "id": "held",
+      "label": "Held (reversible)"
+    },
+    {
+      "id": "recovery",
+      "label": "Failure + retry"
+    },
+    {
+      "id": "terminal",
+      "label": "Final"
+    }
+  ],
+  "states": [
+    {
+      "id": "new",
+      "type": "start",
+      "label": "Discovered",
+      "sublabel": "no row / new hash",
+      "lane": "main",
+      "col": 0,
+      "step": "01",
+      "sources": [
+        {
+          "path": "src/pipeline/scanner.ts",
+          "line": 16,
+          "end_line": 51,
+          "label": "scanSessions"
+        }
+      ]
+    },
+    {
+      "id": "distilling",
+      "type": "active",
+      "label": "In pipeline",
+      "sublabel": "parse → LLM",
+      "lane": "main",
+      "col": 1,
+      "step": "02",
+      "sources": [
+        {
+          "path": "src/pipeline/run.ts",
+          "line": 853,
+          "end_line": 1036,
+          "label": "session loop"
+        }
+      ]
+    },
+    {
+      "id": "distilled",
+      "type": "success",
+      "label": "Distilled",
+      "sublabel": "served + synced",
+      "lane": "main",
+      "col": 2,
+      "step": "03",
+      "tag": "attempts=0",
+      "sources": [
+        {
+          "path": "src/state/db.ts",
+          "line": 815,
+          "end_line": 875,
+          "label": "record"
+        },
+        {
+          "path": "src/state/db.ts",
+          "line": 893,
+          "end_line": 924,
+          "label": "listDistilled"
+        }
+      ]
+    },
+    {
+      "id": "archived",
+      "type": "neutral",
+      "label": "Archived",
+      "sublabel": "dedupe loser",
+      "lane": "main",
+      "col": 4,
+      "tag": "terminal",
+      "sources": [
+        {
+          "path": "src/state/db.ts",
+          "line": 1172,
+          "end_line": 1176,
+          "label": "archive"
+        },
+        {
+          "path": "src/dedupe/merger.ts",
+          "line": 34,
+          "end_line": 116
+        }
+      ]
+    },
+    {
+      "id": "gated",
+      "type": "waiting",
+      "label": "Gated skip",
+      "sublabel": "project / agent",
+      "lane": "held",
+      "col": 0,
+      "tag": "skip_reason",
+      "sources": [
+        {
+          "path": "src/state/db.ts",
+          "line": 27,
+          "end_line": 46,
+          "label": "SkipReason"
+        },
+        {
+          "path": "src/pipeline/run.ts",
+          "line": 863,
+          "end_line": 881
+        }
+      ]
+    },
+    {
+      "id": "demoted",
+      "type": "waiting",
+      "label": "Demoted",
+      "sublabel": "pruned / rejected",
+      "lane": "held",
+      "col": 4,
+      "tag": "overlay",
+      "sources": [
+        {
+          "path": "src/state/db.ts",
+          "line": 472,
+          "end_line": 501,
+          "label": "markRejected"
+        },
+        {
+          "path": "src/state/db.ts",
+          "line": 550,
+          "end_line": 579,
+          "label": "markPruned"
+        }
+      ]
+    },
+    {
+      "id": "failed",
+      "type": "failure",
+      "label": "Failed",
+      "sublabel": "error set",
+      "lane": "recovery",
+      "col": 2,
+      "tag": "attempts<3",
+      "sources": [
+        {
+          "path": "src/state/db.ts",
+          "line": 736,
+          "end_line": 756,
+          "label": "recordError"
+        },
+        {
+          "path": "src/pipeline/run.ts",
+          "line": 1037,
+          "end_line": 1062
+        }
+      ]
+    },
+    {
+      "id": "parked",
+      "type": "waiting",
+      "label": "Parked",
+      "sublabel": "no auto retry",
+      "lane": "recovery",
+      "col": 3,
+      "tag": "attempts≥3",
+      "sources": [
+        {
+          "path": "src/state/db.ts",
+          "line": 293,
+          "end_line": 297,
+          "label": "MAX_DISTILL_ATTEMPTS"
+        },
+        {
+          "path": "src/state/db.ts",
+          "line": 758,
+          "end_line": 765,
+          "label": "retryExhausted"
+        }
+      ]
+    },
+    {
+      "id": "finalskip",
+      "type": "neutral",
+      "label": "Final skip",
+      "sublabel": "filter / low conf",
+      "lane": "terminal",
+      "col": 1,
+      "tag": "skipped=1",
+      "sources": [
+        {
+          "path": "src/pipeline/run.ts",
+          "line": 954,
+          "end_line": 1002
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "from": "new",
+      "to": "distilling",
+      "label": "included"
+    },
+    {
+      "from": "distilling",
+      "to": "distilled",
+      "label": "written"
+    },
+    {
+      "from": "new",
+      "to": "gated",
+      "label": "gated",
+      "variant": "dashed"
+    },
+    {
+      "from": "gated",
+      "to": "new",
+      "label": "flipped"
+    },
+    {
+      "from": "distilling",
+      "to": "finalskip",
+      "label": "≤ 0.6",
+      "variant": "dashed"
+    },
+    {
+      "from": "distilling",
+      "to": "failed",
+      "label": "error",
+      "variant": "security"
+    },
+    {
+      "from": "failed",
+      "to": "parked",
+      "label": "3rd fail",
+      "variant": "security"
+    },
+    {
+      "from": "failed",
+      "to": "distilled",
+      "label": "reconcile",
+      "variant": "emphasis"
+    },
+    {
+      "from": "parked",
+      "to": "distilled",
+      "label": "--force"
+    },
+    {
+      "from": "distilled",
+      "to": "demoted",
+      "label": "prune/reject"
+    },
+    {
+      "from": "demoted",
+      "to": "distilled",
+      "label": "restore"
+    },
+    {
+      "from": "distilled",
+      "to": "archived",
+      "label": "dedupe"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "No status column",
+      "items": [
+        "State is derived from skipped, skip_reason, error, attempts, pruned_at, rejected_at, archived",
+        "record() resets attempts to 0 and never touches the overlays"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Retry rules",
+      "items": [
+        "recordError stores the attempted hash, so vir run does not retry the same bytes",
+        "attempts only climbs on a changed transcript or --full",
+        "Only vir reconcile retries; --force includes parked rows"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Gaps",
+      "items": [
+        "A failed reconcile retry does not bump attempts",
+        "Filter / low-confidence skips can overwrite a distilled row on re-run"
+      ]
+    }
+  ]
+}

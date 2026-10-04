@@ -1,0 +1,527 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "vir System Map",
+    "output": "docs/architecture/architecture-system-map.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:djolex999/vir.git",
+      "link_mode": "local-only",
+      "revision": "06c66063b90c9e5319b87d384d36cde351059634"
+    }
+  },
+  "components": [
+    {
+      "id": "scheduler",
+      "type": "cloud",
+      "label": "Scheduler",
+      "sublabel": "launchd · systemd · cron",
+      "pos": [
+        265,
+        60
+      ],
+      "size": [
+        130,
+        62
+      ],
+      "sources": [
+        {
+          "path": "src/daemon/index.ts",
+          "line": 57,
+          "end_line": 104,
+          "label": "install"
+        },
+        {
+          "path": "src/daemon/launchd.ts",
+          "line": 75,
+          "end_line": 110,
+          "label": "plist"
+        }
+      ]
+    },
+    {
+      "id": "cli",
+      "type": "backend",
+      "label": "vir CLI",
+      "sublabel": "commander + runAction",
+      "pos": [
+        490,
+        60
+      ],
+      "size": [
+        130,
+        62
+      ],
+      "sources": [
+        {
+          "path": "src/cli.ts",
+          "line": 154,
+          "end_line": 296,
+          "label": "vir run"
+        },
+        {
+          "path": "src/cli/runAction.ts",
+          "line": 24,
+          "end_line": 43
+        }
+      ],
+      "tag": "29 commands"
+    },
+    {
+      "id": "plugin",
+      "type": "frontend",
+      "label": "Obsidian plugin",
+      "sublabel": "vir-obsidian",
+      "pos": [
+        715,
+        60
+      ],
+      "size": [
+        130,
+        62
+      ],
+      "sources": [
+        {
+          "path": "src/cli/reviewJson.ts",
+          "line": 156,
+          "end_line": 200,
+          "label": "review --json"
+        },
+        {
+          "path": "src/output/json.ts",
+          "line": 213,
+          "end_line": 291,
+          "label": "wire types"
+        }
+      ]
+    },
+    {
+      "id": "embed",
+      "type": "external",
+      "label": "Embedder",
+      "sublabel": "Ollama · local bge",
+      "pos": [
+        940,
+        60
+      ],
+      "size": [
+        130,
+        62
+      ],
+      "sources": [
+        {
+          "path": "src/search/provider.ts",
+          "line": 42,
+          "end_line": 58,
+          "label": "resolve provider"
+        },
+        {
+          "path": "src/search/localProvider.ts",
+          "line": 10,
+          "end_line": 21
+        }
+      ]
+    },
+    {
+      "id": "claude",
+      "type": "external",
+      "label": "Claude Code",
+      "sublabel": "sessions · MCP host",
+      "pos": [
+        40,
+        210
+      ],
+      "size": [
+        130,
+        62
+      ],
+      "sources": [
+        {
+          "path": "src/mcp/install.ts",
+          "line": 41,
+          "end_line": 104,
+          "label": "claude mcp add"
+        }
+      ]
+    },
+    {
+      "id": "transcripts",
+      "type": "database",
+      "label": "Transcripts",
+      "sublabel": "~/.claude/projects",
+      "pos": [
+        265,
+        210
+      ],
+      "size": [
+        130,
+        62
+      ],
+      "sources": [
+        {
+          "path": "src/pipeline/scanner.ts",
+          "line": 16,
+          "end_line": 51,
+          "label": "scanSessions"
+        }
+      ]
+    },
+    {
+      "id": "pipeline",
+      "type": "backend",
+      "label": "Distill pipeline",
+      "sublabel": "runPipeline",
+      "pos": [
+        490,
+        210
+      ],
+      "size": [
+        130,
+        62
+      ],
+      "sources": [
+        {
+          "path": "src/pipeline/run.ts",
+          "line": 194,
+          "end_line": 1198,
+          "label": "runPipeline"
+        }
+      ],
+      "tag": "pidfile lock"
+    },
+    {
+      "id": "vault",
+      "type": "database",
+      "label": "Obsidian vault",
+      "sublabel": "markdown notes",
+      "pos": [
+        715,
+        210
+      ],
+      "size": [
+        130,
+        62
+      ],
+      "sources": [
+        {
+          "path": "src/pipeline/writer.ts",
+          "line": 111,
+          "end_line": 253,
+          "label": "VaultWriter.write"
+        }
+      ]
+    },
+    {
+      "id": "retriever",
+      "type": "backend",
+      "label": "Retriever",
+      "sublabel": "vectors → TF-IDF, MMR",
+      "pos": [
+        940,
+        210
+      ],
+      "size": [
+        130,
+        62
+      ],
+      "sources": [
+        {
+          "path": "src/search/retriever.ts",
+          "line": 108,
+          "end_line": 161,
+          "label": "searchWithOutcome"
+        },
+        {
+          "path": "src/search/retriever.ts",
+          "line": 262,
+          "end_line": 301,
+          "label": "mmrRerank"
+        }
+      ]
+    },
+    {
+      "id": "claudemd",
+      "type": "database",
+      "label": "CLAUDE.md files",
+      "sublabel": "global + per project",
+      "pos": [
+        40,
+        360
+      ],
+      "size": [
+        130,
+        62
+      ],
+      "sources": [
+        {
+          "path": "src/claude/updater.ts",
+          "line": 333,
+          "end_line": 373,
+          "label": "paths"
+        }
+      ]
+    },
+    {
+      "id": "updater",
+      "type": "backend",
+      "label": "sync-claude",
+      "sublabel": "VIR:START/END block",
+      "pos": [
+        265,
+        360
+      ],
+      "size": [
+        130,
+        62
+      ],
+      "sources": [
+        {
+          "path": "src/claude/updater.ts",
+          "line": 37,
+          "end_line": 60,
+          "label": "planUpdates"
+        },
+        {
+          "path": "src/claude/updater.ts",
+          "line": 285,
+          "end_line": 331,
+          "label": "applyPlan"
+        }
+      ]
+    },
+    {
+      "id": "llm",
+      "type": "external",
+      "label": "LLM providers",
+      "sublabel": "Anthropic · Kie · CLI",
+      "pos": [
+        490,
+        360
+      ],
+      "size": [
+        130,
+        62
+      ],
+      "sources": [
+        {
+          "path": "src/pipeline/distiller.ts",
+          "line": 326,
+          "end_line": 357,
+          "label": "callLLM"
+        },
+        {
+          "path": "src/pipeline/claudeCli.ts",
+          "line": 161,
+          "end_line": 219
+        }
+      ]
+    },
+    {
+      "id": "sqlite",
+      "type": "database",
+      "label": "SQLite state",
+      "sublabel": "~/.vir/vir.db (WAL)",
+      "pos": [
+        715,
+        360
+      ],
+      "size": [
+        130,
+        62
+      ],
+      "sources": [
+        {
+          "path": "src/state/db.ts",
+          "line": 314,
+          "end_line": 399,
+          "label": "StateDb"
+        }
+      ]
+    },
+    {
+      "id": "mcp",
+      "type": "backend",
+      "label": "MCP server",
+      "sublabel": "stdio · read-only DB",
+      "pos": [
+        940,
+        360
+      ],
+      "size": [
+        130,
+        62
+      ],
+      "sources": [
+        {
+          "path": "src/mcp/server.ts",
+          "line": 210,
+          "end_line": 330,
+          "label": "runMcpServer"
+        },
+        {
+          "path": "src/mcp/tools.ts",
+          "line": 4,
+          "end_line": 11,
+          "label": "VIR_TOOLS"
+        }
+      ],
+      "tag": "6 tools"
+    }
+  ],
+  "connections": [
+    {
+      "id": "writes-jsonl",
+      "from": "claude",
+      "to": "transcripts",
+      "label": "writes",
+      "variant": "emphasis"
+    },
+    {
+      "id": "scan",
+      "from": "transcripts",
+      "to": "pipeline",
+      "label": "scan+hash",
+      "variant": "emphasis"
+    },
+    {
+      "id": "notes",
+      "from": "pipeline",
+      "to": "vault",
+      "label": "notes .md",
+      "variant": "emphasis"
+    },
+    {
+      "id": "read-notes",
+      "from": "vault",
+      "to": "retriever",
+      "label": "read notes",
+      "variant": "emphasis"
+    },
+    {
+      "id": "cadence",
+      "from": "scheduler",
+      "to": "cli",
+      "label": "every N h"
+    },
+    {
+      "id": "plugin-json",
+      "from": "plugin",
+      "to": "cli",
+      "label": "--json"
+    },
+    {
+      "id": "run",
+      "from": "cli",
+      "to": "pipeline",
+      "label": "runPipeline"
+    },
+    {
+      "id": "embed-query",
+      "from": "retriever",
+      "to": "embed",
+      "label": "embed query"
+    },
+    {
+      "id": "callllm",
+      "from": "pipeline",
+      "to": "llm",
+      "label": "callLLM",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "record",
+      "from": "pipeline",
+      "to": "sqlite",
+      "label": "record row",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "vectors",
+      "from": "sqlite",
+      "to": "retriever",
+      "label": "vectors",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "search",
+      "from": "mcp",
+      "to": "retriever",
+      "label": "search"
+    },
+    {
+      "id": "list-distilled",
+      "from": "sqlite",
+      "to": "updater",
+      "label": "listDistilled",
+      "fromSide": "bottom",
+      "toSide": "bottom"
+    },
+    {
+      "id": "vir-block",
+      "from": "updater",
+      "to": "claudemd",
+      "label": "VIR block",
+      "variant": "dashed"
+    },
+    {
+      "id": "loaded",
+      "from": "claudemd",
+      "to": "claude",
+      "label": "loaded next session"
+    },
+    {
+      "id": "mcp-stdio",
+      "from": "claude",
+      "to": "mcp",
+      "label": "MCP stdio",
+      "variant": "emphasis",
+      "fromSide": "left",
+      "toSide": "bottom",
+      "via": [
+        [
+          16,
+          241
+        ],
+        [
+          16,
+          480
+        ],
+        [
+          1005,
+          480
+        ]
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "The loop",
+      "items": [
+        "Claude Code sessions → distilled notes → CLAUDE.md and MCP → better sessions",
+        "Everything runs on the user's machine; no vir server"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Spend",
+      "items": [
+        "Paid calls: distill, compose, summarize, audit, dedupe, lint contradictions",
+        "MCP vir_query also synthesizes via callLLM",
+        "All spend is recorded in ~/.vir/cost.log"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Outside the runtime",
+      "items": [
+        "eval/: retrieval + distill A/B harness, imports src one-way",
+        "site/: Astro + Starlight docs at virwiki.dev"
+      ]
+    }
+  ]
+}

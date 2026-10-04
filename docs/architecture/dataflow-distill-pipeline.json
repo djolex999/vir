@@ -1,0 +1,448 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "vir run: Transcript to Vault Note",
+    "output": "docs/architecture/dataflow-distill-pipeline.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:djolex999/vir.git",
+      "link_mode": "local-only",
+      "revision": "06c66063b90c9e5319b87d384d36cde351059634"
+    },
+    "viewBox": [
+      1080,
+      640
+    ]
+  },
+  "stages": [
+    {
+      "label": "Sources"
+    },
+    {
+      "label": "Free gates"
+    },
+    {
+      "label": "Prepare"
+    },
+    {
+      "label": "Paid LLM calls"
+    },
+    {
+      "label": "Persist"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "transcripts",
+      "type": "external",
+      "label": "Session transcripts",
+      "sublabel": "~/.claude/projects",
+      "stage": 0,
+      "row": 0,
+      "sources": [
+        {
+          "path": "src/pipeline/scanner.ts",
+          "line": 16,
+          "end_line": 51,
+          "label": "scanSessions"
+        }
+      ],
+      "width": 124
+    },
+    {
+      "id": "clips",
+      "type": "external",
+      "label": "Articles + PDFs",
+      "sublabel": "articlesDir / pdfsDir",
+      "stage": 0,
+      "row": 2,
+      "sources": [
+        {
+          "path": "src/pipeline/articleReader.ts",
+          "line": 21,
+          "end_line": 76
+        },
+        {
+          "path": "src/pipeline/pdfReader.ts",
+          "line": 47,
+          "end_line": 60
+        }
+      ],
+      "width": 124
+    },
+    {
+      "id": "gates",
+      "type": "security",
+      "label": "Scan + gates",
+      "sublabel": "project · cache · parked",
+      "tag": "SHA-256",
+      "stage": 1,
+      "row": 0,
+      "sources": [
+        {
+          "path": "src/pipeline/run.ts",
+          "line": 420,
+          "end_line": 479,
+          "label": "scan + category filter"
+        },
+        {
+          "path": "src/pipeline/run.ts",
+          "line": 853,
+          "end_line": 907,
+          "label": "per-session gates"
+        },
+        {
+          "path": "src/pipeline/projects.ts",
+          "line": 230,
+          "end_line": 246,
+          "label": "decideProject"
+        }
+      ],
+      "width": 124
+    },
+    {
+      "id": "docscan",
+      "type": "backend",
+      "label": "Doc scan",
+      "sublabel": "hash-only idempotency",
+      "stage": 1,
+      "row": 2,
+      "sources": [
+        {
+          "path": "src/pipeline/run.ts",
+          "line": 1313,
+          "end_line": 1346,
+          "label": "runArticlePhase"
+        },
+        {
+          "path": "src/pipeline/run.ts",
+          "line": 1418,
+          "end_line": 1447,
+          "label": "runPdfPhase"
+        }
+      ],
+      "width": 124
+    },
+    {
+      "id": "parse",
+      "type": "backend",
+      "label": "Parse + score",
+      "sublabel": "heuristic score ≥ 0.4",
+      "stage": 2,
+      "row": 0,
+      "sources": [
+        {
+          "path": "src/pipeline/parser.ts",
+          "line": 16,
+          "end_line": 154
+        },
+        {
+          "path": "src/pipeline/filter.ts",
+          "line": 11,
+          "end_line": 43
+        },
+        {
+          "path": "src/pipeline/run.ts",
+          "line": 909,
+          "end_line": 965
+        }
+      ],
+      "width": 124
+    },
+    {
+      "id": "scrub",
+      "type": "security",
+      "label": "Tool filter + scrub",
+      "sublabel": "mask secrets, trim tools",
+      "stage": 2,
+      "row": 1,
+      "sources": [
+        {
+          "path": "src/pipeline/toolCallFilter.ts",
+          "line": 177,
+          "end_line": 244
+        },
+        {
+          "path": "src/pipeline/scrubber.ts",
+          "line": 39,
+          "end_line": 62
+        },
+        {
+          "path": "src/pipeline/run.ts",
+          "line": 967,
+          "end_line": 981
+        }
+      ],
+      "width": 124
+    },
+    {
+      "id": "provider",
+      "type": "external",
+      "label": "LLM provider",
+      "sublabel": "Anthropic · Kie · CLI",
+      "stage": 3,
+      "row": 0,
+      "sources": [
+        {
+          "path": "src/pipeline/distiller.ts",
+          "line": 165,
+          "end_line": 250,
+          "label": "callKie / callAnthropic"
+        },
+        {
+          "path": "src/pipeline/claudeCli.ts",
+          "line": 161,
+          "end_line": 219,
+          "label": "callClaudeCli"
+        }
+      ],
+      "width": 124
+    },
+    {
+      "id": "distiller",
+      "type": "backend",
+      "label": "Distiller · callLLM",
+      "sublabel": "classify → distill",
+      "tag": "≤ 0.6 dropped",
+      "stage": 3,
+      "row": 1,
+      "sources": [
+        {
+          "path": "src/pipeline/distiller.ts",
+          "line": 326,
+          "end_line": 357,
+          "label": "callLLM chokepoint"
+        },
+        {
+          "path": "src/pipeline/distiller.ts",
+          "line": 628,
+          "end_line": 642,
+          "label": "Distiller.run"
+        },
+        {
+          "path": "src/pipeline/run.ts",
+          "line": 986,
+          "end_line": 1002
+        }
+      ],
+      "width": 124
+    },
+    {
+      "id": "docdistill",
+      "type": "backend",
+      "label": "Doc distiller",
+      "sublabel": "24k-char input cap",
+      "stage": 3,
+      "row": 2,
+      "sources": [
+        {
+          "path": "src/pipeline/articleDistiller.ts",
+          "line": 45,
+          "end_line": 80
+        },
+        {
+          "path": "src/pipeline/pdfDistiller.ts",
+          "line": 46,
+          "end_line": 81
+        }
+      ],
+      "width": 124
+    },
+    {
+      "id": "sqlite",
+      "type": "database",
+      "label": "SQLite state",
+      "sublabel": "~/.vir/vir.db (WAL)",
+      "stage": 4,
+      "row": 0,
+      "sources": [
+        {
+          "path": "src/state/db.ts",
+          "line": 815,
+          "end_line": 875,
+          "label": "record"
+        },
+        {
+          "path": "src/state/db.ts",
+          "line": 744,
+          "end_line": 756,
+          "label": "recordError"
+        }
+      ],
+      "width": 124
+    },
+    {
+      "id": "vault",
+      "type": "database",
+      "label": "Obsidian vault",
+      "sublabel": "<category>/<slug>.md",
+      "stage": 4,
+      "row": 1,
+      "sources": [
+        {
+          "path": "src/pipeline/writer.ts",
+          "line": 111,
+          "end_line": 253,
+          "label": "VaultWriter.write"
+        },
+        {
+          "path": "src/pipeline/run.ts",
+          "line": 1004,
+          "end_line": 1019
+        }
+      ],
+      "width": 124
+    },
+    {
+      "id": "costlog",
+      "type": "database",
+      "label": "Cost log",
+      "sublabel": "~/.vir/cost.log JSONL",
+      "stage": 4,
+      "row": 2,
+      "sources": [
+        {
+          "path": "src/pipeline/distiller.ts",
+          "line": 290,
+          "end_line": 324,
+          "label": "recordCost"
+        },
+        {
+          "path": "src/cost/log.ts",
+          "line": 24,
+          "end_line": 31
+        }
+      ],
+      "width": 124
+    }
+  ],
+  "flows": [
+    {
+      "id": "jsonl-in",
+      "from": "transcripts",
+      "to": "gates",
+      "label": "jsonl",
+      "variant": "emphasis"
+    },
+    {
+      "id": "included",
+      "from": "gates",
+      "to": "parse",
+      "label": "included",
+      "variant": "emphasis"
+    },
+    {
+      "id": "passes",
+      "from": "parse",
+      "to": "scrub",
+      "label": "passes",
+      "variant": "emphasis",
+      "labelAt": [
+        530,
+        214
+      ]
+    },
+    {
+      "id": "clean-text",
+      "from": "scrub",
+      "to": "distiller",
+      "label": "scrubbed",
+      "variant": "emphasis"
+    },
+    {
+      "id": "llm-call",
+      "from": "distiller",
+      "to": "provider",
+      "label": "prompt",
+      "classification": "paid",
+      "labelAt": [
+        745,
+        214
+      ]
+    },
+    {
+      "id": "note-out",
+      "from": "distiller",
+      "to": "vault",
+      "label": "note markdown",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "id": "row-out",
+      "from": "vault",
+      "to": "sqlite",
+      "label": "db.record",
+      "classification": "after write",
+      "labelAt": [
+        960,
+        214
+      ]
+    },
+    {
+      "id": "skip-rows",
+      "from": "gates",
+      "to": "sqlite",
+      "label": "skip_reason rows",
+      "variant": "dashed",
+      "route": "top-channel",
+      "fromSide": "top",
+      "toSide": "top"
+    },
+    {
+      "id": "cost-out",
+      "from": "distiller",
+      "to": "costlog",
+      "label": "usage + $",
+      "variant": "dashed"
+    },
+    {
+      "id": "docs-in",
+      "from": "clips",
+      "to": "docscan",
+      "label": "md / pdf"
+    },
+    {
+      "id": "docs-new",
+      "from": "docscan",
+      "to": "docdistill",
+      "label": "new hash"
+    },
+    {
+      "id": "docs-llm",
+      "from": "docdistill",
+      "to": "distiller",
+      "label": "via callLLM"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Free before paid",
+      "items": [
+        "Scan, category, project, cache, prune and 3-strike gates all run before any LLM call",
+        "A 5-token preflight probe aborts the whole run on a provider outage",
+        "Every config-driven skip writes a skip_reason row"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Failure handling",
+      "items": [
+        "recordError bumps attempts; 3 consecutive failures park the session",
+        "Only vir reconcile --force retries a parked session",
+        "A claude-cli quota hit halts the loop with no error rows"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "After the loop",
+      "items": [
+        "Project summaries for projects with 3+ new notes",
+        "Embedding sweep back-fills NULL vectors (Ollama or local)",
+        "Articles and PDFs run their own phase via the same callLLM"
+      ]
+    }
+  ]
+}
