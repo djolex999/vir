@@ -1213,9 +1213,9 @@ export class StateDb {
   isArticleProcessed(path: string, hash: string): boolean {
     if (!this.hasArticlesTable()) return false;
     const row = this.db
-      .prepare("SELECT hash FROM articles WHERE path = ?")
-      .get(path) as { hash: string } | undefined;
-    return row !== undefined && row.hash === hash;
+      .prepare("SELECT hash, error FROM articles WHERE path = ?")
+      .get(path) as { hash: string; error: string | null } | undefined;
+    return row !== undefined && row.hash === hash && row.error === null;
   }
 
   recordArticle(opts: {
@@ -1416,9 +1416,9 @@ export class StateDb {
   isPdfProcessed(path: string, hash: string): boolean {
     if (!this.hasPdfsTable()) return false;
     const row = this.db
-      .prepare("SELECT hash FROM pdfs WHERE path = ?")
-      .get(path) as { hash: string } | undefined;
-    return row !== undefined && row.hash === hash;
+      .prepare("SELECT hash, error FROM pdfs WHERE path = ?")
+      .get(path) as { hash: string; error: string | null } | undefined;
+    return row !== undefined && row.hash === hash && row.error === null;
   }
 
   recordPdf(opts: {

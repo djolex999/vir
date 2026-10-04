@@ -1074,7 +1074,17 @@ export async function runPipeline(
     }
   }
 
+  // A subscription limit is a wall for every later LLM call too. Running the
+  // project summaries, article phase or PDF phase after a halt only hits it
+  // again, and the doc phases would record every new item as errored. All of
+  // them are picked up by the next run instead.
+  const halted = summary.limitHalted !== null;
+  if (halted) {
+    fileLog("limit halt: skipping project summaries, articles and pdfs this run");
+  }
+
   for (const [slug, count] of newPerProject) {
+    if (halted) break;
     if (count < 3) continue;
     try {
       const res = await summarizeProject(cfg, slug, db);
@@ -1133,13 +1143,13 @@ export async function runPipeline(
 
   // Second input source: web articles. Gated on config; a session-only install
   // (no articlesDir) skips this entirely and behaves exactly as before.
-  if (cfg.articlesDir && cfg.distillArticles) {
+  if (!halted && cfg.articlesDir && cfg.distillArticles) {
     await runArticlePhase(cfg, db, writer, summary, fileLog, interactive);
   }
 
   // Third input source: PDFs / papers. Gated identically; an install without
   // pdfsDir skips this entirely (the article pattern, cloned).
-  if (cfg.pdfsDir && cfg.distillPdfs) {
+  if (!halted && cfg.pdfsDir && cfg.distillPdfs) {
     await runPdfPhase(cfg, db, writer, summary, fileLog, interactive);
   }
 
@@ -1495,8 +1505,11 @@ async function runPdfPhase(
       }
       fileLog(`error on pdf ${src.filePath}: ${msg}`);
       try {
-        // Record with the source hash so a corrupt PDF isn't retried every run
-        // (same idempotency contract as articles).
+        // The error row keeps the source hash for diagnosis, but
+        // isPdfProcessed ignores errored rows, so the PDF is retried next run
+        // (same contract as articles). A corrupt PDF therefore fails on every
+        // run until it is fixed or removed; the parse fails before any paid
+        // call.
         db.recordPdf({
           path: src.filePath,
           hash: src.hash,

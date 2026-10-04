@@ -48,11 +48,24 @@ describe("StateDb — pdfs table", () => {
     });
   });
 
-  it("isPdfProcessed matches on path + hash only", () => {
+  it("isPdfProcessed matches on path + hash for a clean row", () => {
     recordDistilled();
     expect(db.isPdfProcessed("/papers/attention.pdf", "h1")).toBe(true);
     expect(db.isPdfProcessed("/papers/attention.pdf", "h2")).toBe(false);
     expect(db.isPdfProcessed("/papers/other.pdf", "h1")).toBe(false);
+  });
+
+  it("an errored row is not processed, so the same bytes are retried", () => {
+    db.recordPdf({ path: "/papers/bad.pdf", hash: "hb", skipped: false, error: "parse failed" });
+    expect(db.isPdfProcessed("/papers/bad.pdf", "hb")).toBe(false);
+
+    db.recordPdf({ path: "/papers/bad.pdf", hash: "hb", skipped: false, notePath: "/vault/vir/pdfs/bad.md" });
+    expect(db.isPdfProcessed("/papers/bad.pdf", "hb")).toBe(true);
+  });
+
+  it("a skipped row stays processed (skip is final for those bytes)", () => {
+    db.recordPdf({ path: "/papers/empty.pdf", hash: "z", skipped: true });
+    expect(db.isPdfProcessed("/papers/empty.pdf", "z")).toBe(true);
   });
 
   it("excludes skipped pdfs from listPdfs", () => {

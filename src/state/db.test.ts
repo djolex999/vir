@@ -83,6 +83,40 @@ describe("StateDb.record error lifecycle", () => {
   });
 });
 
+describe("StateDb.isArticleProcessed", () => {
+  let dir: string;
+  let db: StateDb;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vir-db-"));
+    db = new StateDb(join(dir, "vir.db"));
+  });
+  afterEach(() => {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("a clean row with the same hash is processed; a changed hash is not", () => {
+    db.recordArticle({ path: "/clips/a.md", hash: "h1", skipped: false, notePath: "/vault/vir/articles/a.md" });
+    expect(db.isArticleProcessed("/clips/a.md", "h1")).toBe(true);
+    expect(db.isArticleProcessed("/clips/a.md", "h2")).toBe(false);
+  });
+
+  it("an errored row is not processed, so the same bytes are retried", () => {
+    db.recordArticle({ path: "/clips/a.md", hash: "h1", skipped: false, error: "claude-cli limit" });
+    expect(db.isArticleProcessed("/clips/a.md", "h1")).toBe(false);
+
+    // A later success clears the error (direct assignment in the upsert).
+    db.recordArticle({ path: "/clips/a.md", hash: "h1", skipped: false, notePath: "/vault/vir/articles/a.md" });
+    expect(db.isArticleProcessed("/clips/a.md", "h1")).toBe(true);
+  });
+
+  it("a skipped row stays processed (skip is final for those bytes)", () => {
+    db.recordArticle({ path: "/clips/thin.md", hash: "h1", skipped: true });
+    expect(db.isArticleProcessed("/clips/thin.md", "h1")).toBe(true);
+  });
+});
+
 describe("StateDb.recordError — hash records on success, never on attempt", () => {
   let dir: string;
   let db: StateDb;
