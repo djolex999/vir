@@ -56,20 +56,10 @@ function isDistilledRow(row: SessionRow | undefined): boolean {
   );
 }
 
-// A row that holds a note, served or hidden only by a failed re-distill's
-// error. A filter or low-confidence skip of new bytes must keep that note.
-function holdsNote(row: SessionRow | undefined): boolean {
-  return (
-    row !== undefined &&
-    row.skipped === 0 &&
-    row.content !== null &&
-    row.content !== ""
-  );
-}
-
 import { scrub } from "./scrubber.js";
 import { summarizeProject } from "./summarizer.js";
 import { filterToolCalls } from "./toolCallFilter.js";
+import { distillOneSession } from "./distillSession.js";
 import type { ParsedSession } from "./types.js";
 import { kebab, VaultWriter } from "./writer.js";
 import { sweepEmbeddings } from "./embeddingSweep.js";
@@ -963,83 +953,45 @@ export async function runPipeline(
         continue;
       }
 
-      const filter = scoreSession(parsed, cfg.filterThreshold);
-
-      if (!filter.passes) {
+      const outcome = await distillOneSession(parsed, found, {
+        cfg,
+        db,
+        distiller,
+        writer,
+        log: (msg) => {
+          if (interactive) ui.line(ui.dim(`  ${msg}`));
+          fileLog(msg);
+        },
+        // The claude-cli batch cap sits at the paid-call boundary. A deferred
+        // session records NOTHING, so it re-enters on the next run.
+        beforePaidCall: () => {
+          if (cliCapActive && distillsStarted >= CLAUDE_CLI_SESSION_CAP) {
+            return false;
+          }
+          distillsStarted += 1;
+          return true;
+        },
+      });
+      if (outcome.kind === "filtered") {
         summary.skippedByFilter += 1;
-        if (holdsNote(db.getByPath(found.path))) {
-          db.keepNote(found.path, found.hash);
-          fileLog(`filtered, kept existing note: ${found.path}`);
-          continue;
-        }
-        db.record({
-          path: found.path,
-          hash: found.hash,
-          skipped: true,
-          notePaths: [],
-        });
+        if (outcome.keptNote) fileLog(`filtered, kept existing note: ${found.path}`);
         continue;
       }
-
-      const scrubbedSummary = scrub(parsed.rawSummary);
-      const toolFilter = filterToolCalls(
-        parsed.transcriptText,
-        cfg.filterToolCalls,
-      );
-      if (toolFilter.tokensSaved > 1000 || toolFilter.skillResultsStripped > 0) {
-        const skills =
-          toolFilter.skillResultsStripped > 0
-            ? `, ${toolFilter.skillResultsStripped} skill loads`
-            : "";
-        const msg = `filtered ${toolFilter.toolCallsStripped} tool results${skills}, saved ~${toolFilter.tokensSaved} tokens`;
-        if (interactive) ui.line(ui.dim(`  ${msg}`));
-        fileLog(msg);
-      }
-      const scrubbedContent = scrub(toolFilter.filtered);
-
-      // Cap check sits at the paid-call boundary: everything above is free
-      // bookkeeping. A deferred session records NOTHING, so it stays
-      // unprocessed and re-enters on the next run.
-      if (cliCapActive && distillsStarted >= CLAUDE_CLI_SESSION_CAP) {
+      if (outcome.kind === "deferred") {
         summary.capDeferred += 1;
         continue;
       }
-      distillsStarted += 1;
-
-      const note = await distiller.run(parsed, scrubbedSummary, scrubbedContent);
-      if (!note) {
+      if (outcome.kind === "low-confidence") {
         summary.lowConfidence += 1;
-        if (holdsNote(db.getByPath(found.path))) {
-          db.keepNote(found.path, found.hash);
+        if (outcome.keptNote) {
           fileLog(`low confidence, kept existing note: ${found.path}`);
-          continue;
         }
-        db.record({
-          path: found.path,
-          hash: found.hash,
-          skipped: true,
-          notePaths: [],
-        });
         continue;
       }
 
-      const written = await writer.write(parsed, note);
+      const { note, written } = outcome;
       summary.distilled += 1;
       summary.notesWritten.push(...written);
-      db.record({
-        path: found.path,
-        hash: found.hash,
-        skipped: false,
-        notePaths: written,
-        content: note.markdown,
-        category: note.classification.category,
-        topic: note.classification.topic,
-        project: note.classification.project,
-        confidence: note.classification.confidence,
-        startedAt: parsed.startedAt,
-        entrypoint: parsed.entrypoint,
-      });
-      writer.flushPendingEmbeddings();
       if (interactive) {
         ui.categoryRow(note.classification.category, note.classification.topic);
       }
