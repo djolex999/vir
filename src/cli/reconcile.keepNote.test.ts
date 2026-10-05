@@ -168,3 +168,18 @@ describe("runReconcile — applies vir run's filters", () => {
     });
   });
 });
+
+describe("runReconcile — a failed retry counts toward the retry bound", () => {
+  it("records the error and bumps attempts, so the row is eventually parked", async () => {
+    withDb((db) => db.recordError(path, "h-new", "kie 500"));
+    spies.distill.mockRejectedValue(new Error("still failing"));
+
+    await runReconcile(cfg, { yes: true });
+
+    expect(withDb((db) => db.getByPath(path))).toMatchObject({
+      error: "still failing",
+      attempts: 2,
+      skipped: 0,
+    });
+  });
+});

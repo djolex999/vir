@@ -428,11 +428,19 @@ export async function runReconcile(
           process.exitCode = 1;
           break;
         }
-        // A retry that fails again must leave the row as-is (content still
-        // null/empty) so the next reconcile pass can catch it. Do NOT mark
-        // it processed-with-empty.
+        // A retry that fails again stays a reconcile target (content still
+        // null/empty, never marked processed-with-empty).
         stillFailed += 1;
         const msg = (err as Error).message ?? String(err);
+        // Count the failure like vir run does: recordError keeps the row's
+        // hash and content and bumps attempts, so a target that keeps failing
+        // is parked after MAX_DISTILL_ATTEMPTS instead of retried (and paid
+        // for) on every pass. --force still retries parked rows.
+        try {
+          db.recordError(t.path, t.hash, msg);
+        } catch {
+          // a bookkeeping failure must not hide the retry result
+        }
         ui.row(
           ui.errorColor(ui.CROSS),
           ui.text(`retry failed: ${deriveSessionId(t.path).slice(0, 8)} — ${msg}`),
