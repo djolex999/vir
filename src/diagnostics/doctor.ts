@@ -37,6 +37,7 @@ import {
   QUERY_LOG_PATH,
 } from "../search/queryLog.js";
 import { CLAUDE_CLI_LIMIT_MARKER_PATH } from "../pipeline/claudeCli.js";
+import { resolvePricing } from "../cost/pricing.js";
 import { isClaudeAvailable, isInstalled } from "../mcp/install.js";
 import { gatherProjectsReport } from "../cli/projects.js";
 import { StateDb } from "../state/db.js";
@@ -187,6 +188,29 @@ async function checkApiKey(cfg: Config): Promise<CheckResult> {
 // Separate from provider auth on purpose: that row pings from the user's shell,
 // while this one reports what the last run actually saw, and the daemon runs
 // under launchd with its own environment.
+// Exported for tests. A configured model with no price on the active provider
+// is logged as unknown spend (never $0): say so before the money is spent, and
+// point at the config escape hatch. Subscription (claude-cli) has no prices.
+export function pricedModelsCheck(cfg: Config): CheckResult | null {
+  const provider = cfg.provider;
+  if (provider === "claude-cli") return null;
+  const configured = [
+    cfg.models.classify,
+    cfg.models.distill,
+    ...(cfg.models.distillFast ? [cfg.models.distillFast] : []),
+  ];
+  const unpriced = configured
+    .map((m) => normalizeModelName(m, provider))
+    .filter(
+      (m) => resolvePricing(provider, m, cfg.pricing, cfg.kieTopUpTier) === null,
+    );
+  if (unpriced.length === 0) return ok("model prices", `all priced for ${provider}`);
+  return warn(
+    "model prices",
+    `no ${provider} price for ${[...new Set(unpriced)].join(", ")} — vir cost will count these calls as unpriced; add them under pricing.${provider} in config.json`,
+  );
+}
+
 function checkProviderPreflight(): CheckResult | null {
   return preflightFailureCheck(readPreflightFailure(), Date.now());
 }
@@ -851,6 +875,8 @@ export async function runDoctor(): Promise<void> {
 
   if (cfg) {
     record(await checkApiKey(cfg));
+    const prices = pricedModelsCheck(cfg);
+    if (prices) record(prices);
     const preflight = checkProviderPreflight();
     if (preflight) record(preflight);
     record(checkVaultPath(cfg));

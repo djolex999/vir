@@ -295,6 +295,13 @@ program
           `${report.subscriptionCalls} claude-cli calls (quota, no $ — excluded from totals)`,
         );
       }
+      if (report.unpricedCalls > 0) {
+        ui.stat(
+          "unpriced",
+          `${report.unpricedCalls} calls to a model with no price (real spend, not in the total — add it under pricing in config.json)`,
+          ui.warn,
+        );
+      }
       ui.stat("sessions", report.sessionCount);
       ui.stat("total", ui.formatUsd(report.total), ui.warn);
       ui.stat("median/session", ui.formatUsd(report.median));
@@ -553,6 +560,8 @@ program
             continue;
           }
           const result = applyPlan(p);
+          // A file that could not be updated is a failed sync, not a warning.
+          if (!result.ok) process.exitCode = 1;
           ui.row(
             result.ok ? ui.success(ui.CHECK) : ui.errorColor(ui.CROSS),
             ui.text(

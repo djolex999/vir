@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   callKie,
   costForRecord,
+  probeProvider,
   HttpError,
   isRetryable,
   KieTimeoutError,
@@ -436,5 +437,51 @@ describe("the note is titled from the finished note, not from classify", () => {
     const p = buildTitlePrompt("## Summary\n\nJEZGRO cleared the trademark search.");
     expect(p).toContain("JEZGRO cleared the trademark search.");
     expect(p).toContain("single most important claim");
+  });
+});
+
+describe("costForRecord never logs an unpriced model as $0", () => {
+  it("a model with no price on the provider is unknown (null), not free", () => {
+    expect(costForRecord("kie", "claude-sonnet-5", 1000, 500, undefined, "standard")).toBeNull();
+    expect(costForRecord("anthropic", "claude-unknown-9", 1000, 500, undefined, "standard")).toBeNull();
+  });
+
+  it("priced models still get a dollar figure", () => {
+    expect(costForRecord("kie", "claude-haiku-4-5", 1_000_000, 0, undefined, "standard")).toBeCloseTo(0.28);
+  });
+
+  it("a complete config price for an unlisted model is used", () => {
+    expect(
+      costForRecord("kie", "claude-sonnet-5", 1_000_000, 0, { kie: { "claude-sonnet-5": { inputPer1M: 1, outputPer1M: 5 } } }, "standard"),
+    ).toBeCloseTo(1);
+  });
+});
+
+describe("probeProvider on a provider outage", () => {
+  it("rejects once and leaves no unhandled rejection behind", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    }));
+    try {
+      await expect(
+        probeProvider(
+          {
+            provider: "kie",
+            kieApiKey: "kie-test",
+            models: { classify: "claude-haiku-4-5", distill: "claude-sonnet-4-6" },
+          } as unknown as Config,
+          null,
+        ),
+      ).rejects.toThrow();
+      // Let any orphaned promise settle and surface.
+      await new Promise((r) => setTimeout(r, 20));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+      vi.unstubAllGlobals();
+    }
   });
 });

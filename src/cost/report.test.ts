@@ -122,3 +122,16 @@ describe("parseDuration", () => {
   it("bare number treated as days", () => expect(parseDuration("5")).toBe(5 * 86_400_000));
   it("invalid throws", () => expect(() => parseDuration("abc")).toThrow("invalid duration: abc"));
 });
+
+describe("buildReport: unpriced calls are counted, not summed as $0", () => {
+  it("separates claude-cli quota calls from unpriced API calls", () => {
+    const report = buildReport([
+      makeRecord({ stage: "distill", estimated_cost_usd: 0.5, session: "a" }),
+      makeRecord({ stage: "distill", estimated_cost_usd: null, provider: "claude-cli" }),
+      makeRecord({ stage: "distill", estimated_cost_usd: null, provider: "kie", model: "claude-sonnet-5" }),
+    ]);
+    expect(report.total).toBeCloseTo(0.5);
+    expect(report.subscriptionCalls).toBe(1);
+    expect(report.unpricedCalls).toBe(1);
+  });
+});
