@@ -1,0 +1,592 @@
+<!doctype html>
+<!--
+  vir — atlas (bilingual EN/SR). Derived only from docs/APP-ATLAS.md (commit 4f3eba6, v0.24.2).
+  Palette: vir's own site tokens (site/src/styles/tokens.css): violet accent #7c6af7 on warm paper /
+  near-black. System fonts only (the site's Instrument Serif / Inter / JetBrains Mono are not loaded,
+  to keep the file self-contained). Boldness is spent on "Journey": vir is a loop, so the flows lead.
+-->
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vir atlas</title>
+<style>
+:root {
+  --paper: #faf9f7; --paper-2: #f2f0ec; --ink: #141317; --ink-muted: #5c5a63; --rule: #e3e0da;
+  --accent: #7c6af7; --accent-text: #6252e0; --wash: rgba(124,106,247,.08); --card: #ffffff; --code: #16161f;
+  --ok: #2f8f5b; --warn: #b7791f; --dead: #8a8794;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0f0f14; --paper-2: #16161d; --ink: #e8e8f0; --ink-muted: #9b99a8; --rule: #26262f;
+    --accent-text: #a79dff; --wash: rgba(124,106,247,.14); --card: #14141a; --code: #0a0a0f;
+    --ok: #5fc48d; --warn: #e0a84a; --dead: #7d7b88; color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html { background: var(--paper); color: var(--ink); }
+body { margin: 0; font: 17px/1.6 var(--sans); background: var(--paper); color: var(--ink); }
+html[data-lang="en"] [data-lang="sr"], html[data-lang="sr"] [data-lang="en"] { display: none !important; }
+a { color: var(--accent-text); }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+code, .path { font-family: var(--mono); font-size: .86em; }
+
+header.top { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--paper) 92%, transparent);
+  backdrop-filter: blur(8px); border-bottom: 1px solid var(--rule); }
+.top-inner { max-width: 1040px; margin: 0 auto; padding: 10px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.brand { font-family: var(--serif); font-size: 1.35rem; font-weight: 600; letter-spacing: -.01em; margin-right: auto; }
+.brand b { color: var(--accent-text); }
+nav.jump { display: flex; gap: 4px; flex-wrap: wrap; font-size: .85rem; }
+nav.jump a { text-decoration: none; padding: 4px 8px; border-radius: 6px; color: var(--ink-muted); }
+nav.jump a:hover { background: var(--wash); color: var(--ink); }
+.toggle { display: inline-flex; border: 1px solid var(--rule); border-radius: 999px; overflow: hidden; }
+.toggle button { font: 600 .8rem var(--sans); padding: 6px 12px; border: 0; background: transparent; color: var(--ink-muted); cursor: pointer; }
+.toggle button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+
+main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 80px; }
+.hero { padding: 28px 0 8px; }
+.hero h1 { font-family: var(--serif); font-weight: 600; font-size: clamp(2.2rem, 6vw, 3.6rem); line-height: 1.05; margin: 0 0 12px; letter-spacing: -.02em; }
+.hero p.lede { font-size: 1.15rem; color: var(--ink-muted); max-width: 64ch; margin: 0; }
+.meta { font-size: .8rem; color: var(--ink-muted); margin-top: 10px; }
+
+section { margin-top: 56px; scroll-margin-top: 80px; }
+h2 { font-family: var(--serif); font-weight: 600; font-size: clamp(1.6rem, 4vw, 2.2rem); margin: 0 0 6px; letter-spacing: -.01em; }
+h2 .num { color: var(--accent-text); font-family: var(--mono); font-size: .55em; vertical-align: middle; margin-right: 10px; }
+h3 { font-size: 1.1rem; margin: 0 0 6px; }
+.summary { color: var(--ink-muted); margin: 0 0 18px; max-width: 70ch; }
+.why { border-left: 3px solid var(--warn); padding: 6px 12px; margin: 0 0 18px; background: var(--paper-2); font-size: .95rem; max-width: 70ch; }
+.why strong { color: var(--warn); }
+.src { font-size: .78rem; margin-top: 10px; }
+.src a { color: var(--ink-muted); }
+p { max-width: 70ch; }
+
+.card { background: var(--card); border: 1px solid var(--rule); border-radius: 12px; padding: 18px 20px; }
+.grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); }
+.card .one { font-weight: 600; margin: 0 0 6px; }
+details { margin-top: 10px; font-size: .85rem; }
+details summary { cursor: pointer; color: var(--ink-muted); }
+details ul { margin: 8px 0 0; padding-left: 18px; }
+details li { margin: 2px 0; }
+
+.start { border: 1px solid var(--accent); background: var(--wash); border-radius: 14px; padding: 18px 20px; margin-top: 24px; }
+.start h2 { font-size: 1.4rem; }
+.start ol { margin: 6px 0; padding-left: 20px; }
+
+/* System loop: the one diagram */
+.loop { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 18px 0 6px; counter-reset: lp; }
+.loop div { border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; background: var(--card); position: relative; font-size: .9rem; }
+.loop div b { display: block; font-size: .95rem; }
+.loop div::before { counter-increment: lp; content: counter(lp); position: absolute; top: -10px; right: 10px; background: var(--accent); color: #fff;
+  font: 700 .7rem var(--mono); padding: 2px 6px; border-radius: 999px; }
+.loop-note { font-size: .85rem; color: var(--ink-muted); }
+
+/* Journey: where the boldness goes */
+.journey { display: grid; gap: 22px; }
+.flow { border-radius: 16px; padding: 22px 22px 18px; background: linear-gradient(180deg, var(--wash), transparent 70%); border: 1px solid var(--rule); }
+.flow h3 { font-family: var(--serif); font-size: clamp(1.3rem, 3.4vw, 1.7rem); font-weight: 600; margin-bottom: 4px; }
+.flow .tag { display: inline-block; font: 700 .7rem var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent-text); margin-bottom: 6px; }
+.steps { list-style: none; margin: 14px 0 0; padding: 0; counter-reset: st; position: relative; }
+.steps::before { content: ""; position: absolute; left: 17px; top: 6px; bottom: 6px; width: 3px; background: var(--accent); border-radius: 3px; opacity: .55; }
+.steps li { counter-increment: st; position: relative; padding: 0 0 14px 52px; }
+.steps li::before { content: counter(st); position: absolute; left: 0; top: -2px; width: 37px; height: 37px; border-radius: 50%; background: var(--accent);
+  color: #fff; font: 700 1rem var(--mono); display: grid; place-items: center; box-shadow: 0 0 0 4px var(--paper); }
+.steps .s { font-size: 1.02rem; }
+.steps .risk { display: block; font-size: .85rem; color: var(--ink-muted); margin-top: 2px; }
+.steps .risk::before { content: "⚠ "; color: var(--warn); }
+
+table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--rule); }
+th { font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-muted); }
+.gloss td:first-child { font-weight: 600; white-space: nowrap; }
+
+.done { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.done .col { border-top: 4px solid; border-radius: 10px; padding: 14px 16px; background: var(--card); border-left: 1px solid var(--rule); border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.done .ok { border-top-color: var(--ok); } .done .part { border-top-color: var(--warn); } .done .dead { border-top-color: var(--dead); }
+.done ul { padding-left: 18px; margin: 6px 0 0; } .done li { margin: 6px 0; }
+.reach { font-size: .82rem; color: var(--warn); display: block; }
+
+.qa { display: grid; gap: 14px; }
+.qa .card h3 { font-family: var(--serif); font-size: 1.15rem; }
+.qa .test { font-size: .85rem; color: var(--ink-muted); margin: 8px 0 0; }
+.qa .fu { font-size: .9rem; margin: 8px 0 0; padding: 8px 12px; background: var(--paper-2); border-radius: 8px; }
+ol.open li { margin: 8px 0; max-width: 72ch; }
+
+@media (max-width: 640px) {
+  body { font-size: 16px; }
+  nav.jump { display: none; }
+  table, thead, tbody, tr, th, td { display: block; }
+  thead { display: none; }
+  tr { border-bottom: 1px solid var(--rule); padding: 8px 0; }
+  td { border: 0; padding: 2px 0; }
+  .gloss td:first-child { white-space: normal; }
+}
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+@media print {
+  header.top { display: none; }
+  body { font-size: 11pt; background: #fff; color: #000; }
+  .card, .flow, .start, .done .col { break-inside: avoid; background: #fff; }
+  a { color: #000; }
+  section { margin-top: 24px; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <div class="brand"><b>vir</b> <span data-lang="en">atlas</span><span data-lang="sr">atlas</span></div>
+    <nav class="jump" aria-label="Sections">
+      <a href="#what"><span data-lang="en">What</span><span data-lang="sr">Šta</span></a>
+      <a href="#how"><span data-lang="en">How</span><span data-lang="sr">Kako</span></a>
+      <a href="#journey"><span data-lang="en">Journey</span><span data-lang="sr">Put</span></a>
+      <a href="#glossary"><span data-lang="en">Glossary</span><span data-lang="sr">Rečnik</span></a>
+      <a href="#done"><span data-lang="en">Done</span><span data-lang="sr">Gotovo</span></a>
+      <a href="#decisions"><span data-lang="en">Decisions</span><span data-lang="sr">Odluke</span></a>
+      <a href="#interview">Interview</a>
+      <a href="#open"><span data-lang="en">Open</span><span data-lang="sr">Pitanja</span></a>
+    </nav>
+    <div class="toggle" role="group" aria-label="Language">
+      <button type="button" data-set="en" aria-pressed="true">EN</button>
+      <button type="button" data-set="sr" aria-pressed="false">SR</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <h1><span data-lang="en">How vir works</span><span data-lang="sr">Kako vir radi</span></h1>
+    <p class="lede"><span data-lang="en">A local tool that turns your Claude Code sessions into notes in your Obsidian vault, then feeds them back into Claude Code.</span><span data-lang="sr">Lokalni alat koji tvoje Claude Code sesije pretvara u beleške u Obsidian vault-u, pa ih vraća nazad u Claude Code.</span></p>
+    <p class="meta">v0.24.2 · commit 4f3eba6 · 2026-10-05 · <a href="APP-ATLAS.md">APP-ATLAS.md</a></p>
+  </div>
+
+  <div class="start" id="start">
+    <h2><span data-lang="en">Start here</span><span data-lang="sr">Kreni ovde</span></h2>
+    <p data-lang="en"><strong>Quick skim (15 min):</strong> "What this is", then the steps in "Journey", then "What's done". <strong>Full read:</strong> top to bottom. <strong>The night before an interview:</strong> open "Important to know if asked in a job interview" and "Decisions".</p>
+    <p data-lang="sr"><strong>Brzo (15 min):</strong> „Šta je ovo", pa koraci u „Put kroz sistem", pa „Šta je gotovo". <strong>Celo:</strong> od vrha do dna. <strong>Veče pred intervju:</strong> otvori „Important to know if asked in a job interview" i „Odluke".</p>
+    <p data-lang="en" style="font-size:.9rem">Each card ends with a link to the cited version in <code>APP-ATLAS.md</code>. Under "Files" you get the real paths: <code>path/file.ts:symbol</code> means open that file and find that function.</p>
+    <p data-lang="sr" style="font-size:.9rem">Svaka kartica se završava linkom na citiranu verziju u <code>APP-ATLAS.md</code>. Pod „Fajlovi" su prave putanje: <code>path/file.ts:symbol</code> znači otvori taj fajl i nađi tu funkciju.</p>
+  </div>
+
+  <!-- 1 -->
+  <section id="what">
+    <h2><span class="num">01</span><span data-lang="en">What this is</span><span data-lang="sr">Šta je ovo</span></h2>
+    <p class="summary"><span data-lang="en">A local, single-user tool that turns AI coding sessions into a searchable knowledge vault and feeds it back to the AI.</span><span data-lang="sr">Lokalni alat za jednog korisnika koji AI coding sesije pretvara u pretraživ vault znanja i vraća ga nazad AI-ju.</span></p>
+    <p data-lang="en">vir reads the transcripts Claude Code leaves on your disk and turns the useful ones into short notes of four kinds: pattern, gotcha, decision, tool. It writes them as Markdown into your Obsidian vault and keeps its bookkeeping in one SQLite file. Claude Code gets the knowledge back through a block in your <code>CLAUDE.md</code> files and through an MCP server (a tool Claude Code can call mid-session).</p>
+    <p data-lang="sr">vir čita transkripte koje Claude Code ostavlja na disku i korisne pretvara u kratke beleške četiri vrste: pattern, gotcha, decision, tool. Upisuje ih kao Markdown u tvoj Obsidian vault, a svoje evidencije drži u jednom SQLite fajlu. Claude Code dobija znanje nazad kroz blok u tvojim <code>CLAUDE.md</code> fajlovima i kroz MCP server (tool koji Claude Code može da pozove usred sesije).</p>
+    <div class="loop" aria-label="System loop">
+      <div><b>Claude Code</b><span data-lang="en">writes .jsonl transcripts</span><span data-lang="sr">piše .jsonl transkripte</span></div>
+      <div><b>vir run</b><span data-lang="en">daemon, every few hours</span><span data-lang="sr">daemon, na par sati</span></div>
+      <div><b>LLM provider</b><span data-lang="en">Anthropic, Kie or claude CLI</span><span data-lang="sr">Anthropic, Kie ili claude CLI</span></div>
+      <div><b><span data-lang="en">Vault + SQLite</span><span data-lang="sr">Vault + SQLite</span></b><span data-lang="en">notes, vectors, state</span><span data-lang="sr">beleške, vektori, state</span></div>
+      <div><b>MCP + CLAUDE.md</b><span data-lang="en">knowledge goes back</span><span data-lang="sr">znanje se vraća</span></div>
+    </div>
+    <p class="loop-note"><span data-lang="en">…and the next Claude Code session starts with it. No server, no accounts: everything is on your machine.</span><span data-lang="sr">…i sledeća Claude Code sesija kreće sa njim. Nema servera ni naloga: sve je na tvojoj mašini.</span></p>
+    <p class="src"><a href="APP-ATLAS.md#2-system-map">APP-ATLAS.md §1–2</a></p>
+  </section>
+
+  <!-- 2 -->
+  <section id="how">
+    <h2><span class="num">02</span><span data-lang="en">How it works</span><span data-lang="sr">Kako radi</span></h2>
+    <p class="summary"><span data-lang="en">One engine folder, one command folder, one file with all the SQL; the rest are satellites.</span><span data-lang="sr">Jedan folder je motor, jedan su komande, jedan fajl drži sav SQL; ostalo su sateliti.</span></p>
+    <div class="grid">
+      <div class="card">
+        <p class="one"><span data-lang="en">The pipeline — the engine</span><span data-lang="sr">Pipeline — motor</span></p>
+        <p data-lang="en">Finds transcripts, drops the ones it must not pay for, cleans the rest, asks the model for a note, writes it. One shared function does the per-session work for both normal runs and retries.</p>
+        <p data-lang="sr">Nalazi transkripte, izbacuje one za koje ne sme da plati, čisti ostale, traži od modela belešku i upisuje je. Jedna zajednička funkcija radi posao po sesiji i za obične run-ove i za retry.</p>
+        <details><summary><span data-lang="en">Files</span><span data-lang="sr">Fajlovi</span></summary><ul><li class="path">src/pipeline/run.ts:runPipeline</li><li class="path">src/pipeline/distillSession.ts:distillOneSession</li><li class="path">src/pipeline/distiller.ts:Distiller, callLLM</li><li class="path">src/pipeline/writer.ts:VaultWriter</li></ul></details>
+      </div>
+      <div class="card">
+        <p class="one"><span data-lang="en">State — SQLite plus files</span><span data-lang="sr">State — SQLite plus fajlovi</span></p>
+        <p data-lang="en">Four tables: sessions, articles, PDFs, topics. A file hash (a fingerprint of its bytes) says what was already paid for. Migrations only ever add columns.</p>
+        <p data-lang="sr">Četiri tabele: sessions, articles, PDFs, topics. Hash fajla (otisak njegovih bajtova) govori šta je već plaćeno. Migracije samo dodaju kolone.</p>
+        <details><summary><span data-lang="en">Files</span><span data-lang="sr">Fajlovi</span></summary><ul><li class="path">src/state/db.ts:StateDb</li><li class="path">src/state/rejections.ts:syncRejections</li></ul></details>
+      </div>
+      <div class="card">
+        <p class="one"><span data-lang="en">Search — meaning first, keywords as backup</span><span data-lang="sr">Search — prvo značenje, ključne reči kao rezerva</span></p>
+        <p data-lang="en">Each note has a vector (numbers that capture its meaning). A question is compared against notes made by the same model. Approved notes get a small boost. If nothing matches, plain keyword search (TF-IDF) takes over.</p>
+        <p data-lang="sr">Svaka beleška ima vektor (brojevi koji hvataju njeno značenje). Pitanje se poredi sa beleškama koje je napravio isti model. Odobrene beleške dobijaju mali boost. Ako ništa ne odgovara, uskače obična pretraga po rečima (TF-IDF).</p>
+        <details><summary><span data-lang="en">Files</span><span data-lang="sr">Fajlovi</span></summary><ul><li class="path">src/search/retriever.ts:searchWithOutcome, mmrRerank, searchTfIdf</li><li class="path">src/search/provider.ts</li></ul></details>
+      </div>
+      <div class="card">
+        <p class="one"><span data-lang="en">Back to Claude Code — MCP and CLAUDE.md</span><span data-lang="sr">Nazad u Claude Code — MCP i CLAUDE.md</span></p>
+        <p data-lang="en">The MCP server opens the database read-only and offers six tools. Only <code>vir_query</code> can cost money, and the agent can opt out with <code>synthesize: false</code>. <code>vir sync-claude</code> writes vir's block between two markers, never touching the rest of the file.</p>
+        <p data-lang="sr">MCP server otvara bazu samo za čitanje i nudi šest tool-ova. Samo <code>vir_query</code> može da košta, a agent može da odustane sa <code>synthesize: false</code>. <code>vir sync-claude</code> upisuje vir-ov blok između dva markera i ne dira ostatak fajla.</p>
+        <details><summary><span data-lang="en">Files</span><span data-lang="sr">Fajlovi</span></summary><ul><li class="path">src/mcp/server.ts:runMcpServer, buildQueryResult</li><li class="path">src/claude/updater.ts:planUpdates, applyPlan</li></ul></details>
+      </div>
+      <div class="card">
+        <p class="one"><span data-lang="en">Cost — one door for every AI call</span><span data-lang="sr">Cost — jedna vrata za svaki AI poziv</span></p>
+        <p data-lang="en">Every model call goes through <code>callLLM</code>, which logs tokens and an estimated cost. Subscription calls and unpriced models are logged as unknown, never as zero.</p>
+        <p data-lang="sr">Svaki poziv modela ide kroz <code>callLLM</code>, koji loguje tokene i procenjenu cenu. Pozivi preko pretplate i modeli bez cene loguju se kao nepoznato, nikad kao nula.</p>
+        <details><summary><span data-lang="en">Files</span><span data-lang="sr">Fajlovi</span></summary><ul><li class="path">src/pipeline/distiller.ts:callLLM, costForRecord</li><li class="path">src/cost/log.ts, src/cost/report.ts</li></ul></details>
+      </div>
+      <div class="card">
+        <p class="one"><span data-lang="en">Daemon and lock — running alone</span><span data-lang="sr">Daemon i lock — da radi sam</span></p>
+        <p data-lang="en">launchd runs <code>vir run</code> every few hours. A lock file holding the process ID makes sure two runs never overlap; only one process can create it.</p>
+        <p data-lang="sr">launchd pokreće <code>vir run</code> na par sati. Lock fajl sa ID-jem procesa obezbeđuje da se dva run-a nikad ne preklope; samo jedan proces može da ga napravi.</p>
+        <details><summary><span data-lang="en">Files</span><span data-lang="sr">Fajlovi</span></summary><ul><li class="path">src/daemon/launchd.ts:renderPlist</li><li class="path">src/pipeline/lock.ts:acquireLock</li><li class="path">src/cli/guards.ts:withPipelineLock</li></ul></details>
+      </div>
+      <div class="card">
+        <p class="one"><span data-lang="en">Curation — keeping the vault honest</span><span data-lang="sr">Kuracija — da vault ostane pošten</span></p>
+        <p data-lang="en">Review (approve or reject), audit (a model judges notes), prune (demote notes from agent transcripts), dedupe and lint. Taken-out notes go to <code>.rejected/</code> or <code>archived/</code> and can be restored.</p>
+        <p data-lang="sr">Review (odobri ili odbij), audit (model ocenjuje beleške), prune (spušta beleške iz agent transkripata), dedupe i lint. Izbačene beleške idu u <code>.rejected/</code> ili <code>archived/</code> i mogu da se vrate.</p>
+        <details><summary><span data-lang="en">Files</span><span data-lang="sr">Fajlovi</span></summary><ul><li class="path">src/cli/review.ts, src/cli/reviewJson.ts</li><li class="path">src/audit/, src/prune/, src/dedupe/, src/lint/</li></ul></details>
+      </div>
+    </div>
+    <p class="src"><a href="APP-ATLAS.md#3-directory-guide">APP-ATLAS.md §3</a></p>
+  </section>
+
+  <!-- 3 -->
+  <section id="journey">
+    <h2><span class="num">03</span><span data-lang="en">Journey through the system</span><span data-lang="sr">Put kroz sistem</span></h2>
+    <p class="summary"><span data-lang="en">Six flows define vir. Each step is one sentence plus what can go wrong there.</span><span data-lang="sr">Šest tokova definiše vir. Svaki korak je jedna rečenica plus šta tu može da pukne.</span></p>
+    <div class="journey">
+
+      <article class="flow">
+        <span class="tag">Flow 1</span>
+        <h3><span data-lang="en">First run: install to first note</span><span data-lang="sr">Prvi run: od instalacije do prve beleške</span></h3>
+        <ol class="steps">
+          <li><span class="s" data-lang="en">You install the package and run <code>vir init</code>.</span><span class="s" data-lang="sr">Instaliraš paket i pokreneš <code>vir init</code>.</span></li>
+          <li><span class="s" data-lang="en">A wizard asks for the vault, the transcripts folder, the provider and the models.</span><span class="s" data-lang="sr">Wizard pita za vault, folder sa transkriptima, providera i modele.</span></li>
+          <li><span class="s" data-lang="en">It scans your projects and asks which to include.</span><span class="s" data-lang="sr">Skenira projekte i pita koje da uključi.</span></li>
+          <li><span class="s" data-lang="en">It saves <code>config.json</code>, readable only by you.</span><span class="s" data-lang="sr">Snima <code>config.json</code>, čitljiv samo tebi.</span><span class="risk" data-lang="en">The file holds API keys in plain text; its file mode is the only protection.</span><span class="risk" data-lang="sr">Fajl drži API ključeve kao običan tekst; dozvole fajla su jedina zaštita.</span></li>
+          <li><span class="s" data-lang="en">It offers to register the MCP server with Claude Code.</span><span class="s" data-lang="sr">Nudi da registruje MCP server u Claude Code-u.</span></li>
+          <li><span class="s" data-lang="en">It tells you to run <code>vir run</code>, then <code>vir schedule install</code>; it schedules nothing itself.</span><span class="s" data-lang="sr">Kaže ti da pokreneš <code>vir run</code>, pa <code>vir schedule install</code>; sam ništa ne zakazuje.</span></li>
+        </ol>
+        <details><summary><span data-lang="en">Files</span><span data-lang="sr">Fajlovi</span></summary><ul><li class="path">src/cli/init.ts:cmdInit</li><li class="path">src/cli/initConfig.ts:buildInitConfig</li><li class="path">src/config.ts:saveConfig</li><li class="path">src/mcp/install.ts:installToClaudeCode</li></ul></details>
+        <p class="src"><a href="APP-ATLAS.md#flow-1--first-run-install-to-first-note">APP-ATLAS.md §4, Flow 1</a></p>
+      </article>
+
+      <article class="flow">
+        <span class="tag">Flow 2 · core</span>
+        <h3><span data-lang="en">The scheduled run: transcripts become notes</span><span data-lang="sr">Zakazani run: transkripti postaju beleške</span></h3>
+        <p class="why" data-lang="en"><strong>Why this matters:</strong> this loop spends money on every session it lets through, and its rows decide whether a note is ever visible.</p>
+        <p class="why" data-lang="sr"><strong>Zašto je bitno:</strong> ova petlja troši novac na svaku sesiju koju pusti, a njeni redovi odlučuju da li se beleška ikad vidi.</p>
+        <ol class="steps">
+          <li><span class="s" data-lang="en">The scheduler starts <code>vir run --daemon</code> every few hours (default 3).</span><span class="s" data-lang="sr">Scheduler pokreće <code>vir run --daemon</code> na par sati (default 3).</span></li>
+          <li><span class="s" data-lang="en">vir takes the lock so no other run can work at the same time.</span><span class="s" data-lang="sr">vir uzima lock da nijedan drugi run ne radi u isto vreme.</span><span class="risk" data-lang="en">Before 0.23.2 two runs could both "win" the lock and pay twice.</span><span class="risk" data-lang="sr">Pre 0.23.2 dva run-a su mogla oba da „dobiju" lock i plate duplo.</span></li>
+          <li><span class="s" data-lang="en">It hashes every transcript and drops what it must never pay for: agent transcripts, excluded or undecided projects, done work, demoted notes, sessions that failed three times.</span><span class="s" data-lang="sr">Hešira svaki transkript i izbacuje ono za šta nikad ne sme da plati: agent transkripte, isključene ili neodlučene projekte, gotov posao, spuštene beleške, sesije koje su pale tri puta.</span><span class="risk" data-lang="en">A paid step placed before a free filter wastes money on every run.</span><span class="risk" data-lang="sr">Plaćen korak pre besplatnog filtera baca novac na svaki run.</span></li>
+          <li><span class="s" data-lang="en">One tiny test call checks the provider before anything is spent.</span><span class="s" data-lang="sr">Jedan mali test poziv proverava providera pre nego što se išta potroši.</span></li>
+          <li><span class="s" data-lang="en">For each session it strips tool noise and secrets, trims a huge transcript to fit, then asks the model to classify it and write a note and a title.</span><span class="s" data-lang="sr">Za svaku sesiju skida šum od tool-ova i tajne, skraćuje ogroman transkript da stane, pa traži od modela da je klasifikuje i napiše belešku i naslov.</span><span class="risk" data-lang="en">A note scored too low is not written; if one already existed, it is kept.</span><span class="risk" data-lang="sr">Beleška sa preniskom ocenom se ne piše; ako je već postojala, ostaje.</span></li>
+          <li><span class="s" data-lang="en">The note goes to the vault; its row and vector go to SQLite.</span><span class="s" data-lang="sr">Beleška ide u vault; njen red i vektor idu u SQLite.</span><span class="risk" data-lang="en">Before 0.24.0 the vector was stored before the row existed, so every new note was embedded twice.</span><span class="risk" data-lang="sr">Pre 0.24.0 vektor se upisivao pre nego što red postoji, pa je svaka nova beleška embed-ovana dvaput.</span></li>
+          <li><span class="s" data-lang="en">After the loop: project summaries, articles, PDFs, and a sweep that fills in missing vectors.</span><span class="s" data-lang="sr">Posle petlje: sažeci projekata, članci, PDF-ovi i sweep koji popunjava vektore koji fale.</span></li>
+        </ol>
+        <details><summary><span data-lang="en">Files</span><span data-lang="sr">Fajlovi</span></summary><ul><li class="path">src/pipeline/run.ts:runPipeline</li><li class="path">src/pipeline/scanner.ts:scanSessions</li><li class="path">src/pipeline/projects.ts:classifyTranscript, decideProject</li><li class="path">src/pipeline/distiller.ts:probeProvider</li><li class="path">src/pipeline/distillSession.ts:distillOneSession, trimTranscript</li><li class="path">src/pipeline/writer.ts:VaultWriter.write</li><li class="path">src/pipeline/embeddingSweep.ts:sweepEmbeddings</li></ul></details>
+        <p class="src"><a href="APP-ATLAS.md#flow-2--the-scheduled-run-transcripts-become-notes">APP-ATLAS.md §4, Flow 2</a></p>
+      </article>
+
+      <article class="flow">
+        <span class="tag">Flow 3</span>
+        <h3><span data-lang="en">Knowledge back into Claude Code</span><span data-lang="sr">Znanje nazad u Claude Code</span></h3>
+        <ol class="steps">
+          <li><span class="s" data-lang="en">Claude Code calls the MCP tool <code>vir_query</code> with a question.</span><span class="s" data-lang="sr">Claude Code zove MCP tool <code>vir_query</code> sa pitanjem.</span></li>
+          <li><span class="s" data-lang="en">vir turns the question into a vector and compares it with notes made by the same model.</span><span class="s" data-lang="sr">vir pretvara pitanje u vektor i poredi ga sa beleškama koje je napravio isti model.</span><span class="risk" data-lang="en">If the embedder is down, keyword search takes over and results get weaker.</span><span class="risk" data-lang="sr">Ako embedder ne radi, preuzima pretraga po rečima i rezultati slabe.</span></li>
+          <li><span class="s" data-lang="en">Approved notes get a fixed boost; a diversity step (MMR) avoids near-duplicates.</span><span class="s" data-lang="sr">Odobrene beleške dobijaju fiksni boost; korak za raznolikost (MMR) izbegava skoro-duplikate.</span></li>
+          <li><span class="s" data-lang="en">Unless the agent passed <code>synthesize: false</code>, one paid call writes an answer.</span><span class="s" data-lang="sr">Osim ako agent ne pošalje <code>synthesize: false</code>, jedan plaćen poziv piše odgovor.</span><span class="risk" data-lang="en">Anything printed to stdout here breaks the MCP protocol.</span><span class="risk" data-lang="sr">Bilo šta odštampano na stdout ovde lomi MCP protokol.</span></li>
+          <li><span class="s" data-lang="en">Separately, <code>vir sync-claude</code> writes the best notes into <code>CLAUDE.md</code>, after showing a diff.</span><span class="s" data-lang="sr">Odvojeno, <code>vir sync-claude</code> upisuje najbolje beleške u <code>CLAUDE.md</code>, posle prikaza diff-a.</span><span class="risk" data-lang="en">A file with broken markers is refused, never half-rewritten.</span><span class="risk" data-lang="sr">Fajl sa pokvarenim markerima se odbija, nikad se ne prepiše napola.</span></li>
+        </ol>
+        <details><summary><span data-lang="en">Files</span><span data-lang="sr">Fajlovi</span></summary><ul><li class="path">src/mcp/server.ts:runMcpServer</li><li class="path">src/search/retriever.ts:searchWithOutcome</li><li class="path">src/search/synthesizer.ts:synthesize</li><li class="path">src/claude/updater.ts:applyPlan</li></ul></details>
+        <p class="src"><a href="APP-ATLAS.md#flow-3--knowledge-back-into-claude-code">APP-ATLAS.md §4, Flow 3</a></p>
+      </article>
+
+      <article class="flow">
+        <span class="tag">Flow 4 · money</span>
+        <h3><span data-lang="en">What a call costs, and how spend is guarded</span><span data-lang="sr">Koliko poziv košta i kako se čuva trošak</span></h3>
+        <p class="why" data-lang="en"><strong>Why this matters:</strong> the provider bills real money; the log is the only record vir keeps.</p>
+        <p class="why" data-lang="sr"><strong>Zašto je bitno:</strong> provider naplaćuje pravi novac; log je jedini zapis koji vir čuva.</p>
+        <ol class="steps">
+          <li><span class="s" data-lang="en">Every model call goes through one function, <code>callLLM</code>.</span><span class="s" data-lang="sr">Svaki poziv modela ide kroz jednu funkciju, <code>callLLM</code>.</span><span class="risk" data-lang="en">A call that bypasses it is spend nobody sees.</span><span class="risk" data-lang="sr">Poziv koji je zaobiđe je trošak koji niko ne vidi.</span></li>
+          <li><span class="s" data-lang="en">It appends tokens and an estimated cost to <code>~/.vir/cost.log</code>.</span><span class="s" data-lang="sr">Dopisuje tokene i procenjenu cenu u <code>~/.vir/cost.log</code>.</span></li>
+          <li><span class="s" data-lang="en">Subscription calls and unpriced models are logged as unknown, never $0.</span><span class="s" data-lang="sr">Pozivi preko pretplate i modeli bez cene loguju se kao nepoznato, nikad $0.</span></li>
+          <li><span class="s" data-lang="en"><code>vir cost</code> totals the log and lists quota and unpriced calls apart.</span><span class="s" data-lang="sr"><code>vir cost</code> sabira log i posebno prikazuje quota i pozive bez cene.</span></li>
+          <li><span class="s" data-lang="en">Guards: a cost prompt on big runs, a 25-session cap on the subscription, confirmations on audit, dedupe, lint, compose and reconcile.</span><span class="s" data-lang="sr">Zaštite: cost prompt na velikim run-ovima, limit od 25 sesija na pretplati, potvrde na audit, dedupe, lint, compose i reconcile.</span><span class="risk" data-lang="en">Some paths still spend without asking — see "What's done".</span><span class="risk" data-lang="sr">Neke putanje i dalje troše bez pitanja — vidi „Šta je gotovo".</span></li>
+        </ol>
+        <details><summary><span data-lang="en">Files</span><span data-lang="sr">Fajlovi</span></summary><ul><li class="path">src/pipeline/distiller.ts:callLLM, recordCost, costForRecord</li><li class="path">src/cost/report.ts:buildReport</li><li class="path">src/cli/guards.ts:confirmPaidStep</li></ul></details>
+        <p class="src"><a href="APP-ATLAS.md#flow-4--money-what-a-call-costs-and-how-spend-is-guarded">APP-ATLAS.md §4, Flow 4</a></p>
+      </article>
+
+      <article class="flow">
+        <span class="tag">Flow 5 · failure</span>
+        <h3><span data-lang="en">Provider down, quota wall, a failing session</span><span data-lang="sr">Provider pao, quota zid, sesija koja pada</span></h3>
+        <p class="why" data-lang="en"><strong>Why this matters:</strong> Claude Code deletes old transcripts after about 30 days, so a session never retried in time is lost.</p>
+        <p class="why" data-lang="sr"><strong>Zašto je bitno:</strong> Claude Code briše stare transkripte posle oko 30 dana, pa je sesija koja se ne ponovi na vreme izgubljena.</p>
+        <ol class="steps">
+          <li><span class="s" data-lang="en">If the provider is down, the probe fails once; vir records it, notifies you, and stops.</span><span class="s" data-lang="sr">Ako provider ne radi, probe padne jednom; vir to zapiše, javi ti i stane.</span></li>
+          <li><span class="s" data-lang="en">If the subscription quota runs out mid-run, vir stops and records nothing, so the rest is simply new next time.</span><span class="s" data-lang="sr">Ako quota istekne usred run-a, vir stane i ništa ne upiše, pa je ostatak sledeći put prosto nov.</span><span class="risk" data-lang="en">Before 0.23.1, articles and PDFs hit by the wall were lost for good.</span><span class="risk" data-lang="sr">Pre 0.23.1 članci i PDF-ovi koje udari zid bili su zauvek izgubljeni.</span></li>
+          <li><span class="s" data-lang="en">A single failing session gets an error and an attempt counter; after three it is parked.</span><span class="s" data-lang="sr">Sesija koja pada dobija grešku i brojač pokušaja; posle tri se parkira.</span></li>
+          <li><span class="s" data-lang="en"><code>vir reconcile</code> retries failures, but only what <code>vir run</code> would still process.</span><span class="s" data-lang="sr"><code>vir reconcile</code> ponavlja pale, ali samo ono što bi <code>vir run</code> i dalje obradio.</span></li>
+          <li><span class="s" data-lang="en"><code>vir doctor</code> shows all of it.</span><span class="s" data-lang="sr"><code>vir doctor</code> prikazuje sve to.</span></li>
+        </ol>
+        <details><summary><span data-lang="en">Files</span><span data-lang="sr">Fajlovi</span></summary><ul><li class="path">src/diagnostics/preflightFailure.ts:recordPreflightFailure</li><li class="path">src/pipeline/claudeCli.ts:ClaudeCliLimitError</li><li class="path">src/state/db.ts:recordError, retryExhausted</li><li class="path">src/cli/reconcile.ts:runReconcile, reconcileGate</li></ul></details>
+        <p class="src"><a href="APP-ATLAS.md#flow-5--failure-provider-down-quota-wall-a-failing-session">APP-ATLAS.md §4, Flow 5</a></p>
+      </article>
+
+      <article class="flow">
+        <span class="tag">Flow 6</span>
+        <h3><span data-lang="en">Review from Obsidian</span><span data-lang="sr">Review iz Obsidian-a</span></h3>
+        <p class="why" data-lang="en"><strong>Why this matters:</strong> a rejected note that kept serving would keep feeding wrong knowledge to the agent.</p>
+        <p class="why" data-lang="sr"><strong>Zašto je bitno:</strong> odbijena beleška koja i dalje služi nastavila bi da hrani agenta pogrešnim znanjem.</p>
+        <ol class="steps">
+          <li><span class="s" data-lang="en">The plugin asks vir for the review queue: flagged notes, worst first.</span><span class="s" data-lang="sr">Plugin traži od vir-a red za review: označene beleške, najgore prve.</span></li>
+          <li><span class="s" data-lang="en">You approve or reject a note in Obsidian.</span><span class="s" data-lang="sr">U Obsidian-u odobriš ili odbiješ belešku.</span></li>
+          <li><span class="s" data-lang="en">vir checks the path is a real note, takes the lock, and applies it.</span><span class="s" data-lang="sr">vir proveri da je putanja prava beleška, uzme lock i primeni akciju.</span></li>
+          <li><span class="s" data-lang="en">Approve stamps <code>verified: true</code>; reject moves the note to <code>.rejected/</code> and stops serving it at once.</span><span class="s" data-lang="sr">Approve upisuje <code>verified: true</code>; reject seli belešku u <code>.rejected/</code> i odmah prestaje da je služi.</span><span class="risk" data-lang="en">The plugin copies these JSON types by hand; changing a field breaks it silently.</span><span class="risk" data-lang="sr">Plugin ručno kopira ove JSON tipove; promena polja ga tiho lomi.</span></li>
+          <li><span class="s" data-lang="en">Restore moves a rejected note back.</span><span class="s" data-lang="sr">Restore vraća odbijenu belešku nazad.</span></li>
+        </ol>
+        <details><summary><span data-lang="en">Files</span><span data-lang="sr">Fajlovi</span></summary><ul><li class="path">src/cli/reviewJson.ts:runReviewJson, reviewQueue</li><li class="path">src/cli/review.ts:approveNote, rejectNote, restoreRejected</li><li class="path">src/output/json.ts</li></ul></details>
+        <p class="src"><a href="APP-ATLAS.md#flow-6--review-from-obsidian">APP-ATLAS.md §4, Flow 6</a></p>
+      </article>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section id="glossary">
+    <h2><span class="num">04</span><span data-lang="en">Glossary</span><span data-lang="sr">Rečnik</span></h2>
+    <p class="summary"><span data-lang="en">Project words first, then every concept the atlas uses, in order of appearance.</span><span data-lang="sr">Prvo reči projekta, pa svaki pojam iz atlasa, redom kojim se javlja.</span></p>
+    <table class="gloss">
+      <thead><tr><th><span data-lang="en">Term</span><span data-lang="sr">Pojam</span></th><th><span data-lang="en">Meaning</span><span data-lang="sr">Značenje</span></th></tr></thead>
+      <tbody>
+        <tr><td>transcript / session</td><td><span data-lang="en">One saved Claude Code conversation, a <code>.jsonl</code> file.</span><span data-lang="sr">Jedan sačuvan Claude Code razgovor, <code>.jsonl</code> fajl.</span></td></tr>
+        <tr><td>LLM</td><td><span data-lang="en">Large language model: the AI (Claude) that classifies and writes notes.</span><span data-lang="sr">Veliki jezički model: AI (Claude) koji klasifikuje i piše beleške.</span></td></tr>
+        <tr><td>vault</td><td><span data-lang="en">The Obsidian folder of Markdown notes vir writes into.</span><span data-lang="sr">Obsidian folder sa Markdown beleškama u koji vir piše.</span></td></tr>
+        <tr><td>MCP</td><td><span data-lang="en">A standard way for an AI app to call tools; vir is an MCP server Claude Code queries.</span><span data-lang="sr">Standardan način da AI aplikacija zove tool-ove; vir je MCP server koji Claude Code pita.</span></td></tr>
+        <tr><td>CLI</td><td><span data-lang="en">Command-line interface: the <code>vir</code> command.</span><span data-lang="sr">Komandna linija: komanda <code>vir</code>.</span></td></tr>
+        <tr><td>daemon</td><td><span data-lang="en">The scheduled background run of <code>vir run</code>.</span><span data-lang="sr">Zakazan background run <code>vir run</code>.</span></td></tr>
+        <tr><td>launchd / systemd / cron</td><td><span data-lang="en">The macOS and Linux schedulers that start the daemon.</span><span data-lang="sr">macOS i Linux scheduler-i koji pokreću daemon.</span></td></tr>
+        <tr><td>SQLite</td><td><span data-lang="en">A database stored in a single local file.</span><span data-lang="sr">Baza smeštena u jedan lokalni fajl.</span></td></tr>
+        <tr><td>CI</td><td><span data-lang="en">Continuous integration: GitHub Actions builds, type-checks and tests every push.</span><span data-lang="sr">Continuous integration: GitHub Actions build-uje, type-check-uje i testira svaki push.</span></td></tr>
+        <tr><td>WAL</td><td><span data-lang="en">A SQLite mode that lets readers read while a writer writes.</span><span data-lang="sr">SQLite režim u kom čitaoci čitaju dok neko piše.</span></td></tr>
+        <tr><td>provider</td><td><span data-lang="en">Who runs the model: <code>anthropic</code>, <code>kie</code> or <code>claude-cli</code>.</span><span data-lang="sr">Ko pokreće model: <code>anthropic</code>, <code>kie</code> ili <code>claude-cli</code>.</span></td></tr>
+        <tr><td>distill</td><td><span data-lang="en">Turning a session into a short note with an LLM.</span><span data-lang="sr">Pretvaranje sesije u kratku belešku pomoću LLM-a.</span></td></tr>
+        <tr><td>note</td><td><span data-lang="en">One Markdown file, typed pattern, gotcha, decision or tool.</span><span data-lang="sr">Jedan Markdown fajl, tipa pattern, gotcha, decision ili tool.</span></td></tr>
+        <tr><td>topic page / summaries</td><td><span data-lang="en">A page <code>vir compose</code> builds from several notes; summaries roll notes up per project or per week and month.</span><span data-lang="sr">Stranica koju <code>vir compose</code> pravi od više beleški; sažeci skupljaju beleške po projektu ili po nedelji i mesecu.</span></td></tr>
+        <tr><td>project decision</td><td><span data-lang="en">Include, exclude, or undecided, per Claude Code project.</span><span data-lang="sr">Uključi, isključi ili neodlučeno, po Claude Code projektu.</span></td></tr>
+        <tr><td>embedding / vector</td><td><span data-lang="en">Numbers that capture a text's meaning, used to find similar notes.</span><span data-lang="sr">Brojevi koji hvataju značenje teksta, za nalaženje sličnih beleški.</span></td></tr>
+        <tr><td>Ollama / fastembed</td><td><span data-lang="en">Local programs that compute embeddings.</span><span data-lang="sr">Lokalni programi koji računaju embedding-e.</span></td></tr>
+        <tr><td>TF-IDF</td><td><span data-lang="en">Keyword search that weights rare words higher; the fallback search.</span><span data-lang="sr">Pretraga po rečima koja više vrednuje retke reči; rezervna pretraga.</span></td></tr>
+        <tr><td>atomic write</td><td><span data-lang="en">Write to a temporary file, then rename, so the file is never half-written.</span><span data-lang="sr">Upiši u privremeni fajl pa preimenuj, da fajl nikad ne bude napola upisan.</span></td></tr>
+        <tr><td>pidfile lock</td><td><span data-lang="en">A file holding the running process ID; only one process can create it.</span><span data-lang="sr">Fajl sa ID-jem procesa koji radi; samo jedan proces može da ga napravi.</span></td></tr>
+        <tr><td>SHA-256 hash</td><td><span data-lang="en">A fingerprint of a file's bytes; same bytes, same hash.</span><span data-lang="sr">Otisak bajtova fajla; isti bajtovi, isti hash.</span></td></tr>
+        <tr><td>gated skip / parked</td><td><span data-lang="en">Skipped because of a setting (comes back if it changes) / failed three times, retried only on purpose.</span><span data-lang="sr">Preskočeno zbog podešavanja (vraća se kad se promeni) / palo tri puta, ponavlja se samo namerno.</span></td></tr>
+        <tr><td>pruned / rejected / archived</td><td><span data-lang="en">Notes taken out of service by <code>vir prune</code>, by you, or by dedupe; restorable.</span><span data-lang="sr">Beleške izbačene iz upotrebe preko <code>vir prune</code>, tebe ili dedupe-a; mogu da se vrate.</span></td></tr>
+        <tr><td>scrub / tool filter</td><td><span data-lang="en">Masking secrets and personal paths / removing big tool outputs before the model sees a transcript.</span><span data-lang="sr">Maskiranje tajni i ličnih putanja / skidanje velikih tool output-a pre nego što model vidi transkript.</span></td></tr>
+        <tr><td>classify / retitle</td><td><span data-lang="en">The model steps that type a session and title its note.</span><span data-lang="sr">Koraci modela koji određuju tip sesije i naslov beleške.</span></td></tr>
+        <tr><td>upsert</td><td><span data-lang="en">Insert a row, or update it if it already exists.</span><span data-lang="sr">Ubaci red, ili ga ažuriraj ako već postoji.</span></td></tr>
+        <tr><td>attempts</td><td><span data-lang="en">A per-row count of failures in a row; 3 parks the row.</span><span data-lang="sr">Brojač uzastopnih padova po redu; 3 parkira red.</span></td></tr>
+        <tr><td>stdout</td><td><span data-lang="en">A process's standard output stream.</span><span data-lang="sr">Standardni izlaz procesa.</span></td></tr>
+        <tr><td>JSON-RPC over stdio</td><td><span data-lang="en">The message format MCP uses over a process's input and output.</span><span data-lang="sr">Format poruka koji MCP koristi preko ulaza i izlaza procesa.</span></td></tr>
+        <tr><td>cosine similarity</td><td><span data-lang="en">How close two vectors point; the search score.</span><span data-lang="sr">Koliko su dva vektora usmerena isto; skor pretrage.</span></td></tr>
+        <tr><td>MMR</td><td><span data-lang="en">Ranking that balances relevance against similarity to results already picked.</span><span data-lang="sr">Rangiranje koje balansira relevantnost i sličnost sa već izabranim rezultatima.</span></td></tr>
+        <tr><td>verified</td><td><span data-lang="en">A note you approved; it ranks higher.</span><span data-lang="sr">Beleška koju si odobrio; rangira se više.</span></td></tr>
+        <tr><td>frontmatter</td><td><span data-lang="en">The YAML block at the top of a Markdown note.</span><span data-lang="sr">YAML blok na vrhu Markdown beleške.</span></td></tr>
+        <tr><td>migration</td><td><span data-lang="en">A change to the database schema; vir only adds columns.</span><span data-lang="sr">Promena šeme baze; vir samo dodaje kolone.</span></td></tr>
+        <tr><td>idempotency</td><td><span data-lang="en">Running something twice has the same effect as once.</span><span data-lang="sr">Dva pokretanja imaju isti efekat kao jedno.</span></td></tr>
+        <tr><td>race condition</td><td><span data-lang="en">Two processes acting at the same moment produce a wrong result.</span><span data-lang="sr">Dva procesa u istom trenutku daju pogrešan rezultat.</span></td></tr>
+        <tr><td>mock</td><td><span data-lang="en">A fake stand-in for a real component in a test; can hide real behaviour.</span><span data-lang="sr">Lažna zamena za pravu komponentu u testu; može da sakrije pravo ponašanje.</span></td></tr>
+        <tr><td>preflight probe</td><td><span data-lang="en">One cheap call that checks the provider before a run spends money.</span><span data-lang="sr">Jedan jeftin poziv koji proverava providera pre nego što run troši novac.</span></td></tr>
+        <tr><td>quota wall</td><td><span data-lang="en">The subscription limit on <code>claude -p</code>; vir stops the run.</span><span data-lang="sr">Limit pretplate na <code>claude -p</code>; vir zaustavlja run.</span></td></tr>
+        <tr><td>Related links</td><td><span data-lang="en">Links at the bottom of a note to its nearest notes by meaning.</span><span data-lang="sr">Linkovi na dnu beleške ka najbližim beleškama po značenju.</span></td></tr>
+        <tr><td>VIR block</td><td><span data-lang="en">vir's own section between two markers in <code>CLAUDE.md</code>.</span><span data-lang="sr">vir-ov deo između dva markera u <code>CLAUDE.md</code>.</span></td></tr>
+        <tr><td>symlink</td><td><span data-lang="en">A file that points at another file.</span><span data-lang="sr">Fajl koji pokazuje na drugi fajl.</span></td></tr>
+        <tr><td>exit code</td><td><span data-lang="en">The number a command returns; 0 means success.</span><span data-lang="sr">Broj koji komanda vraća; 0 znači uspeh.</span></td></tr>
+        <tr><td>drift</td><td><span data-lang="en">A doc claim the code no longer matches.</span><span data-lang="sr">Tvrdnja iz dokumentacije sa kojom se kod više ne slaže.</span></td></tr>
+      </tbody>
+    </table>
+    <p class="src"><a href="APP-ATLAS.md#13-terms-used-in-this-atlas">APP-ATLAS.md §6, §13</a></p>
+  </section>
+
+  <!-- 5 -->
+  <section id="done">
+    <h2><span class="num">05</span><span data-lang="en">What's done</span><span data-lang="sr">Šta je gotovo</span></h2>
+    <p class="summary"><span data-lang="en">The core is shipped and well tested; the Linux scheduler is the main half-built area; dead code is under 0.5%.</span><span data-lang="sr">Jezgro je isporučeno i dobro testirano; Linux scheduler je glavni napola urađen deo; mrtvog koda ima ispod 0,5%.</span></p>
+    <div class="done">
+      <div class="col ok">
+        <h3><span data-lang="en">Shipped</span><span data-lang="sr">Isporučeno</span></h3>
+        <ul>
+          <li><span data-lang="en">Session distill with filters, retry limit and quota halt</span><span data-lang="sr">Distill sesija sa filterima, limitom pokušaja i quota stopom</span></li>
+          <li><span data-lang="en">Articles and PDFs</span><span data-lang="sr">Članci i PDF-ovi</span></li>
+          <li><span data-lang="en">Vector + keyword search with MMR</span><span data-lang="sr">Vektorska + pretraga po rečima sa MMR</span></li>
+          <li><span data-lang="en">MCP server, 6 tools (handlers untested)</span><span data-lang="sr">MCP server, 6 tool-ova (handler-i netestirani)</span></li>
+          <li><code>sync-claude</code></li>
+          <li><span data-lang="en">Review, audit, prune, dedupe, lint</span><span data-lang="sr">Review, audit, prune, dedupe, lint</span></li>
+          <li><span data-lang="en">Cost log and report</span><span data-lang="sr">Cost log i izveštaj</span></li>
+          <li><span data-lang="en">macOS daemon and notifications</span><span data-lang="sr">macOS daemon i notifikacije</span></li>
+          <li><span data-lang="en">Obsidian <code>--json</code> contract</span><span data-lang="sr">Obsidian <code>--json</code> ugovor</span></li>
+        </ul>
+      </div>
+      <div class="col part">
+        <h3><span data-lang="en">Partial</span><span data-lang="sr">Delimično</span></h3>
+        <ul>
+          <li><span data-lang="en">Linux scheduler: install and rendering untested; <code>--run-now</code> ignored</span><span data-lang="sr">Linux scheduler: instalacija i renderovanje netestirani; <code>--run-now</code> se ignoriše</span><span class="reach" data-lang="en">Reachable: yes, via <code>vir schedule install</code> on Linux</span><span class="reach" data-lang="sr">Dostupno: da, preko <code>vir schedule install</code> na Linux-u</span></li>
+          <li><span data-lang="en"><code>vir calibrate</code>: no cost prompt, no lock, no project filter</span><span data-lang="sr"><code>vir calibrate</code>: bez cost prompta, bez lock-a, bez filtera projekata</span><span class="reach" data-lang="en">Reachable: yes</span><span class="reach" data-lang="sr">Dostupno: da</span></li>
+          <li><span data-lang="en"><code>vir summarize &lt;project&gt;</code> / <code>--all</code>: <code>--dry-run</code> is ignored</span><span data-lang="sr"><code>vir summarize &lt;project&gt;</code> / <code>--all</code>: <code>--dry-run</code> se ignoriše</span><span class="reach" data-lang="en">Reachable: yes — a "dry run" spends and writes</span><span class="reach" data-lang="sr">Dostupno: da — „dry run" troši i piše</span></li>
+          <li><span data-lang="en">Plain <code>vir query</code>: <code>--limit</code> ignored (always 8)</span><span data-lang="sr">Obični <code>vir query</code>: <code>--limit</code> se ignoriše (uvek 8)</span><span class="reach" data-lang="en">Reachable: yes</span><span class="reach" data-lang="sr">Dostupno: da</span></li>
+          <li><span data-lang="en"><code>vir status</code> leaves PDFs out of pending embeddings</span><span data-lang="sr"><code>vir status</code> izostavlja PDF-ove iz embedding-a na čekanju</span><span class="reach" data-lang="en">Reachable: yes</span><span class="reach" data-lang="sr">Dostupno: da</span></li>
+          <li><span data-lang="en"><code>--json</code>: only <code>query</code> and <code>review</code> have a structured error</span><span data-lang="sr"><code>--json</code>: samo <code>query</code> i <code>review</code> imaju strukturisanu grešku</span><span class="reach" data-lang="en">Reachable: yes</span><span class="reach" data-lang="sr">Dostupno: da</span></li>
+        </ul>
+      </div>
+      <div class="col dead">
+        <h3><span data-lang="en">Dead</span><span data-lang="sr">Mrtvo</span></h3>
+        <ul>
+          <li><span data-lang="en">About 20 lines never imported (<code>OLLAMA_PROVENANCE</code>, <code>resolveActiveProviderCached</code>, <code>SPINNER</code>…)</span><span data-lang="sr">Oko 20 linija koje niko ne importuje (<code>OLLAMA_PROVENANCE</code>, <code>resolveActiveProviderCached</code>, <code>SPINNER</code>…)</span></li>
+          <li><span data-lang="en">About 115 lines used only by tests</span><span data-lang="sr">Oko 115 linija koje koriste samo testovi</span></li>
+          <li><span data-lang="en">Unreferenced files: <code>vir-flow.html</code>, <code>demo.tape</code></span><span data-lang="sr">Fajlovi bez reference: <code>vir-flow.html</code>, <code>demo.tape</code></span></li>
+          <li><span data-lang="en">Three unused hash indexes; one TODO (Kie prices)</span><span data-lang="sr">Tri neiskorišćena hash indeksa; jedan TODO (Kie cene)</span></li>
+        </ul>
+      </div>
+    </div>
+    <p class="src"><a href="APP-ATLAS.md#8-state-of-completion">APP-ATLAS.md §8–9</a></p>
+  </section>
+
+  <!-- 6 -->
+  <section id="decisions">
+    <h2><span class="num">06</span><span data-lang="en">Decisions</span><span data-lang="sr">Odluke</span></h2>
+    <p class="summary"><span data-lang="en">Choices that look odd and should stay. Each was checked against the current code.</span><span data-lang="sr">Izbori koji deluju čudno, a treba da ostanu. Svaki je proveren u trenutnom kodu.</span></p>
+    <table>
+      <thead><tr><th><span data-lang="en">Decision</span><span data-lang="sr">Odluka</span></th><th><span data-lang="en">Why</span><span data-lang="sr">Zašto</span></th><th><span data-lang="en">If reverted</span><span data-lang="sr">Ako se vrati</span></th></tr></thead>
+      <tbody>
+        <tr><td><span data-lang="en">Set the exit code, never call <code>process.exit()</code></span><span data-lang="sr">Postavi exit code, nikad ne zovi <code>process.exit()</code></span></td><td><span data-lang="en"><code>exit</code> can cut off output</span><span data-lang="sr"><code>exit</code> može da preseče output</span></td><td><span data-lang="en">The last error line is lost</span><span data-lang="sr">Gubi se poslednja linija greške</span></td></tr>
+        <tr><td><span data-lang="en">No Anthropic SDK client for Kie or claude-cli</span><span data-lang="sr">Nema Anthropic SDK klijenta za Kie ili claude-cli</span></td><td><span data-lang="en">The SDK sends a header Kie rejects</span><span data-lang="sr">SDK šalje header koji Kie odbija</span></td><td><span data-lang="en">Kie auth fails</span><span data-lang="sr">Kie auth pada</span></td></tr>
+        <tr><td><span data-lang="en"><code>claude -p</code> runs in <code>~/.vir</code> without session saving</span><span data-lang="sr"><code>claude -p</code> radi u <code>~/.vir</code> bez čuvanja sesije</span></td><td><span data-lang="en">A project folder would load that project's <code>CLAUDE.md</code>; saving would create transcripts vir then reads</span><span data-lang="sr">Folder projekta bi učitao njegov <code>CLAUDE.md</code>; čuvanje bi pravilo transkripte koje vir onda čita</span></td><td><span data-lang="en">Polluted prompts, a self-feeding loop</span><span data-lang="sr">Zagađeni prompt-ovi, petlja koja sama sebe hrani</span></td></tr>
+        <tr><td><span data-lang="en">Scrub before any model call or write</span><span data-lang="sr">Scrub pre svakog poziva modela ili upisa</span></td><td><span data-lang="en">Secrets must never reach a provider or the DB</span><span data-lang="sr">Tajne nikad ne smeju do providera ili baze</span></td><td><span data-lang="en">Keys leak into notes</span><span data-lang="sr">Ključevi cure u beleške</span></td></tr>
+        <tr><td><span data-lang="en">Migrations only add columns</span><span data-lang="sr">Migracije samo dodaju kolone</span></td><td><span data-lang="en">The daemon and MCP open old databases</span><span data-lang="sr">Daemon i MCP otvaraju stare baze</span></td><td><span data-lang="en">Data loss or crashes</span><span data-lang="sr">Gubitak podataka ili pad</span></td></tr>
+        <tr><td><span data-lang="en">A stored hash means "done"; a failure keeps the old hash</span><span data-lang="sr">Upisan hash znači „gotovo"; pad zadržava stari hash</span></td><td><span data-lang="en">Otherwise failures look finished</span><span data-lang="sr">Inače padovi izgledaju završeno</span></td><td><span data-lang="en">Failed sessions are never retried</span><span data-lang="sr">Pale sesije se nikad ne ponove</span></td></tr>
+        <tr><td><span data-lang="en">A skip never hides an existing note</span><span data-lang="sr">Preskakanje nikad ne sakriva postojeću belešku</span></td><td><span data-lang="en">Filters look forward only</span><span data-lang="sr">Filteri gledaju samo unapred</span></td><td><span data-lang="en">Re-runs hide notes (fixed in 0.23.3)</span><span data-lang="sr">Ponovni run-ovi sakrivaju beleške (rešeno u 0.23.3)</span></td></tr>
+        <tr><td><span data-lang="en">Related links come from vector neighbours</span><span data-lang="sr">Related linkovi dolaze od suseda po vektoru</span></td><td><span data-lang="en">Model-guessed links resolved 1 in 2,261 times</span><span data-lang="sr">Linkovi koje model pogađa radili su 1 put u 2.261</span></td><td><span data-lang="en">A rewrite with the embedder down wipes them all</span><span data-lang="sr">Rewrite bez embedder-a ih sve obriše</span></td></tr>
+        <tr><td><span data-lang="en">MCP opens the DB read-only</span><span data-lang="sr">MCP otvara bazu samo za čitanje</span></td><td><span data-lang="en">An agent must never change state</span><span data-lang="sr">Agent nikad ne sme da menja state</span></td><td><span data-lang="en">Writes from inside Claude Code</span><span data-lang="sr">Upisi iz samog Claude Code-a</span></td></tr>
+        <tr><td><span data-lang="en">Unknown cost is null, never $0</span><span data-lang="sr">Nepoznata cena je null, nikad $0</span></td><td><span data-lang="en">Honest totals</span><span data-lang="sr">Pošteni zbirovi</span></td><td><span data-lang="en">Spend is under-reported</span><span data-lang="sr">Trošak se prijavljuje manji</span></td></tr>
+        <tr><td><span data-lang="en">Lock: exclusive create plus a reclaim guard</span><span data-lang="sr">Lock: ekskluzivno pravljenje plus reclaim guard</span></td><td><span data-lang="en">Check-then-write let two processes both win</span><span data-lang="sr">Proveri-pa-upiši je puštalo dva procesa da oba pobede</span></td><td><span data-lang="en">Double spend</span><span data-lang="sr">Dupli trošak</span></td></tr>
+        <tr><td><span data-lang="en">Paid steps are skipped without a terminal</span><span data-lang="sr">Plaćeni koraci se preskaču bez terminala</span></td><td><span data-lang="en">Cron and scripts must not spend unasked</span><span data-lang="sr">Cron i skripte ne smeju da troše bez pitanja</span></td><td><span data-lang="en">Unattended spend</span><span data-lang="sr">Trošak bez nadzora</span></td></tr>
+        <tr><td><span data-lang="en">Period summaries are kept out of search</span><span data-lang="sr">Sažeci perioda su van pretrage</span></td><td><span data-lang="en">Summaries would crowd out their sources</span><span data-lang="sr">Sažeci bi potisnuli svoje izvore</span></td><td><span data-lang="en">Polluted results</span><span data-lang="sr">Zagađeni rezultati</span></td></tr>
+      </tbody>
+    </table>
+    <p class="src"><a href="APP-ATLAS.md#7-deliberate-decisions">APP-ATLAS.md §7</a></p>
+  </section>
+
+  <!-- 7 -->
+  <section id="interview">
+    <h2><span class="num">07</span>Important to know if asked in a job interview</h2>
+    <p class="summary"><span data-lang="en">Twelve likely questions, answered from facts in the atlas — weaknesses included.</span><span data-lang="sr">Dvanaest verovatnih pitanja, odgovoreno činjenicama iz atlasa — uključujući slabosti.</span></p>
+    <div class="qa">
+
+      <div class="card"><h3><span data-lang="en">"Walk me through the architecture."</span><span data-lang="sr">„Provedi me kroz arhitekturu."</span></h3>
+        <p data-lang="en">vir is a local command-line tool, not a service. It reads the transcript files Claude Code leaves in my home directory, runs the useful ones through a model to make short typed notes, and writes them as Markdown into my Obsidian vault. State lives in one SQLite file: what was processed, the vectors for search, and what was rejected or demoted. A launchd job runs it every few hours. The same binary also runs as an MCP server that Claude Code starts, so the agent can search the notes mid-session. No network listener and no database server; that was the point.</p>
+        <p data-lang="sr">vir je lokalni command-line alat, ne servis. Čita transkripte koje Claude Code ostavlja u home folderu, korisne pušta kroz model da napravi kratke tipizirane beleške i upisuje ih kao Markdown u moj Obsidian vault. State je u jednom SQLite fajlu: šta je obrađeno, vektori za pretragu, i šta je odbijeno ili spušteno. launchd job ga pokreće na par sati. Isti binary radi i kao MCP server koji Claude Code pokreće, da agent može da pretražuje beleške usred sesije. Nema network listener-a ni database servera; to je i bila poenta.</p>
+        <p class="test"><span data-lang="en">Testing: whether you can describe boundaries and data flow.</span><span data-lang="sr">Proverava: da li umeš da opišeš granice i tok podataka.</span></p>
+        <p class="fu"><span data-lang="en"><strong>Follow-up:</strong> "Why not a web service?" — It is single-user and the data is personal; a service adds hosting, auth and privacy problems for no gain.</span><span data-lang="sr"><strong>Sledeće pitanje:</strong> „Zašto ne web servis?" — Za jednog je korisnika i podaci su lični; servis dodaje hosting, auth i privatnost bez koristi.</span></p></div>
+
+      <div class="card"><h3><span data-lang="en">"Why SQLite and plain files?"</span><span data-lang="sr">„Zašto SQLite i obični fajlovi?"</span></h3>
+        <p data-lang="en">The notes are the product and I edit them in Obsidian, so they must be files. SQLite holds what files cannot: content hashes so I know what was already paid for, the vectors, retry counters and review overlays. It needs no server, and WAL mode lets the read-only MCP server read while a run writes. Migrations only ever add columns, because the daemon and the MCP server open old databases.</p>
+        <p data-lang="sr">Beleške su proizvod i menjam ih u Obsidian-u, pa moraju biti fajlovi. SQLite drži ono što fajlovi ne mogu: hash-eve da znam šta je već plaćeno, vektore, brojače pokušaja i review overlay-e. Ne treba mu server, a WAL režim pušta read-only MCP server da čita dok run piše. Migracije samo dodaju kolone, jer daemon i MCP server otvaraju stare baze.</p>
+        <p class="test"><span data-lang="en">Testing: whether storage was chosen or just defaulted.</span><span data-lang="sr">Proverava: da li je storage izabran ili samo default.</span></p>
+        <p class="fu"><span data-lang="en"><strong>Follow-up:</strong> "Where does it break?" — Sessions are matched with <code>LIKE '%/&lt;id&gt;.jsonl'</code>, a full table scan; fine for thousands of rows, not millions.</span><span data-lang="sr"><strong>Sledeće pitanje:</strong> „Gde puca?" — Sesije se nalaze sa <code>LIKE '%/&lt;id&gt;.jsonl'</code>, što je full table scan; ok za hiljade redova, ne za milione.</span></p></div>
+
+      <div class="card"><h3><span data-lang="en">"How do you avoid paying twice for the same work?"</span><span data-lang="sr">„Kako izbegavaš da platiš dvaput isti posao?"</span></h3>
+        <p data-lang="en">Every transcript is hashed. A matching stored hash means done, so the next run skips it for free. All the cheap filters run before the first paid call: project decisions, agent transcripts, demoted notes, sessions that failed three times. A lock file stops two runs overlapping, and big batches show a cost estimate first.</p>
+        <p data-lang="sr">Svaki transkript se hešira. Isti upisan hash znači gotovo, pa ga sledeći run besplatno preskače. Svi jeftini filteri idu pre prvog plaćenog poziva: odluke o projektima, agent transkripti, spuštene beleške, sesije koje su pale tri puta. Lock fajl sprečava preklapanje run-ova, a veliki batch-evi prvo pokažu procenu cene.</p>
+        <p class="test"><span data-lang="en">Testing: idempotency — twice has the same effect as once.</span><span data-lang="sr">Proverava: idempotency — dvaput ima isti efekat kao jednom.</span></p>
+        <p class="fu"><span data-lang="en"><strong>Follow-up:</strong> "And a failed call?" — It keeps the old hash and bumps an attempt counter: retried, but at most three times.</span><span data-lang="sr"><strong>Sledeće pitanje:</strong> „A poziv koji padne?" — Zadržava stari hash i povećava brojač: ponavlja se, ali najviše tri puta.</span></p></div>
+
+      <div class="card"><h3><span data-lang="en">"What was the hardest bug?"</span><span data-lang="sr">„Koji ti je bio najteži bug?"</span></h3>
+        <p data-lang="en">The lock. The first version checked whether the lock file existed and then wrote it — two steps, so two processes starting together could both win. I switched to an exclusive create and raced eight real processes against it. A fresh lock now had one winner, but a stale lock left by a crash still gave about three winners per trial: one process judged it stale, another replaced it, and the first deleted the replacement. A second guard file, so only one process may remove a stale lock, fixed it: twenty trials, one winner each.</p>
+        <p data-lang="sr">Lock. Prva verzija je proveravala da li lock fajl postoji pa ga upisivala — dva koraka, pa su dva procesa koja krenu zajedno mogla oba da pobede. Prešao sam na ekskluzivno pravljenje i pustio osam pravih procesa da se trkaju. Svež lock je sad imao jednog pobednika, ali stale lock posle pada i dalje je davao oko tri pobednika po pokušaju: jedan proces ga proceni kao stale, drugi ga zameni, a prvi obriše zamenu. Rešio je drugi guard fajl, da samo jedan proces sme da briše stale lock: dvadeset pokušaja, po jedan pobednik.</p>
+        <p class="test"><span data-lang="en">Testing: debugging method, and honesty when the first fix was not enough.</span><span data-lang="sr">Proverava: metod debug-ovanja i iskrenost kad prvi fix nije dovoljan.</span></p>
+        <p class="fu"><span data-lang="en"><strong>Follow-up:</strong> "Why not a database lock?" — Some lock holders never open the database, and a pidfile survives crashes in a way that is easy to inspect.</span><span data-lang="sr"><strong>Sledeće pitanje:</strong> „Zašto ne database lock?" — Neki koji drže lock nikad ne otvaraju bazu, a pidfile preživi pad i lako se pregleda.</span></p></div>
+
+      <div class="card"><h3><span data-lang="en">"How does search work?"</span><span data-lang="sr">„Kako radi pretraga?"</span></h3>
+        <p data-lang="en">Every note gets a vector from a local embedding model, Ollama or a bundled fastembed model. A question is embedded the same way and compared by cosine similarity, but only with vectors from the same model. Approved notes get a fixed boost, and MMR keeps the results from being five near-copies. If no vector matches, it falls back to TF-IDF keyword search over the files.</p>
+        <p data-lang="sr">Svaka beleška dobija vektor iz lokalnog embedding modela, Ollama ili ugrađenog fastembed-a. Pitanje se embed-uje isto i poredi preko cosine similarity, ali samo sa vektorima istog modela. Odobrene beleške dobijaju fiksni boost, a MMR sprečava da rezultati budu pet skoro-kopija. Ako nijedan vektor ne odgovara, prelazi na TF-IDF pretragu po fajlovima.</p>
+        <p class="test"><span data-lang="en">Testing: whether you understand embeddings beyond the buzzword.</span><span data-lang="sr">Proverava: da li razumeš embedding-e dalje od buzzword-a.</span></p>
+        <p class="fu"><span data-lang="en"><strong>Follow-up:</strong> "Is the boost principled?" — No: a flat +0.2 nudges cosine scores but dominates the much smaller TF-IDF scores.</span><span data-lang="sr"><strong>Sledeće pitanje:</strong> „Da li je boost promišljen?" — Ne: fiksnih +0,2 malo pomera cosine skorove, ali nadjača mnogo manje TF-IDF skorove.</span></p></div>
+
+      <div class="card"><h3><span data-lang="en">"How do you keep secrets out of the notes?"</span><span data-lang="sr">„Kako držiš tajne van beleški?"</span></h3>
+        <p data-lang="en">Before anything reaches a provider or the database, a scrubber masks API keys, bearer tokens, emails and home paths, and a tool filter removes big tool outputs. It happens in one shared function, so the run and the retry path cannot drift apart. The config file with my keys is written owner-only from the first byte.</p>
+        <p data-lang="sr">Pre nego što išta stigne do providera ili baze, scrubber maskira API ključeve, bearer tokene, mejlove i home putanje, a tool filter skida velike tool output-e. To je u jednoj zajedničkoj funkciji, pa run i retry ne mogu da se raziđu. Config fajl sa ključevima se od prvog bajta piše tako da ga čita samo vlasnik.</p>
+        <p class="test"><span data-lang="en">Testing: security posture on a tool that reads private data.</span><span data-lang="sr">Proverava: bezbednost alata koji čita privatne podatke.</span></p>
+        <p class="fu"><span data-lang="en"><strong>Follow-up:</strong> "Is the scrubber complete?" — No; it is pattern-based, so an unusual secret format gets through.</span><span data-lang="sr"><strong>Sledeće pitanje:</strong> „Da li je scrubber kompletan?" — Ne; radi na pattern-ima, pa neobičan format tajne prođe.</span></p></div>
+
+      <div class="card"><h3><span data-lang="en">"What happens when the AI provider is down?"</span><span data-lang="sr">„Šta se desi kad AI provider ne radi?"</span></h3>
+        <p data-lang="en">One cheap probe runs before the loop. If it fails, vir records a marker, sends a notification and stops: one clear failure instead of hundreds of failed sessions. If the subscription quota runs out mid-run, it stops without recording anything, so nothing counts as a failure.</p>
+        <p data-lang="sr">Pre petlje ide jedan jeftin probe. Ako padne, vir upiše marker, pošalje notifikaciju i stane: jedan jasan pad umesto stotina palih sesija. Ako quota istekne usred run-a, staje bez upisa, pa se ništa ne računa kao pad.</p>
+        <p class="test"><span data-lang="en">Testing: failure isolation.</span><span data-lang="sr">Proverava: izolaciju grešaka.</span></p>
+        <p class="fu"><span data-lang="en"><strong>Follow-up:</strong> "And one bad session?" — An error row and an attempt counter; after three it is parked and only <code>vir reconcile --force</code> retries it.</span><span data-lang="sr"><strong>Sledeće pitanje:</strong> „A jedna loša sesija?" — Red sa greškom i brojač; posle tri se parkira i samo <code>vir reconcile --force</code> je ponavlja.</span></p></div>
+
+      <div class="card"><h3><span data-lang="en">"Where does it stop scaling?"</span><span data-lang="sr">„Gde prestaje da skalira?"</span></h3>
+        <p data-lang="en">Every run hashes every transcript in full; with a few thousand files that is seconds, but it grows linearly. Search loads every vector and compares them in memory, which is fine for a personal vault of a few thousand notes. Both are deliberate: it is a personal tool.</p>
+        <p data-lang="sr">Svaki run hešira ceo svaki transkript; sa par hiljada fajlova to su sekunde, ali raste linearno. Pretraga učitava sve vektore i poredi ih u memoriji, što je ok za lični vault od par hiljada beleški. Oba su namerna: ovo je lični alat.</p>
+        <p class="test"><span data-lang="en">Testing: knowing your limits.</span><span data-lang="sr">Proverava: da znaš svoje granice.</span></p>
+        <p class="fu"><span data-lang="en"><strong>Follow-up:</strong> "What would you change first?" — Skip unchanged files by modification time before hashing.</span><span data-lang="sr"><strong>Sledeće pitanje:</strong> „Šta bi prvo menjao?" — Preskočio bih nepromenjene fajlove po vremenu izmene pre heširanja.</span></p></div>
+
+      <div class="card"><h3><span data-lang="en">"What trade-off did you accept on purpose?"</span><span data-lang="sr">„Koji kompromis si svesno prihvatio?"</span></h3>
+        <p data-lang="en">Notes are files I can edit, so some state lives in two places: approval only in the note's frontmatter, rejection in both the file's location and the database. That costs a sync step on every run, but keeps Obsidian the real interface.</p>
+        <p data-lang="sr">Beleške su fajlovi koje mogu da menjam, pa je deo state-a na dva mesta: odobrenje samo u frontmatter-u beleške, odbijanje i u lokaciji fajla i u bazi. To košta sync korak na svakom run-u, ali Obsidian ostaje pravi interfejs.</p>
+        <p class="test"><span data-lang="en">Testing: whether you know the cost of your choices.</span><span data-lang="sr">Proverava: da li znaš cenu svojih izbora.</span></p>
+        <p class="fu"><span data-lang="en"><strong>Follow-up:</strong> "Did it bite you?" — Yes: rejected notes kept serving from the database until a <code>rejected_at</code> column was added.</span><span data-lang="sr"><strong>Sledeće pitanje:</strong> „Da li te je ujelo?" — Da: odbijene beleške su i dalje služile iz baze dok nije dodata kolona <code>rejected_at</code>.</span></p></div>
+
+      <div class="card"><h3><span data-lang="en">"How is it tested?"</span><span data-lang="sr">„Kako je testirano?"</span></h3>
+        <p data-lang="en">About 1,070 Vitest tests next to the code, run against a temporary home directory so they never touch real data. Recent fixes were written test-first against a real SQLite file instead of mocks, because the mocked tests had hidden ordering bugs between writing a note and recording it. CI also type-checks the tests.</p>
+        <p data-lang="sr">Oko 1.070 Vitest testova pored koda, pokrenutih nad privremenim home folderom da nikad ne diraju prave podatke. Skorašnji fix-evi su pisani test-first nad pravim SQLite fajlom umesto mock-ova, jer su mock testovi krili bug-ove u redosledu između upisa beleške i upisa reda. CI takođe type-check-uje testove.</p>
+        <p class="test"><span data-lang="en">Testing: whether the tests caught real bugs.</span><span data-lang="sr">Proverava: da li su testovi uhvatili prave bug-ove.</span></p>
+        <p class="fu"><span data-lang="en"><strong>Follow-up:</strong> "What is untested?" — The MCP request handlers, the CLI wiring, and the Linux scheduler.</span><span data-lang="sr"><strong>Sledeće pitanje:</strong> „Šta nije testirano?" — MCP handler-i, CLI wiring i Linux scheduler.</span></p></div>
+
+      <div class="card"><h3><span data-lang="en">"What is genuinely weak?"</span><span data-lang="sr">„Šta je stvarno slabo?"</span></h3>
+        <p data-lang="en">The Linux scheduler is barely tested, and its cron fallback can overwrite a user's crontab if reading it fails. <code>vir summarize</code> on single projects ignores <code>--dry-run</code>, so a "dry run" makes real calls. And the agent-facing <code>CLAUDE.md</code> describes an older version, so it misleads future AI sessions.</p>
+        <p data-lang="sr">Linux scheduler je jedva testiran, a njegov cron fallback može da pregazi korisnikov crontab ako čitanje padne. <code>vir summarize</code> za pojedinačne projekte ignoriše <code>--dry-run</code>, pa „dry run" pravi prave pozive. A <code>CLAUDE.md</code> za agenta opisuje stariju verziju, pa zavarava buduće AI sesije.</p>
+        <p class="test"><span data-lang="en">Testing: honesty.</span><span data-lang="sr">Proverava: iskrenost.</span></p>
+        <p class="fu"><span data-lang="en"><strong>Follow-up:</strong> "Why not fixed?" — They were found while writing this atlas and are listed as findings.</span><span data-lang="sr"><strong>Sledeće pitanje:</strong> „Zašto nije rešeno?" — Nađeni su dok se pisao ovaj atlas i navedeni su kao nalazi.</span></p></div>
+
+      <div class="card"><h3><span data-lang="en">"How do you control cost?"</span><span data-lang="sr">„Kako kontrolišeš trošak?"</span></h3>
+        <p data-lang="en">Every model call goes through one function that logs tokens and an estimated cost. Subscription calls and models with no known price are logged as unknown rather than zero, so totals are never quietly wrong. Big runs show an estimate first, and a subscription run is capped at 25 sessions.</p>
+        <p data-lang="sr">Svaki poziv modela ide kroz jednu funkciju koja loguje tokene i procenjenu cenu. Pozivi preko pretplate i modeli bez poznate cene loguju se kao nepoznato, ne nula, pa zbirovi nikad nisu tiho pogrešni. Veliki run-ovi prvo pokažu procenu, a run na pretplati je ograničen na 25 sesija.</p>
+        <p class="test"><span data-lang="en">Testing: operational maturity.</span><span data-lang="sr">Proverava: operativnu zrelost.</span></p>
+        <p class="fu"><span data-lang="en"><strong>Follow-up:</strong> "Any spend without a prompt?" — Yes: small runs, <code>vir calibrate</code>, and the agent's <code>vir_query</code> unless it opts out.</span><span data-lang="sr"><strong>Sledeće pitanje:</strong> „Ima li troška bez pitanja?" — Ima: mali run-ovi, <code>vir calibrate</code>, i agentov <code>vir_query</code> osim ako odustane.</span></p></div>
+    </div>
+    <p class="src"><a href="APP-ATLAS.md#12-explaining-this-system-out-loud">APP-ATLAS.md §12</a></p>
+  </section>
+
+  <!-- 8 -->
+  <section id="open">
+    <h2><span class="num">08</span><span data-lang="en">Open questions</span><span data-lang="sr">Otvorena pitanja</span></h2>
+    <p class="summary"><span data-lang="en">Things the code cannot answer — each one is a decision for you.</span><span data-lang="sr">Stvari na koje kod ne može da odgovori — svaka je odluka za tebe.</span></p>
+    <ol class="open">
+      <li><span data-lang="en">Does anything besides the site's refresh script and <code>eval/run.ts</code> read <code>sessions.note_paths</code>?</span><span data-lang="sr">Da li išta osim refresh skripte sajta i <code>eval/run.ts</code> čita <code>sessions.note_paths</code>?</span></li>
+      <li><span data-lang="en">Is the Linux scheduler meant to be supported, or should install refuse on Linux until it is tested?</span><span data-lang="sr">Da li Linux scheduler treba da bude podržan, ili install treba da odbije na Linux-u dok se ne testira?</span></li>
+      <li><span data-lang="en">Is <code>vir calibrate</code> still used? If yes, should it get the cost prompt and filters?</span><span data-lang="sr">Da li se <code>vir calibrate</code> još koristi? Ako da, da li treba da dobije cost prompt i filtere?</span></li>
+      <li><span data-lang="en">Should <code>vir run --rewrite-only</code> take the lock, now that it rewrites every note?</span><span data-lang="sr">Da li <code>vir run --rewrite-only</code> treba da uzme lock, sad kad prepisuje svaku belešku?</span></li>
+      <li><span data-lang="en">Which <code>--json</code> contracts are stable for the plugin? The site lists only <code>query</code> and <code>doctor</code>.</span><span data-lang="sr">Koji <code>--json</code> ugovori su stabilni za plugin? Sajt navodi samo <code>query</code> i <code>doctor</code>.</span></li>
+      <li><span data-lang="en">Should <code>daemon.log</code> and <code>cost.log</code> rotate like <code>queries.jsonl</code>?</span><span data-lang="sr">Da li <code>daemon.log</code> i <code>cost.log</code> treba da se rotiraju kao <code>queries.jsonl</code>?</span></li>
+      <li><span data-lang="en">Is the Kie price table still right? It has a TODO and no <code>claude-sonnet-5</code> row.</span><span data-lang="sr">Da li je Kie tabela cena još tačna? Ima TODO i nema red za <code>claude-sonnet-5</code>.</span></li>
+      <li><span data-lang="en">Should project summaries be kept out of keyword search, like period summaries?</span><span data-lang="sr">Da li sažeci projekata treba da budu van pretrage po rečima, kao sažeci perioda?</span></li>
+      <li><span data-lang="en">25 sessions in 10 undecided projects, transcripts up to 51 days old: include them before Claude Code deletes them?</span><span data-lang="sr">25 sesija u 10 neodlučenih projekata, transkripti stari do 51 dan: uključiti ih pre nego što ih Claude Code obriše?</span></li>
+      <li><span data-lang="en">Does the Obsidian plugin validate the <code>--json</code> shapes, or trust them?</span><span data-lang="sr">Da li Obsidian plugin validira <code>--json</code> oblike, ili im veruje?</span></li>
+    </ol>
+    <p class="src"><a href="APP-ATLAS.md#11-open-questions">APP-ATLAS.md §11</a></p>
+  </section>
+</main>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  function setLang(l) {
+    root.dataset.lang = l;
+    root.lang = l === "sr" ? "sr-Latn" : "en";
+    document.querySelectorAll(".toggle button").forEach(function (b) {
+      b.setAttribute("aria-pressed", String(b.dataset.set === l));
+    });
+    try { localStorage.setItem("vir-atlas-lang", l); } catch (e) {}
+  }
+  var saved = null;
+  try { saved = localStorage.getItem("vir-atlas-lang"); } catch (e) {}
+  setLang(saved === "sr" ? "sr" : "en");
+  document.querySelectorAll(".toggle button").forEach(function (b) {
+    b.addEventListener("click", function () { setLang(b.dataset.set); });
+  });
+  window.addEventListener("beforeprint", function () {
+    document.querySelectorAll("details").forEach(function (d) { d.open = true; });
+  });
+})();
+</script>
+</body>
+</html>
