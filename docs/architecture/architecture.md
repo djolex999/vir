@@ -1,5 +1,5 @@
 # vir — Architecture
-*Generated: 2026-10-05 at revision `06c6606` (v0.23.0) · updated for 0.24.1. `file:line` references and the diagrams are pinned to `06c6606`.*
+*Generated: 2026-10-05 at revision `06c6606` (v0.23.0) · updated for 0.24.2. `file:line` references and the diagrams are pinned to `06c6606`.*
 
 Supersedes the 2026-06-12 architecture doc and map (v0.8.3; removed, see git history). Changes since that version are listed at the end of this document.
 
@@ -222,6 +222,7 @@ The original `[DO NOW]` and `[DO LATER]` items are all fixed (see the end of thi
   - 0.23.3: a filter or low-confidence skip of a re-processed session keeps its note (plus a one-time repair of notes it had hidden);
   - 0.24.0: write-time embeddings reach new rows and the sweep embeds the same text; `vir_query` `synthesize: false`; `claude` found under the daemon's PATH; locks on review/dedupe/audit/compose/summarize and cost prompts for dedupe/lint; atomic `CLAUDE.md` writes; tests and `eval/` type-checked in CI; `distillOneSession` shared by run and reconcile; large commands moved out of `cli.ts`;
   - 0.24.1: no crash when the preflight probe fails; `sync-claude` exits 1 on a failed write; `config.json` written owner-only from the first byte; unpriced models logged as unknown, not $0.
+  - 0.24.2: reconcile applies vir run's filters and reports deleted transcripts; failed reconcile retries count toward the retry bound; real estimate in the run cost prompt; `$EDITOR` with arguments; `--full` covers articles/PDFs; oversized transcripts trimmed to fit; Linux home paths scrubbed.
 - **New since then:**
   - the `claude-cli` provider;
   - PDFs;
