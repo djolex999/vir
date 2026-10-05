@@ -1074,7 +1074,17 @@ export async function runPipeline(
     }
   }
 
+  // A subscription limit is a wall for every later LLM call too. Running the
+  // project summaries, article phase or PDF phase after a halt only hits it
+  // again, and the doc phases would record every new item as errored. All of
+  // them are picked up by the next run instead.
+  const halted = summary.limitHalted !== null;
+  if (halted) {
+    fileLog("limit halt: skipping project summaries, articles and pdfs this run");
+  }
+
   for (const [slug, count] of newPerProject) {
+    if (halted) break;
     if (count < 3) continue;
     try {
       const res = await summarizeProject(cfg, slug, db);
@@ -1133,13 +1143,14 @@ export async function runPipeline(
 
   // Second input source: web articles. Gated on config; a session-only install
   // (no articlesDir) skips this entirely and behaves exactly as before.
-  if (cfg.articlesDir && cfg.distillArticles) {
+  if (!halted && cfg.articlesDir && cfg.distillArticles) {
     await runArticlePhase(cfg, db, writer, summary, fileLog, interactive);
   }
 
   // Third input source: PDFs / papers. Gated identically; an install without
   // pdfsDir skips this entirely (the article pattern, cloned).
-  if (cfg.pdfsDir && cfg.distillPdfs) {
+  // The article phase may itself hit the limit and halt.
+  if (summary.limitHalted === null && cfg.pdfsDir && cfg.distillPdfs) {
     await runPdfPhase(cfg, db, writer, summary, fileLog, interactive);
   }
 
@@ -1390,6 +1401,15 @@ async function runArticlePhase(
       }
       await new Promise((r) => setTimeout(r, 2000));
     } catch (err) {
+      // Same rule as the session loop: a subscription limit is one
+      // environmental fact. Halt, and record nothing, so the wall burns no
+      // attempts and the article is simply new again next run.
+      if (err instanceof ClaudeCliLimitError) {
+        summary.limitHalted = err.message;
+        if (interactive) ui.row(ui.errorColor(ui.CROSS), ui.text(err.message));
+        fileLog(`article phase halted: ${err.message}`);
+        break;
+      }
       summary.articlesErrored += 1;
       const msg = (err as Error).message ?? String(err);
       if (interactive) {
@@ -1488,6 +1508,12 @@ async function runPdfPhase(
       }
       await new Promise((r) => setTimeout(r, 2000));
     } catch (err) {
+      if (err instanceof ClaudeCliLimitError) {
+        summary.limitHalted = err.message;
+        if (interactive) ui.row(ui.errorColor(ui.CROSS), ui.text(err.message));
+        fileLog(`pdf phase halted: ${err.message}`);
+        break;
+      }
       summary.pdfsErrored += 1;
       const msg = (err as Error).message ?? String(err);
       if (interactive) {
@@ -1495,8 +1521,10 @@ async function runPdfPhase(
       }
       fileLog(`error on pdf ${src.filePath}: ${msg}`);
       try {
-        // Record with the source hash so a corrupt PDF isn't retried every run
-        // (same idempotency contract as articles).
+        // The error row keeps the source hash and bumps attempts;
+        // isPdfProcessed retries it until MAX_DISTILL_ATTEMPTS failures on
+        // these bytes (same contract as articles), so a corrupt PDF stops
+        // being retried after three runs. A changed file starts over.
         db.recordPdf({
           path: src.filePath,
           hash: src.hash,

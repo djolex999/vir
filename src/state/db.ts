@@ -406,6 +406,21 @@ export class StateDb {
     for (const col of ADDED_COLUMNS) {
       if (!existing.has(col.name)) this.db.exec(col.ddl);
     }
+    // Consecutive failed distills for the doc tables, same bound as sessions.
+    // Existing rows default to 0, so an errored row left by an earlier version
+    // gets the full MAX_DISTILL_ATTEMPTS retries.
+    for (const table of ["articles", "pdfs"]) {
+      const cols = new Set(
+        (
+          this.db.prepare(`PRAGMA table_info(${table})`).all() as ColumnInfo[]
+        ).map((r) => r.name),
+      );
+      if (!cols.has("attempts")) {
+        this.db.exec(
+          `ALTER TABLE ${table} ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0`,
+        );
+      }
+    }
     // Embedding provenance, all four embedding-bearing tables. Backfill is safe
     // and idempotent: rows embedded before provenance existed can only have come
     // from nomic (the sole embedder in every prior release), and the WHERE
@@ -1213,9 +1228,17 @@ export class StateDb {
   isArticleProcessed(path: string, hash: string): boolean {
     if (!this.hasArticlesTable()) return false;
     const row = this.db
-      .prepare("SELECT hash FROM articles WHERE path = ?")
-      .get(path) as { hash: string } | undefined;
-    return row !== undefined && row.hash === hash;
+      .prepare("SELECT hash, error, attempts FROM articles WHERE path = ?")
+      .get(path) as
+      | { hash: string; error: string | null; attempts: number }
+      | undefined;
+    // An errored row is retried until it has failed MAX_DISTILL_ATTEMPTS times
+    // on these bytes; a changed file has a new hash and starts over.
+    return (
+      row !== undefined &&
+      row.hash === hash &&
+      (row.error === null || row.attempts >= MAX_DISTILL_ATTEMPTS)
+    );
   }
 
   recordArticle(opts: {
@@ -1235,13 +1258,20 @@ export class StateDb {
   }): void {
     this.db
       .prepare(
+        // attempts: an error on the same bytes counts up, an error on new
+        // bytes counts from 1, and any success or skip resets it.
         `INSERT INTO articles (
            path, hash, processed_at, skipped, note_path, error,
            content, category, title, url, author, published,
-           confidence, distilled_at
+           confidence, distilled_at, attempts
          )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(path) DO UPDATE SET
+           attempts = CASE
+             WHEN excluded.error IS NULL THEN 0
+             WHEN articles.hash = excluded.hash THEN articles.attempts + 1
+             ELSE 1
+           END,
            hash = excluded.hash,
            processed_at = excluded.processed_at,
            skipped = excluded.skipped,
@@ -1271,6 +1301,7 @@ export class StateDb {
         opts.published ?? null,
         opts.confidence ?? null,
         opts.distilledAt ?? null,
+        opts.error ? 1 : 0,
       );
   }
 
@@ -1416,9 +1447,17 @@ export class StateDb {
   isPdfProcessed(path: string, hash: string): boolean {
     if (!this.hasPdfsTable()) return false;
     const row = this.db
-      .prepare("SELECT hash FROM pdfs WHERE path = ?")
-      .get(path) as { hash: string } | undefined;
-    return row !== undefined && row.hash === hash;
+      .prepare("SELECT hash, error, attempts FROM pdfs WHERE path = ?")
+      .get(path) as
+      | { hash: string; error: string | null; attempts: number }
+      | undefined;
+    // An errored row is retried until it has failed MAX_DISTILL_ATTEMPTS times
+    // on these bytes; a changed file has a new hash and starts over.
+    return (
+      row !== undefined &&
+      row.hash === hash &&
+      (row.error === null || row.attempts >= MAX_DISTILL_ATTEMPTS)
+    );
   }
 
   recordPdf(opts: {
@@ -1436,12 +1475,18 @@ export class StateDb {
   }): void {
     this.db
       .prepare(
+        // attempts: same contract as recordArticle.
         `INSERT INTO pdfs (
            path, hash, processed_at, skipped, note_path, error,
-           content, category, title, pages, confidence, distilled_at
+           content, category, title, pages, confidence, distilled_at, attempts
          )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(path) DO UPDATE SET
+           attempts = CASE
+             WHEN excluded.error IS NULL THEN 0
+             WHEN pdfs.hash = excluded.hash THEN pdfs.attempts + 1
+             ELSE 1
+           END,
            hash = excluded.hash,
            processed_at = excluded.processed_at,
            skipped = excluded.skipped,
@@ -1467,6 +1512,7 @@ export class StateDb {
         opts.pages ?? null,
         opts.confidence ?? null,
         opts.distilledAt ?? null,
+        opts.error ? 1 : 0,
       );
   }
 

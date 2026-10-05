@@ -1,0 +1,313 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "MCP vir_query Request",
+    "output": "docs/architecture/sequence-mcp-query.html",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "viewBox": [
+      1080,
+      600
+    ],
+    "repository": {
+      "url": "git@github.com:djolex999/vir.git",
+      "link_mode": "local-only",
+      "revision": "06c66063b90c9e5319b87d384d36cde351059634"
+    }
+  },
+  "participants": [
+    {
+      "id": "claude",
+      "type": "external",
+      "label": "Claude Code",
+      "sublabel": "MCP client",
+      "sources": [
+        {
+          "path": "src/mcp/install.ts",
+          "line": 41,
+          "end_line": 104,
+          "label": "claude mcp add"
+        }
+      ]
+    },
+    {
+      "id": "mcp",
+      "type": "backend",
+      "label": "MCP server",
+      "sublabel": "vir_query tool",
+      "sources": [
+        {
+          "path": "src/mcp/server.ts",
+          "line": 266,
+          "end_line": 330,
+          "label": "vir_query handler"
+        }
+      ]
+    },
+    {
+      "id": "retriever",
+      "type": "backend",
+      "label": "Retriever",
+      "sublabel": "searchWithOutcome",
+      "sources": [
+        {
+          "path": "src/search/retriever.ts",
+          "line": 108,
+          "end_line": 161
+        },
+        {
+          "path": "src/search/retriever.ts",
+          "line": 174,
+          "end_line": 260,
+          "label": "searchByEmbedding"
+        }
+      ]
+    },
+    {
+      "id": "embed",
+      "type": "external",
+      "label": "Embedder",
+      "sublabel": "Ollama · local",
+      "sources": [
+        {
+          "path": "src/search/provider.ts",
+          "line": 42,
+          "end_line": 58,
+          "label": "resolve provider"
+        },
+        {
+          "path": "src/search/provider.ts",
+          "line": 94,
+          "end_line": 120,
+          "label": "OllamaProvider"
+        }
+      ]
+    },
+    {
+      "id": "sqlite",
+      "type": "database",
+      "label": "SQLite",
+      "sublabel": "read-only open",
+      "sources": [
+        {
+          "path": "src/mcp/server.ts",
+          "line": 210,
+          "end_line": 218,
+          "label": "readonly StateDb"
+        },
+        {
+          "path": "src/state/db.ts",
+          "line": 1121,
+          "end_line": 1170,
+          "label": "getEmbeddings"
+        }
+      ]
+    },
+    {
+      "id": "vault",
+      "type": "database",
+      "label": "Vault files",
+      "sublabel": "note markdown",
+      "sources": [
+        {
+          "path": "src/search/retriever.ts",
+          "line": 215,
+          "end_line": 232,
+          "label": "read + verified"
+        }
+      ]
+    },
+    {
+      "id": "llm",
+      "type": "external",
+      "label": "LLM provider",
+      "sublabel": "via callLLM",
+      "sources": [
+        {
+          "path": "src/search/synthesizer.ts",
+          "line": 34,
+          "end_line": 52,
+          "label": "synthesize"
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 160,
+      "to": 410,
+      "label": "Retrieve"
+    },
+    {
+      "from": 420,
+      "to": 500,
+      "label": "Synthesize"
+    }
+  ],
+  "messages": [
+    {
+      "id": "call",
+      "from": "claude",
+      "to": "mcp",
+      "y": 172,
+      "label": "vir_query",
+      "variant": "emphasis"
+    },
+    {
+      "id": "search",
+      "from": "mcp",
+      "to": "retriever",
+      "y": 200,
+      "label": "searchWithOutcome",
+      "variant": "default"
+    },
+    {
+      "id": "embed-q",
+      "from": "retriever",
+      "to": "embed",
+      "y": 228,
+      "label": "embedQuery",
+      "variant": "default"
+    },
+    {
+      "id": "qvec",
+      "from": "embed",
+      "to": "retriever",
+      "y": 256,
+      "label": "query vector",
+      "variant": "return"
+    },
+    {
+      "id": "get-vecs",
+      "from": "retriever",
+      "to": "sqlite",
+      "y": 284,
+      "label": "get embeddings",
+      "variant": "default"
+    },
+    {
+      "id": "vecs",
+      "from": "sqlite",
+      "to": "retriever",
+      "y": 312,
+      "label": "same-model rows",
+      "variant": "return"
+    },
+    {
+      "id": "read",
+      "from": "retriever",
+      "to": "vault",
+      "y": 340,
+      "label": "read above floor",
+      "variant": "default"
+    },
+    {
+      "id": "content",
+      "from": "vault",
+      "to": "retriever",
+      "y": 368,
+      "label": "content + verified",
+      "variant": "return"
+    },
+    {
+      "id": "hits",
+      "from": "retriever",
+      "to": "mcp",
+      "y": 396,
+      "label": "MMR top-k",
+      "variant": "return",
+      "note": "TF-IDF fallback on 0 hits"
+    },
+    {
+      "id": "synth",
+      "from": "mcp",
+      "to": "llm",
+      "y": 432,
+      "label": "synthesize",
+      "variant": "emphasis",
+      "note": "query log + cost.log written"
+    },
+    {
+      "id": "answer",
+      "from": "llm",
+      "to": "mcp",
+      "y": 460,
+      "label": "answer",
+      "variant": "return"
+    },
+    {
+      "id": "reply",
+      "from": "mcp",
+      "to": "claude",
+      "y": 488,
+      "label": "answer + sources",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "mcp",
+      "from": 172,
+      "to": 494,
+      "type": "backend"
+    },
+    {
+      "participant": "retriever",
+      "from": 200,
+      "to": 402,
+      "type": "backend"
+    },
+    {
+      "participant": "embed",
+      "from": 228,
+      "to": 262,
+      "type": "external"
+    },
+    {
+      "participant": "sqlite",
+      "from": 284,
+      "to": 318,
+      "type": "database"
+    },
+    {
+      "participant": "vault",
+      "from": 340,
+      "to": 374,
+      "type": "database"
+    },
+    {
+      "participant": "llm",
+      "from": 432,
+      "to": 466,
+      "type": "external"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Retrieval",
+      "items": [
+        "Vectors from sessions, articles, topics and PDFs share one pool",
+        "Rows from a different embedding model are excluded, never compared",
+        "Verified notes get +0.2 before the top-k cut"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Not side-effect free",
+      "items": [
+        "The DB is opened read-only, but every query with hits makes a paid LLM call",
+        "Queries append to ~/.vir/queries.jsonl when logQueries is on (default)"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Zero hits",
+      "items": [
+        "Returns 'No matching notes' and skips synthesis",
+        "The other five MCP tools never call an LLM"
+      ]
+    }
+  ]
+}
