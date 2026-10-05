@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.23.3 — 2026-10-05
+
+**A skipped re-run no longer hides a note you already had.** When a session
+with a distilled note came back through `vir run` (a resumed transcript, or
+`--full`) and that pass was skipped by the heuristic filter or by low classify
+confidence, the note was marked skipped. Its file stayed in the vault, but it
+dropped out of `vir query`, the MCP server, `sync-claude` and rewrites, and
+never came back on its own. `vir reconcile` could do the same.
+
+- **The existing note now stays served.** The new transcript is recorded as seen, so a low-confidence session is not re-classified (and billed) on every run. A note hidden by a failed re-distill is served again.
+- **Notes already hidden this way are restored automatically** the first time 0.23.3 opens the database. Only rows that this bug can produce are touched.
+
 ## 0.23.2 — 2026-10-05
 
 **Two vir processes can no longer both hold the pipeline lock.** The lock
