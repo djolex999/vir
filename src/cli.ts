@@ -124,6 +124,7 @@ import { parseDuration, readCostLog } from "./cost/log.js";
 import { buildReport } from "./cost/report.js";
 import * as ui from "./ui/display.js";
 import { VaultWriter } from "./pipeline/writer.js";
+import { confirmPaidStep, withPipelineLock } from "./cli/guards.js";
 import { runDoctor, runDoctorJson } from "./diagnostics/doctor.js";
 
 // Read version at runtime from package.json (one dir up from dist/cli.js) so
@@ -653,90 +654,98 @@ program
 program
   .command("dedupe")
   .description("Interactive duplicate detection + merge")
+  .option("--yes", "Skip the cost confirmation prompt")
   .action(
-    runAction(async () => {
+    runAction(async (opts: { yes?: boolean }) => {
     const cfg = loadConfig();
-    const db = new StateDb();
-    try {
-      console.log("scanning for duplicate candidates...");
-      const result = await detectDuplicates(cfg, db);
-      console.log(
-        `${result.checked} candidate pairs checked, ${result.duplicates.length} flagged as duplicates`,
-      );
-      if (result.duplicates.length === 0) {
-        return;
-      }
-
-      const rl = createInterface({ input: stdin, output: stdout });
-      let merged = 0;
-      let skipped = 0;
-      for (const dup of result.duplicates) {
-        console.log("\nDuplicate found:");
+    const proceed = await confirmPaidStep(
+      `dedupe checks up to 30 candidate pairs with ${cfg.models.classify} (one paid call each, plus one per merge you accept)`,
+      { yes: opts.yes },
+    );
+    if (!proceed) return;
+    await withPipelineLock(async () => {
+      const db = new StateDb();
+      try {
+        console.log("scanning for duplicate candidates...");
+        const result = await detectDuplicates(cfg, db);
         console.log(
-          `A: ${noteRefOf(dup.a)} (conf: ${dup.a.confidence.toFixed(2)}, ${dup.a.startedAt?.slice(0, 10) ?? "?"})`,
+          `${result.checked} candidate pairs checked, ${result.duplicates.length} flagged as duplicates`,
         );
-        console.log(`   "${preview(dup.a.content)}"`);
-        console.log(
-          `B: ${noteRefOf(dup.b)} (conf: ${dup.b.confidence.toFixed(2)}, ${dup.b.startedAt?.slice(0, 10) ?? "?"})`,
-        );
-        console.log(`   "${preview(dup.b.content)}"`);
-        console.log(`Reason: ${dup.reason}`);
-        const suggestion =
-          dup.keepWhich === "merge"
-            ? "merge both"
-            : `keep ${dup.keepWhich}`;
-        console.log(`Suggested: ${suggestion}`);
-
-        const ans = (
-          await rl.question(
-            "[k]eep suggestion / [s]wap / [m]erge / [x] skip: ",
-          )
-        )
-          .trim()
-          .toLowerCase();
-
-        let action: "A" | "B" | "merge" | null = null;
-        if (ans === "k" || ans === "") {
-          action = dup.keepWhich;
-        } else if (ans === "s") {
-          action =
-            dup.keepWhich === "A"
-              ? "B"
-              : dup.keepWhich === "B"
-                ? "A"
-                : "merge";
-        } else if (ans === "m") {
-          action = "merge";
-        } else if (ans === "x") {
-          skipped += 1;
-          continue;
-        } else {
-          console.log(chalk.yellow("unknown input — skipping"));
-          skipped += 1;
-          continue;
+        if (result.duplicates.length === 0) {
+          return;
         }
 
-        try {
-          const outcome = await mergeNotes(cfg, db, dup.a, dup.b, action);
-          merged += 1;
+        const rl = createInterface({ input: stdin, output: stdout });
+        let merged = 0;
+        let skipped = 0;
+        for (const dup of result.duplicates) {
+          console.log("\nDuplicate found:");
           console.log(
-            chalk.green(
-              `merged (${outcome.action}): winner=${outcome.winnerPath} archived=${outcome.archivedPath}`,
-            ),
+            `A: ${noteRefOf(dup.a)} (conf: ${dup.a.confidence.toFixed(2)}, ${dup.a.startedAt?.slice(0, 10) ?? "?"})`,
           );
-        } catch (err) {
-          console.error(
-            chalk.red(`merge failed: ${(err as Error).message}`),
+          console.log(`   "${preview(dup.a.content)}"`);
+          console.log(
+            `B: ${noteRefOf(dup.b)} (conf: ${dup.b.confidence.toFixed(2)}, ${dup.b.startedAt?.slice(0, 10) ?? "?"})`,
           );
+          console.log(`   "${preview(dup.b.content)}"`);
+          console.log(`Reason: ${dup.reason}`);
+          const suggestion =
+            dup.keepWhich === "merge"
+              ? "merge both"
+              : `keep ${dup.keepWhich}`;
+          console.log(`Suggested: ${suggestion}`);
+
+          const ans = (
+            await rl.question(
+              "[k]eep suggestion / [s]wap / [m]erge / [x] skip: ",
+            )
+          )
+            .trim()
+            .toLowerCase();
+
+          let action: "A" | "B" | "merge" | null = null;
+          if (ans === "k" || ans === "") {
+            action = dup.keepWhich;
+          } else if (ans === "s") {
+            action =
+              dup.keepWhich === "A"
+                ? "B"
+                : dup.keepWhich === "B"
+                  ? "A"
+                  : "merge";
+          } else if (ans === "m") {
+            action = "merge";
+          } else if (ans === "x") {
+            skipped += 1;
+            continue;
+          } else {
+            console.log(chalk.yellow("unknown input — skipping"));
+            skipped += 1;
+            continue;
+          }
+
+          try {
+            const outcome = await mergeNotes(cfg, db, dup.a, dup.b, action);
+            merged += 1;
+            console.log(
+              chalk.green(
+                `merged (${outcome.action}): winner=${outcome.winnerPath} archived=${outcome.archivedPath}`,
+              ),
+            );
+          } catch (err) {
+            console.error(
+              chalk.red(`merge failed: ${(err as Error).message}`),
+            );
+          }
         }
+        rl.close();
+        console.log(
+          `\n${result.duplicates.length} pairs reviewed, ${merged} merged, ${skipped} skipped.`,
+        );
+      } finally {
+        db.close();
       }
-      rl.close();
-      console.log(
-        `\n${result.duplicates.length} pairs reviewed, ${merged} merged, ${skipped} skipped.`,
-      );
-    } finally {
-      db.close();
-    }
+    });
   }),
   );
 
@@ -757,6 +766,7 @@ program
   )
   .option("--stale", "Run only the staleness check (free)")
   .option("--contradictions", "Run only the contradiction check (Haiku tokens)")
+  .option("--yes", "Skip the cost confirmation for the contradiction check")
   .action(
     runAction(async (opts: {
       orphans?: boolean;
@@ -765,6 +775,7 @@ program
       fix?: boolean;
       stale?: boolean;
       contradictions?: boolean;
+      yes?: boolean;
     }) => {
       const cfg = loadConfig();
       const db = new StateDb();
@@ -894,7 +905,13 @@ program
           }
         }
 
-        if (runAll || opts.contradictions) {
+        if (
+          (runAll || opts.contradictions) &&
+          (await confirmPaidStep(
+            `contradiction check makes up to 20 paid calls with ${cfg.models.classify}`,
+            { yes: opts.yes },
+          ))
+        ) {
           const sp = ui.spinner("checking contradictions (haiku)").start();
           const c = await contradictionCheck(cfg, db);
           sp.stop();
@@ -969,165 +986,170 @@ program
           yes?: boolean;
         },
       ) => {
-        const cfg = loadConfig();
-        const wantWeek = opts.week !== undefined;
-        const wantMonth = opts.month !== undefined;
+        // Writes notes and the DB: hold the lock (a dry run only reads).
+        const run = async (): Promise<void> => {
+          const cfg = loadConfig();
+          const wantWeek = opts.week !== undefined;
+          const wantMonth = opts.month !== undefined;
 
-        if (wantWeek && wantMonth) {
-          console.error(chalk.red("use --week or --month, not both"));
-          process.exitCode = 1;
-          return;
-        }
-
-        // ── period summary path (--week / --month) ──────────────────────────
-        if (wantWeek || wantMonth) {
-          if (project || opts.all) {
-            console.error(
-              chalk.red("--week/--month cannot be combined with a project or --all"),
-            );
+          if (wantWeek && wantMonth) {
+            console.error(chalk.red("use --week or --month, not both"));
             process.exitCode = 1;
             return;
           }
-          if (opts.model && !["haiku", "sonnet"].includes(opts.model)) {
-            console.error(
-              chalk.red(`--model must be 'haiku' or 'sonnet', got '${opts.model}'`),
-            );
-            process.exitCode = 1;
-            return;
-          }
-          const kind = wantWeek ? "week" : "month";
-          const raw = wantWeek ? opts.week : opts.month;
-          // commander yields `true` for a bare flag, or the string value for `--week 2`
-          const offset = typeof raw === "string" ? Number.parseInt(raw, 10) : 0;
-          if (!Number.isInteger(offset) || offset < 0) {
-            console.error(
-              chalk.red(`--${kind} offset must be a non-negative integer`),
-            );
-            process.exitCode = 1;
-            return;
-          }
-          const period: Period = { kind, offset };
-          const now = new Date();
-          const db = new StateDb();
-          try {
-            ui.header("summarize");
-            ui.divider();
-            const range = periodRange(period, now);
-            const label = periodLabel(period, range);
-            console.log(ui.text(label));
-            ui.divider();
-            ui.blank();
 
-            const notes = selectNotesInPeriod(db.listDistilled(), period, now);
-            if (notes.length === 0) {
-              ui.row(
-                ui.warn(ui.WARN_GLYPH),
-                ui.text(`no notes distilled in ${label} — nothing to summarize`),
+          // ── period summary path (--week / --month) ──────────────────────────
+          if (wantWeek || wantMonth) {
+            if (project || opts.all) {
+              console.error(
+                chalk.red("--week/--month cannot be combined with a project or --all"),
               );
-              ui.line(ui.dim("  run `vir run` to distill more sessions first"));
-              return;
-            }
-
-            const model = normalizeModelName(
-              resolveModelShorthand(opts.model ?? cfg.models.distill),
-              cfg.provider,
-            );
-            const counts = countByCategory(notes);
-            const prompt = buildPeriodPrompt(label, notes, counts);
-            const { inputTokens, outputTokens } = estimatePeriodCostTokens(prompt);
-            const estCost = estCostLabel(cfg, model, inputTokens, outputTokens);
-
-            ui.summary({
-              notes: { value: notes.length, color: ui.info },
-              model: { value: model, color: ui.accent },
-              "est. cost": { value: estCost, color: ui.warn },
-            });
-            ui.divider();
-
-            if (opts.dryRun === true) {
-              ui.line(
-                ui.dim("  dry run — no synthesis performed; actuals may vary ±30%"),
-              );
-              return;
-            }
-
-            if (opts.yes !== true) {
-              const proceed = await confirm({
-                message: `synthesize with ${model} (~${estCost})?`,
-                default: true,
-              });
-              if (!proceed) {
-                ui.line(ui.dim("aborted"));
-                return;
-              }
-            }
-
-            const sp = ui.spinner("synthesizing period summary").start();
-            let result: Awaited<ReturnType<typeof summarizePeriod>>;
-            try {
-              result = await summarizePeriod(cfg, db, period, {
-                now,
-                model: opts.model,
-              });
-              sp.stop();
-            } catch (err) {
-              sp.fail(ui.errorColor((err as Error).message));
               process.exitCode = 1;
               return;
             }
-            if (!result) {
-              ui.row(ui.warn(ui.WARN_GLYPH), ui.text("nothing to summarize"));
+            if (opts.model && !["haiku", "sonnet"].includes(opts.model)) {
+              console.error(
+                chalk.red(`--model must be 'haiku' or 'sonnet', got '${opts.model}'`),
+              );
+              process.exitCode = 1;
               return;
             }
-            ui.row(
-              ui.success(ui.CHECK),
-              ui.text(
-                `wrote ${result.relPath} (${result.noteCount} notes)`,
-              ),
+            const kind = wantWeek ? "week" : "month";
+            const raw = wantWeek ? opts.week : opts.month;
+            // commander yields `true` for a bare flag, or the string value for `--week 2`
+            const offset = typeof raw === "string" ? Number.parseInt(raw, 10) : 0;
+            if (!Number.isInteger(offset) || offset < 0) {
+              console.error(
+                chalk.red(`--${kind} offset must be a non-negative integer`),
+              );
+              process.exitCode = 1;
+              return;
+            }
+            const period: Period = { kind, offset };
+            const now = new Date();
+            const db = new StateDb();
+            try {
+              ui.header("summarize");
+              ui.divider();
+              const range = periodRange(period, now);
+              const label = periodLabel(period, range);
+              console.log(ui.text(label));
+              ui.divider();
+              ui.blank();
+
+              const notes = selectNotesInPeriod(db.listDistilled(), period, now);
+              if (notes.length === 0) {
+                ui.row(
+                  ui.warn(ui.WARN_GLYPH),
+                  ui.text(`no notes distilled in ${label} — nothing to summarize`),
+                );
+                ui.line(ui.dim("  run `vir run` to distill more sessions first"));
+                return;
+              }
+
+              const model = normalizeModelName(
+                resolveModelShorthand(opts.model ?? cfg.models.distill),
+                cfg.provider,
+              );
+              const counts = countByCategory(notes);
+              const prompt = buildPeriodPrompt(label, notes, counts);
+              const { inputTokens, outputTokens } = estimatePeriodCostTokens(prompt);
+              const estCost = estCostLabel(cfg, model, inputTokens, outputTokens);
+
+              ui.summary({
+                notes: { value: notes.length, color: ui.info },
+                model: { value: model, color: ui.accent },
+                "est. cost": { value: estCost, color: ui.warn },
+              });
+              ui.divider();
+
+              if (opts.dryRun === true) {
+                ui.line(
+                  ui.dim("  dry run — no synthesis performed; actuals may vary ±30%"),
+                );
+                return;
+              }
+
+              if (opts.yes !== true) {
+                const proceed = await confirm({
+                  message: `synthesize with ${model} (~${estCost})?`,
+                  default: true,
+                });
+                if (!proceed) {
+                  ui.line(ui.dim("aborted"));
+                  return;
+                }
+              }
+
+              const sp = ui.spinner("synthesizing period summary").start();
+              let result: Awaited<ReturnType<typeof summarizePeriod>>;
+              try {
+                result = await summarizePeriod(cfg, db, period, {
+                  now,
+                  model: opts.model,
+                });
+                sp.stop();
+              } catch (err) {
+                sp.fail(ui.errorColor((err as Error).message));
+                process.exitCode = 1;
+                return;
+              }
+              if (!result) {
+                ui.row(ui.warn(ui.WARN_GLYPH), ui.text("nothing to summarize"));
+                return;
+              }
+              ui.row(
+                ui.success(ui.CHECK),
+                ui.text(
+                  `wrote ${result.relPath} (${result.noteCount} notes)`,
+                ),
+              );
+              ui.blank();
+            } finally {
+              db.close();
+            }
+            return;
+          }
+
+          // ── project / --all path (unchanged) ────────────────────────────────
+          const db = new StateDb();
+          try {
+            if (opts.all) {
+              const results = await summarizeAll(cfg, db);
+              if (results.length === 0) {
+                console.log(chalk.yellow("no projects with notes"));
+                return;
+              }
+              for (const r of results) {
+                console.log(
+                  chalk.green(`summarized project/${r.slug}`) +
+                    ` (${r.counts.total} sessions)`,
+                );
+              }
+              return;
+            }
+            if (!project) {
+              console.error(
+                chalk.red("usage: vir summarize <project> | --all | --week [n] | --month [n]"),
+              );
+              process.exitCode = 1;
+              return;
+            }
+            const res = await summarizeProject(cfg, project, db);
+            if (!res) {
+              console.log(chalk.yellow(`no distilled notes for project '${project}'`));
+              return;
+            }
+            console.log(
+              chalk.green(`summarized project/${res.slug}`) +
+                ` (${res.counts.total} sessions) → ${res.path}`,
             );
-            ui.blank();
           } finally {
             db.close();
           }
-          return;
-        }
-
-        // ── project / --all path (unchanged) ────────────────────────────────
-        const db = new StateDb();
-        try {
-          if (opts.all) {
-            const results = await summarizeAll(cfg, db);
-            if (results.length === 0) {
-              console.log(chalk.yellow("no projects with notes"));
-              return;
-            }
-            for (const r of results) {
-              console.log(
-                chalk.green(`summarized project/${r.slug}`) +
-                  ` (${r.counts.total} sessions)`,
-              );
-            }
-            return;
-          }
-          if (!project) {
-            console.error(
-              chalk.red("usage: vir summarize <project> | --all | --week [n] | --month [n]"),
-            );
-            process.exitCode = 1;
-            return;
-          }
-          const res = await summarizeProject(cfg, project, db);
-          if (!res) {
-            console.log(chalk.yellow(`no distilled notes for project '${project}'`));
-            return;
-          }
-          console.log(
-            chalk.green(`summarized project/${res.slug}`) +
-              ` (${res.counts.total} sessions) → ${res.path}`,
-          );
-        } finally {
-          db.close();
-        }
+        };
+        if (opts.dryRun) await run();
+        else await withPipelineLock(run);
       },
     ),
   );
@@ -1531,109 +1553,114 @@ program
         yes?: boolean;
       },
     ) => {
-      const cfg = loadConfig();
-      if (opts.model && !["haiku", "sonnet"].includes(opts.model)) {
-        console.error(
-          chalk.red(`--model must be 'haiku' or 'sonnet', got '${opts.model}'`),
-        );
-        process.exitCode = 1;
-        return;
-      }
-      const limit = Math.min(
-        50,
-        Math.max(1, Number.parseInt(opts.limit ?? "20", 10) || 20),
-      );
-      const db = new StateDb();
-      try {
-        ui.header("compose");
-        ui.divider();
-        console.log(ui.text(topic));
-        ui.divider();
-        ui.blank();
-
-        const sp = ui.spinner("searching vault for related notes").start();
-        const sources = await gatherSources(cfg, db, topic, limit);
-        sp.stop();
-
-        if (sources.length === 0) {
-          ui.row(
-            ui.warn(ui.WARN_GLYPH),
-            ui.text("no related notes found — nothing to synthesize"),
+      // Writes notes and the DB: hold the lock (a dry run only reads).
+      const run = async (): Promise<void> => {
+        const cfg = loadConfig();
+        if (opts.model && !["haiku", "sonnet"].includes(opts.model)) {
+          console.error(
+            chalk.red(`--model must be 'haiku' or 'sonnet', got '${opts.model}'`),
           );
-          ui.line(ui.dim("  run `vir run` to distill more sessions first"));
-          return;
-        }
-
-        for (const s of sources.slice(0, 10)) ui.sourceRow(s.title, s.score);
-        ui.divider();
-
-        const model = normalizeModelName(
-          resolveModelShorthand(opts.model ?? cfg.models.distill),
-          cfg.provider,
-        );
-        const { inputTokens, outputTokens } = estimateComposeCostTokens(
-          topic,
-          sources,
-        );
-        const estCost = estCostLabel(cfg, model, inputTokens, outputTokens);
-
-        ui.summary({
-          sources: { value: sources.length, color: ui.info },
-          model: { value: model, color: ui.accent },
-          "est. cost": { value: estCost, color: ui.warn },
-        });
-        ui.divider();
-
-        if (opts.dryRun) {
-          ui.line(
-            ui.dim("  dry run — no synthesis performed; actuals may vary ±30%"),
-          );
-          return;
-        }
-
-        if (opts.yes !== true) {
-          const proceed = await confirm({
-            message: `synthesize with ${model} (~${estCost})?`,
-            default: true,
-          });
-          if (!proceed) {
-            ui.line(ui.dim("aborted"));
-            return;
-          }
-        }
-
-        const writer = new VaultWriter(cfg, db);
-        const sp2 = ui.spinner("synthesizing topic page").start();
-        let result: Awaited<ReturnType<typeof composeFromSources>>;
-        try {
-          result = await composeFromSources(cfg, db, topic, sources, writer, {
-            forceModel: opts.model,
-          });
-          sp2.stop();
-        } catch (err) {
-          sp2.fail(ui.errorColor((err as Error).message));
           process.exitCode = 1;
           return;
         }
+        const limit = Math.min(
+          50,
+          Math.max(1, Number.parseInt(opts.limit ?? "20", 10) || 20),
+        );
+        const db = new StateDb();
+        try {
+          ui.header("compose");
+          ui.divider();
+          console.log(ui.text(topic));
+          ui.divider();
+          ui.blank();
 
-        ui.row(ui.success(ui.CHECK), ui.text(`wrote ${result.relPath}`));
-        ui.blank();
+          const sp = ui.spinner("searching vault for related notes").start();
+          const sources = await gatherSources(cfg, db, topic, limit);
+          sp.stop();
 
-        // Actual cost from the record callLLM just appended for this compose.
-        const rec = [...readCostLog()]
-          .reverse()
-          .find((r) => r.stage === "compose" && r.session === result.slug);
-        ui.summary({
-          title: { value: result.title, color: ui.text },
-          sources: { value: result.sourceCount, color: ui.info },
-          confidence: { value: result.confidence.toFixed(2), color: ui.info },
-          ...(rec && rec.estimated_cost_usd !== null
-            ? { cost: { value: ui.formatUsd(rec.estimated_cost_usd), color: ui.warn } }
-            : {}),
-        });
-      } finally {
-        db.close();
-      }
+          if (sources.length === 0) {
+            ui.row(
+              ui.warn(ui.WARN_GLYPH),
+              ui.text("no related notes found — nothing to synthesize"),
+            );
+            ui.line(ui.dim("  run `vir run` to distill more sessions first"));
+            return;
+          }
+
+          for (const s of sources.slice(0, 10)) ui.sourceRow(s.title, s.score);
+          ui.divider();
+
+          const model = normalizeModelName(
+            resolveModelShorthand(opts.model ?? cfg.models.distill),
+            cfg.provider,
+          );
+          const { inputTokens, outputTokens } = estimateComposeCostTokens(
+            topic,
+            sources,
+          );
+          const estCost = estCostLabel(cfg, model, inputTokens, outputTokens);
+
+          ui.summary({
+            sources: { value: sources.length, color: ui.info },
+            model: { value: model, color: ui.accent },
+            "est. cost": { value: estCost, color: ui.warn },
+          });
+          ui.divider();
+
+          if (opts.dryRun) {
+            ui.line(
+              ui.dim("  dry run — no synthesis performed; actuals may vary ±30%"),
+            );
+            return;
+          }
+
+          if (opts.yes !== true) {
+            const proceed = await confirm({
+              message: `synthesize with ${model} (~${estCost})?`,
+              default: true,
+            });
+            if (!proceed) {
+              ui.line(ui.dim("aborted"));
+              return;
+            }
+          }
+
+          const writer = new VaultWriter(cfg, db);
+          const sp2 = ui.spinner("synthesizing topic page").start();
+          let result: Awaited<ReturnType<typeof composeFromSources>>;
+          try {
+            result = await composeFromSources(cfg, db, topic, sources, writer, {
+              forceModel: opts.model,
+            });
+            sp2.stop();
+          } catch (err) {
+            sp2.fail(ui.errorColor((err as Error).message));
+            process.exitCode = 1;
+            return;
+          }
+
+          ui.row(ui.success(ui.CHECK), ui.text(`wrote ${result.relPath}`));
+          ui.blank();
+
+          // Actual cost from the record callLLM just appended for this compose.
+          const rec = [...readCostLog()]
+            .reverse()
+            .find((r) => r.stage === "compose" && r.session === result.slug);
+          ui.summary({
+            title: { value: result.title, color: ui.text },
+            sources: { value: result.sourceCount, color: ui.info },
+            confidence: { value: result.confidence.toFixed(2), color: ui.info },
+            ...(rec && rec.estimated_cost_usd !== null
+              ? { cost: { value: ui.formatUsd(rec.estimated_cost_usd), color: ui.warn } }
+              : {}),
+          });
+        } finally {
+          db.close();
+        }
+      };
+      if (opts.dryRun) await run();
+      else await withPipelineLock(run);
     }),
   );
 
@@ -1825,7 +1852,7 @@ program
       if (opts.approve !== undefined || opts.reject !== undefined) {
         throw new Error("--approve and --reject need --json (the terminal loop asks per note)");
       }
-      await runReview(opts);
+      await withPipelineLock(() => runReview(opts));
     }),
   );
 
@@ -1944,27 +1971,31 @@ program
         }
 
         const client = maybeAnthropicClient(cfg);
-        const sp = ui.spinner(`auditing ${batches.length} batches`).start();
-        let summary: Awaited<ReturnType<typeof runAudit>>;
-        try {
-          summary = await runAudit(db, auditOpts, {
-            isVerified,
-            llm: (prompt) =>
-              withRateLimitRetry(() =>
-                callLLM(cfg, client, {
-                  prompt,
-                  model,
-                  maxTokens: 4000,
-                  cost: { stage: "audit" },
-                }),
-              ),
-          });
-          sp.stop();
-        } catch (err) {
-          sp.fail(ui.errorColor((err as Error).message));
-          process.exitCode = 1;
-          return;
-        }
+        // Judging writes verdicts to the DB: hold the lock like every other
+        // writer (--apply-rejects takes it itself).
+        let summary: Awaited<ReturnType<typeof runAudit>> | undefined;
+        await withPipelineLock(async () => {
+          const sp = ui.spinner(`auditing ${batches.length} batches`).start();
+          try {
+            summary = await runAudit(db, auditOpts, {
+              isVerified,
+              llm: (prompt) =>
+                withRateLimitRetry(() =>
+                  callLLM(cfg, client, {
+                    prompt,
+                    model,
+                    maxTokens: 4000,
+                    cost: { stage: "audit" },
+                  }),
+                ),
+            });
+            sp.stop();
+          } catch (err) {
+            sp.fail(ui.errorColor((err as Error).message));
+            process.exitCode = 1;
+          }
+        });
+        if (summary === undefined) return;
 
         ui.summary({
           audited: { value: summary.audited, color: ui.info },
