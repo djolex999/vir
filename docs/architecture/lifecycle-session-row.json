@@ -8,7 +8,7 @@
     "repository": {
       "url": "git@github.com:djolex999/vir.git",
       "link_mode": "local-only",
-      "revision": "06c66063b90c9e5319b87d384d36cde351059634"
+      "revision": "23c0652bcfee8081ae0b9b2b04db9fe900f884fc"
     }
   },
   "lanes": [
@@ -58,8 +58,8 @@
       "sources": [
         {
           "path": "src/pipeline/run.ts",
-          "line": 853,
-          "end_line": 1036,
+          "line": 877,
+          "end_line": 1033,
           "label": "session loop"
         }
       ]
@@ -76,14 +76,14 @@
       "sources": [
         {
           "path": "src/state/db.ts",
-          "line": 815,
-          "end_line": 875,
+          "line": 869,
+          "end_line": 929,
           "label": "record"
         },
         {
           "path": "src/state/db.ts",
-          "line": 893,
-          "end_line": 924,
+          "line": 947,
+          "end_line": 978,
           "label": "listDistilled"
         }
       ]
@@ -99,8 +99,8 @@
       "sources": [
         {
           "path": "src/state/db.ts",
-          "line": 1172,
-          "end_line": 1176,
+          "line": 1228,
+          "end_line": 1232,
           "label": "archive"
         },
         {
@@ -121,14 +121,14 @@
       "sources": [
         {
           "path": "src/state/db.ts",
-          "line": 27,
-          "end_line": 46,
+          "line": 41,
+          "end_line": 60,
           "label": "SkipReason"
         },
         {
           "path": "src/pipeline/run.ts",
-          "line": 863,
-          "end_line": 881
+          "line": 887,
+          "end_line": 905
         }
       ]
     },
@@ -143,14 +143,14 @@
       "sources": [
         {
           "path": "src/state/db.ts",
-          "line": 472,
-          "end_line": 501,
+          "line": 512,
+          "end_line": 541,
           "label": "markRejected"
         },
         {
           "path": "src/state/db.ts",
-          "line": 550,
-          "end_line": 579,
+          "line": 590,
+          "end_line": 619,
           "label": "markPruned"
         }
       ]
@@ -166,14 +166,14 @@
       "sources": [
         {
           "path": "src/state/db.ts",
-          "line": 736,
-          "end_line": 756,
+          "line": 776,
+          "end_line": 796,
           "label": "recordError"
         },
         {
           "path": "src/pipeline/run.ts",
-          "line": 1037,
-          "end_line": 1062
+          "line": 1034,
+          "end_line": 1059
         }
       ]
     },
@@ -188,14 +188,14 @@
       "sources": [
         {
           "path": "src/state/db.ts",
-          "line": 293,
-          "end_line": 297,
+          "line": 307,
+          "end_line": 311,
           "label": "MAX_DISTILL_ATTEMPTS"
         },
         {
           "path": "src/state/db.ts",
-          "line": 758,
-          "end_line": 765,
+          "line": 798,
+          "end_line": 805,
           "label": "retryExhausted"
         }
       ]
@@ -210,9 +210,10 @@
       "tag": "skipped=1",
       "sources": [
         {
-          "path": "src/pipeline/run.ts",
-          "line": 954,
-          "end_line": 1002
+          "path": "src/pipeline/distillSession.ts",
+          "line": 76,
+          "end_line": 102,
+          "label": "skip or keepNote"
         }
       ]
     }
@@ -282,6 +283,12 @@
       "from": "distilled",
       "to": "archived",
       "label": "dedupe"
+    },
+    {
+      "from": "failed",
+      "to": "gated",
+      "label": "reconcile filter",
+      "variant": "dashed"
     }
   ],
   "cards": [
@@ -298,16 +305,16 @@
       "title": "Retry rules",
       "items": [
         "recordError stores the attempted hash, so vir run does not retry the same bytes",
-        "attempts only climbs on a changed transcript or --full",
-        "Only vir reconcile retries; --force includes parked rows"
+        "Only vir reconcile retries, with vir run's filters; --force includes parked rows",
+        "A failed reconcile retry also counts toward the 3-attempt bound"
       ]
     },
     {
-      "dot": "rose",
-      "title": "Gaps",
+      "dot": "emerald",
+      "title": "Notes are never hidden by a skip",
       "items": [
-        "A failed reconcile retry does not bump attempts",
-        "Filter / low-confidence skips can overwrite a distilled row on re-run"
+        "A filter or low-confidence skip of a re-processed session keeps its note (keepNote)",
+        "A one-time repair restored notes hidden by older versions"
       ]
     }
   ]

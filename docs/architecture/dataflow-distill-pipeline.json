@@ -8,7 +8,7 @@
     "repository": {
       "url": "git@github.com:djolex999/vir.git",
       "link_mode": "local-only",
-      "revision": "06c66063b90c9e5319b87d384d36cde351059634"
+      "revision": "23c0652bcfee8081ae0b9b2b04db9fe900f884fc"
     },
     "viewBox": [
       1080,
@@ -82,14 +82,14 @@
       "sources": [
         {
           "path": "src/pipeline/run.ts",
-          "line": 420,
-          "end_line": 479,
+          "line": 425,
+          "end_line": 484,
           "label": "scan + category filter"
         },
         {
           "path": "src/pipeline/run.ts",
-          "line": 853,
-          "end_line": 907,
+          "line": 877,
+          "end_line": 931,
           "label": "per-session gates"
         },
         {
@@ -111,14 +111,14 @@
       "sources": [
         {
           "path": "src/pipeline/run.ts",
-          "line": 1313,
-          "end_line": 1346,
+          "line": 1326,
+          "end_line": 1359,
           "label": "runArticlePhase"
         },
         {
           "path": "src/pipeline/run.ts",
-          "line": 1418,
-          "end_line": 1447,
+          "line": 1443,
+          "end_line": 1472,
           "label": "runPdfPhase"
         }
       ],
@@ -144,8 +144,8 @@
         },
         {
           "path": "src/pipeline/run.ts",
-          "line": 909,
-          "end_line": 965
+          "line": 933,
+          "end_line": 992
         }
       ],
       "width": 124
@@ -154,7 +154,7 @@
       "id": "scrub",
       "type": "security",
       "label": "Tool filter + scrub",
-      "sublabel": "mask secrets, trim tools",
+      "sublabel": "filter, scrub, trim",
       "stage": 2,
       "row": 1,
       "sources": [
@@ -166,12 +166,13 @@
         {
           "path": "src/pipeline/scrubber.ts",
           "line": 39,
-          "end_line": 62
+          "end_line": 65
         },
         {
-          "path": "src/pipeline/run.ts",
-          "line": 967,
-          "end_line": 981
+          "path": "src/pipeline/distillSession.ts",
+          "line": 104,
+          "end_line": 127,
+          "label": "scrub, tool filter, trim"
         }
       ],
       "width": 124
@@ -192,8 +193,8 @@
         },
         {
           "path": "src/pipeline/claudeCli.ts",
-          "line": 161,
-          "end_line": 219,
+          "line": 205,
+          "end_line": 265,
           "label": "callClaudeCli"
         }
       ],
@@ -210,20 +211,21 @@
       "sources": [
         {
           "path": "src/pipeline/distiller.ts",
-          "line": 326,
-          "end_line": 357,
+          "line": 329,
+          "end_line": 360,
           "label": "callLLM chokepoint"
         },
         {
           "path": "src/pipeline/distiller.ts",
-          "line": 628,
-          "end_line": 642,
+          "line": 637,
+          "end_line": 651,
           "label": "Distiller.run"
         },
         {
-          "path": "src/pipeline/run.ts",
-          "line": 986,
-          "end_line": 1002
+          "path": "src/pipeline/distillSession.ts",
+          "line": 128,
+          "end_line": 135,
+          "label": "paid boundary + distill"
         }
       ],
       "width": 124
@@ -259,14 +261,14 @@
       "sources": [
         {
           "path": "src/state/db.ts",
-          "line": 815,
-          "end_line": 875,
+          "line": 869,
+          "end_line": 929,
           "label": "record"
         },
         {
           "path": "src/state/db.ts",
-          "line": 744,
-          "end_line": 756,
+          "line": 784,
+          "end_line": 796,
           "label": "recordError"
         }
       ],
@@ -282,14 +284,15 @@
       "sources": [
         {
           "path": "src/pipeline/writer.ts",
-          "line": 111,
-          "end_line": 253,
+          "line": 112,
+          "end_line": 254,
           "label": "VaultWriter.write"
         },
         {
-          "path": "src/pipeline/run.ts",
-          "line": 1004,
-          "end_line": 1019
+          "path": "src/pipeline/distillSession.ts",
+          "line": 137,
+          "end_line": 151,
+          "label": "write, record, flush"
         }
       ],
       "width": 124
@@ -304,8 +307,8 @@
       "sources": [
         {
           "path": "src/pipeline/distiller.ts",
-          "line": 290,
-          "end_line": 324,
+          "line": 293,
+          "end_line": 327,
           "label": "recordCost"
         },
         {
@@ -440,7 +443,7 @@
       "title": "After the loop",
       "items": [
         "Project summaries for projects with 3+ new notes",
-        "Embedding sweep back-fills NULL vectors (Ollama or local)",
+        "Embedding sweep back-fills vectors from the note file, same text as write time",
         "Articles and PDFs run their own phase via the same callLLM"
       ]
     }

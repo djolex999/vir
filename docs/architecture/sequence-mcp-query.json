@@ -13,7 +13,7 @@
     "repository": {
       "url": "git@github.com:djolex999/vir.git",
       "link_mode": "local-only",
-      "revision": "06c66063b90c9e5319b87d384d36cde351059634"
+      "revision": "23c0652bcfee8081ae0b9b2b04db9fe900f884fc"
     }
   },
   "participants": [
@@ -39,8 +39,8 @@
       "sources": [
         {
           "path": "src/mcp/server.ts",
-          "line": 266,
-          "end_line": 330,
+          "line": 320,
+          "end_line": 376,
           "label": "vir_query handler"
         }
       ]
@@ -92,14 +92,14 @@
       "sources": [
         {
           "path": "src/mcp/server.ts",
-          "line": 210,
-          "end_line": 218,
+          "line": 263,
+          "end_line": 271,
           "label": "readonly StateDb"
         },
         {
           "path": "src/state/db.ts",
-          "line": 1121,
-          "end_line": 1170,
+          "line": 1177,
+          "end_line": 1226,
           "label": "getEmbeddings"
         }
       ]
@@ -226,7 +226,7 @@
       "y": 432,
       "label": "synthesize",
       "variant": "emphasis",
-      "note": "query log + cost.log written"
+      "note": "skipped with synthesize: false"
     },
     {
       "id": "answer",
@@ -295,9 +295,10 @@
     },
     {
       "dot": "amber",
-      "title": "Not side-effect free",
+      "title": "Paid only when asked",
       "items": [
-        "The DB is opened read-only, but every query with hits makes a paid LLM call",
+        "Synthesis is the server's one paid call; synthesize: false returns the notes alone",
+        "The tool description tells the agent synthesis is billed",
         "Queries append to ~/.vir/queries.jsonl when logQueries is on (default)"
       ]
     },

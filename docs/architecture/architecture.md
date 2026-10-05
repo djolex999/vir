@@ -1,11 +1,11 @@
 # vir — Architecture
-*Generated: 2026-10-05 at revision `06c6606` (v0.23.0) · updated for 0.24.2. `file:line` references and the diagrams are pinned to `06c6606`.*
+*Generated: 2026-10-05 at revision `06c6606` (v0.23.0) · refreshed for v0.24.2 at `23c0652`. `file:line` references and the diagrams are pinned to `23c0652`.*
 
 Supersedes the 2026-06-12 architecture doc and map (v0.8.3; removed, see git history). Changes since that version are listed at the end of this document.
 
 ## 1. Project Overview
 
-vir is a local-first Node CLI and daemon. It distills Claude Code session transcripts, clipped web articles and PDFs into a typed Obsidian vault, then feeds that knowledge back into Claude Code in two ways: an opt-in `CLAUDE.md` block sync and a stdio MCP server. It has a single maintainer and is published to npm as `@djolex999/vir-cli` (MIT). A companion Obsidian plugin (`vir-obsidian`) talks to the CLI through a `--json` wire contract. The project is in active weekly development, with 72 colocated test files in `src/` and a separate offline eval harness. Tech identity: strict TypeScript on Node ≥20, better-sqlite3 for state, and three interchangeable LLM backends (Anthropic SDK, Kie.ai over fetch, the `claude -p` subscription CLI).
+vir is a local-first Node CLI and daemon. It distills Claude Code session transcripts, clipped web articles and PDFs into a typed Obsidian vault, then feeds that knowledge back into Claude Code in two ways: an opt-in `CLAUDE.md` block sync and a stdio MCP server. It has a single maintainer and is published to npm as `@djolex999/vir-cli` (MIT). A companion Obsidian plugin (`vir-obsidian`) talks to the CLI through a `--json` wire contract. The project is in active weekly development, with 80 colocated test files in `src/` and a separate offline eval harness. Tech identity: strict TypeScript on Node ≥20, better-sqlite3 for state, and three interchangeable LLM backends (Anthropic SDK, Kie.ai over fetch, the `claude -p` subscription CLI).
 
 ## 2. Technology Stack
 
@@ -21,7 +21,7 @@ vir is a local-first Node CLI and daemon. It distills Claude Code session transc
 | PDF | unpdf | 1.6 | |
 | Scheduling | launchd (macOS), systemd user timer, falling back to cron (Linux) | — | Windows is unsupported |
 | Notifications | Swift `Vir.app` helper (committed, ad-hoc signed), osascript, notify-send | — | |
-| Testing | vitest, colocated `*.test.ts`, `HOME` sandboxed in `vitest.setup.ts` | 4.x | 72 test files in src, 39 in eval |
+| Testing | vitest, colocated `*.test.ts`, `HOME` sandboxed in `vitest.setup.ts` | 4.x | 80 test files in src, 39 in eval |
 | CI | GitHub Actions: `cli` (Node 20 build, `typecheck:all`, test) and `site` (Node 22 check/test/build/links) | — | Linux only; no linter, no release workflow |
 | Docs site | Astro 7 + Starlight, Preact islands, Tailwind 4 | — | Static output, deployed on Vercel at virwiki.dev |
 
@@ -88,7 +88,7 @@ sync-claude → StateDb.listDistilled → updater.planUpdates → applyPlan → 
 
 The design relies on a few single chokepoints:
 
-- **`callLLM`** (`distiller.ts:326-357`) is the only place an LLM call is made and the only place cost is recorded.
+- **`callLLM`** (`distiller.ts:329-360`) is the only place an LLM call is made and the only place cost is recorded.
 - **`toolCallFilter.ts`** is the only owner of the transcript tool-block grammar.
 - **`runAction`** is the only error-to-exit-code mapper.
 - **`recordQueryEvent`** is the only writer of the query log.
@@ -191,7 +191,7 @@ These conventions are specific and mostly well held:
 
 **Inconsistencies:**
 
-- **The display monopoly is eroding.** There are 56 raw console calls in `cli.ts`, plus `writer.ts:227` and `distiller.ts:621,710`. The MCP server imports `writer.ts`, so any future stdout write on that path corrupts JSON-RPC.
+- **The display monopoly is eroding.** There are 59 raw console calls across `cli.ts` and the `src/cli/` command modules, plus `writer.ts:231` and `distiller.ts:630,719`. The MCP server imports `writer.ts`, so any future stdout write on that path corrupts JSON-RPC.
 - **Duplicated code:**
   - `kebab` is copied in three files, even though `slug.ts` claims to be the single definition.
   - `parseFrontmatter` appears in three places.

@@ -8,7 +8,7 @@
     "repository": {
       "url": "git@github.com:djolex999/vir.git",
       "link_mode": "local-only",
-      "revision": "06c66063b90c9e5319b87d384d36cde351059634"
+      "revision": "23c0652bcfee8081ae0b9b2b04db9fe900f884fc"
     }
   },
   "components": [
@@ -56,8 +56,8 @@
       "sources": [
         {
           "path": "src/cli.ts",
-          "line": 154,
-          "end_line": 296,
+          "line": 94,
+          "end_line": 237,
           "label": "vir run"
         },
         {
@@ -183,8 +183,8 @@
       "sources": [
         {
           "path": "src/pipeline/run.ts",
-          "line": 194,
-          "end_line": 1198,
+          "line": 199,
+          "end_line": 1202,
           "label": "runPipeline"
         }
       ],
@@ -206,8 +206,8 @@
       "sources": [
         {
           "path": "src/pipeline/writer.ts",
-          "line": 111,
-          "end_line": 253,
+          "line": 112,
+          "end_line": 254,
           "label": "VaultWriter.write"
         }
       ]
@@ -256,8 +256,8 @@
       "sources": [
         {
           "path": "src/claude/updater.ts",
-          "line": 333,
-          "end_line": 373,
+          "line": 363,
+          "end_line": 403,
           "label": "paths"
         }
       ]
@@ -278,14 +278,14 @@
       "sources": [
         {
           "path": "src/claude/updater.ts",
-          "line": 37,
-          "end_line": 60,
+          "line": 47,
+          "end_line": 70,
           "label": "planUpdates"
         },
         {
           "path": "src/claude/updater.ts",
-          "line": 285,
-          "end_line": 331,
+          "line": 295,
+          "end_line": 338,
           "label": "applyPlan"
         }
       ]
@@ -306,14 +306,14 @@
       "sources": [
         {
           "path": "src/pipeline/distiller.ts",
-          "line": 326,
-          "end_line": 357,
+          "line": 329,
+          "end_line": 360,
           "label": "callLLM"
         },
         {
           "path": "src/pipeline/claudeCli.ts",
-          "line": 161,
-          "end_line": 219
+          "line": 205,
+          "end_line": 265
         }
       ]
     },
@@ -333,8 +333,8 @@
       "sources": [
         {
           "path": "src/state/db.ts",
-          "line": 314,
-          "end_line": 399,
+          "line": 328,
+          "end_line": 413,
           "label": "StateDb"
         }
       ]
@@ -355,8 +355,8 @@
       "sources": [
         {
           "path": "src/mcp/server.ts",
-          "line": 210,
-          "end_line": 330,
+          "line": 263,
+          "end_line": 377,
           "label": "runMcpServer"
         },
         {
@@ -511,8 +511,8 @@
       "title": "Spend",
       "items": [
         "Paid calls: distill, compose, summarize, audit, dedupe, lint contradictions",
-        "MCP vir_query also synthesizes via callLLM",
-        "All spend is recorded in ~/.vir/cost.log"
+        "MCP vir_query synthesizes unless the agent passes synthesize: false",
+        "All spend is recorded in ~/.vir/cost.log; unpriced models show as unknown"
       ]
     },
     {
