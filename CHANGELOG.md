@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.24.1 — 2026-10-05
+
+**Four small fixes: an outage no longer crashes the run, and cost and config
+handling get stricter.**
+
+- **A provider outage no longer crashes `vir run`.** When the preflight probe failed (provider down, expired login), vir reported the outage and then Node killed the process with an extra stack trace in `daemon.log`. It now exits normally with the outage reported once.
+- **`vir sync-claude` exits 1 when a `CLAUDE.md` could not be updated**, instead of printing ✗ and exiting 0.
+- **`config.json` is never readable by others, even briefly.** It holds your API keys; it is now written to an owner-only temp file and renamed into place, instead of being written with the default permissions and tightened afterwards.
+- **Spend on a model with no known price is reported as unknown, not $0.** With a model vir has no price for on your provider (for example `claude-sonnet-5` on Kie), calls were logged as free and `vir cost` under-reported. They are now counted as "unpriced" calls next to the total, cost prompts say "unknown", and `vir doctor` warns about configured models without a price. Add a price under `pricing` in `config.json` to have them counted.
+
 ## 0.24.0 — 2026-10-05
 
 **Cost, safety and consistency fixes across the CLI, plus two refactors.**
