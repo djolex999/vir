@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
-import { appendFileSync, writeFileSync } from "node:fs";
+import { accessSync, appendFileSync, constants, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import type { TokenUsage } from "./distiller.js";
 
 // Neutral spawn cwd is a CORRECTNESS requirement, not a preference: `claude -p`
@@ -138,6 +138,49 @@ function defaultWriteMarker(line: string): void {
   }
 }
 
+function isExecutable(path: string): boolean {
+  try {
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Scheduled runs get a minimal PATH (launchd pins a few system dirs, systemd and
+// cron set little or none), so a bare `claude` that resolves in your shell can
+// fail every daemon run. Look on PATH first, then where Claude Code is commonly
+// installed: next to the node running vir (an nvm/npm global install), the
+// native installer's dirs, then Homebrew and /usr/local. Falls back to bare
+// `claude`, which keeps the existing not-installed error.
+export function resolveClaudeBin(
+  opts: {
+    path?: string;
+    execDir?: string;
+    home?: string;
+    exists?: (p: string) => boolean;
+  } = {},
+): string {
+  const exists = opts.exists ?? isExecutable;
+  const home = opts.home ?? homedir();
+  const dirs = [
+    ...(opts.path ?? process.env.PATH ?? "").split(delimiter),
+    opts.execDir ?? dirname(process.execPath),
+    join(home, ".claude", "local"),
+    join(home, ".local", "bin"),
+    join(home, ".npm-global", "bin"),
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+  ].filter((d) => d.length > 0);
+  for (const dir of dirs) {
+    const candidate = join(dir, "claude");
+    if (exists(candidate)) return candidate;
+  }
+  return "claude";
+}
+
+let resolvedClaudeBin: string | null = null;
+
 type SpawnImpl = (
   cmd: string,
   args: string[],
@@ -151,6 +194,7 @@ export interface CallClaudeCliTestOpts {
   timeoutMs?: number;
   logRaw?: (line: string) => void;
   writeMarker?: (line: string) => void;
+  claudeBin?: string;
 }
 
 export interface ClaudeCliResult {
@@ -166,9 +210,11 @@ export async function callClaudeCli(
   const timeoutMs = test.timeoutMs ?? CLAUDE_CLI_TIMEOUT_MS;
   const logRaw = test.logRaw ?? defaultLogRaw;
   const writeMarker = test.writeMarker ?? defaultWriteMarker;
+  const bin = test.claudeBin ?? (resolvedClaudeBin ??= resolveClaudeBin());
 
   const { stdout, stderr, code } = await runProcess(
     spawnImpl,
+    bin,
     buildClaudeCliArgs(opts.model),
     opts.prompt,
     timeoutMs,
@@ -220,13 +266,14 @@ export async function callClaudeCli(
 
 function runProcess(
   spawnImpl: SpawnImpl,
+  bin: string,
   args: string[],
   stdin: string,
   timeoutMs: number,
 ): Promise<{ stdout: string; stderr: string; code: number | null }> {
   return new Promise((resolve, reject) => {
     // Arg array + no shell, same discipline as mcp/install.ts. cwd pinned.
-    const child = spawnImpl("claude", args, { cwd: CLAUDE_CLI_CWD });
+    const child = spawnImpl(bin, args, { cwd: CLAUDE_CLI_CWD });
     let stdout = "";
     let stderr = "";
     let settled = false;

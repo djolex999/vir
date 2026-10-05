@@ -10,6 +10,7 @@ import {
   parseCliEnvelope,
   parseLimitMessage,
   resetRawEnvelopeLogGate,
+  resolveClaudeBin,
 } from "./claudeCli.js";
 
 describe("buildClaudeCliArgs — correctness flags cannot be omitted", () => {
@@ -136,7 +137,7 @@ describe("callClaudeCli", () => {
     const { calls, impl } = spawnRecorder(OK_ENVELOPE);
     const res = await callClaudeCli(
       { prompt: "the prompt", model: "claude-sonnet-5" },
-      { spawnImpl: impl },
+      { spawnImpl: impl, claudeBin: "claude" },
     );
     expect(res.text).toBe("distilled text");
     expect(res.usage).toEqual({ input_tokens: 1000, output_tokens: 200 });
@@ -207,5 +208,45 @@ describe("callClaudeCli", () => {
       ),
     ).rejects.toThrow(/timed out/i);
     expect(child.killed).toBe(true);
+  });
+});
+
+describe("resolveClaudeBin — the daemon's PATH is minimal", () => {
+  const home = "/Users/me";
+  const at = (...present: string[]) => (p: string) => present.includes(p);
+
+  it("uses the first PATH entry that has claude", () => {
+    expect(
+      resolveClaudeBin({
+        path: "/usr/bin:/opt/tools/bin:/also/bin",
+        execDir: "/nvm/bin",
+        home,
+        exists: at("/opt/tools/bin/claude", "/also/bin/claude"),
+      }),
+    ).toBe("/opt/tools/bin/claude");
+  });
+
+  it("finds claude next to the node binary running vir (nvm global install) when PATH misses it", () => {
+    expect(
+      resolveClaudeBin({
+        path: "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin",
+        execDir: "/Users/me/.nvm/versions/node/v20.20.1/bin",
+        home,
+        exists: at("/Users/me/.nvm/versions/node/v20.20.1/bin/claude"),
+      }),
+    ).toBe("/Users/me/.nvm/versions/node/v20.20.1/bin/claude");
+  });
+
+  it("finds the native installer's ~/.claude/local and ~/.local/bin", () => {
+    expect(
+      resolveClaudeBin({ path: "/usr/bin", execDir: "/n/bin", home, exists: at("/Users/me/.claude/local/claude") }),
+    ).toBe("/Users/me/.claude/local/claude");
+    expect(
+      resolveClaudeBin({ path: "/usr/bin", execDir: "/n/bin", home, exists: at("/Users/me/.local/bin/claude") }),
+    ).toBe("/Users/me/.local/bin/claude");
+  });
+
+  it("falls back to bare `claude` so the not-installed error is unchanged", () => {
+    expect(resolveClaudeBin({ path: "", execDir: "/n/bin", home, exists: () => false })).toBe("claude");
   });
 });
