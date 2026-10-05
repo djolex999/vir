@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.23.2 — 2026-10-05
+
+**Two vir processes can no longer both hold the pipeline lock.** The lock
+file (`~/.vir/vir.lock`) was checked and then written in two steps, so a
+daemon run and a manual `vir run` starting at the same moment could both take
+it and distill the same sessions twice.
+
+- **The lock is created atomically.** Exactly one process creates it; the others report that another vir process is running, as before.
+- **Clearing a crashed run's leftover lock is guarded too.** Only one process at a time may remove a stale lock (via a short-lived `~/.vir/vir.lock.reclaim`), so a fresh lock is never deleted by mistake. Tested with 8 processes racing on a fresh and on a stale lock: exactly one winner every time.
+- **A stale lock that cannot be removed** (for example, a permissions problem) now fails with a clear error instead of being silently overwritten.
+
 ## 0.23.1 — 2026-10-05
 
 **A claude-cli quota halt no longer loses articles and PDFs.** When `vir run`
