@@ -7,13 +7,13 @@ import { readCostLog } from "../cost/log.js";
 import { computeCost } from "../cost/pricing.js";
 import { Distiller, normalizeModelName, resolveModelShorthand } from "../pipeline/distiller.js";
 import { ClaudeCliLimitError } from "../pipeline/claudeCli.js";
-import { scoreSession } from "../pipeline/filter.js";
 import { acquireLock, LockHeldError, releaseLock } from "../pipeline/lock.js";
 import { parseSession } from "../pipeline/parser.js";
 import { projectNameFor } from "../pipeline/projects.js";
 import { scrub } from "../pipeline/scrubber.js";
 import { filterToolCalls } from "../pipeline/toolCallFilter.js";
 import { VaultWriter } from "../pipeline/writer.js";
+import { distillOneSession } from "../pipeline/distillSession.js";
 import {
   deriveSessionId,
   MAX_DISTILL_ATTEMPTS,
@@ -266,16 +266,6 @@ export async function runReconcile(
     let stillFailed = 0;
     let missingFile = 0;
 
-    // A skipped retry of a failed re-distill restores the last good note
-    // instead of hiding it behind skipped=1.
-    const keepLastGoodNote = (t: SessionRow): boolean => {
-      if (t.content === null || t.content === "") return false;
-      db.keepNote(t.path, t.hash);
-      recovered += 1;
-      ui.row(ui.success(ui.CHECK), ui.text("skipped retry — kept last good note"));
-      return true;
-    };
-
     for (const t of targets) {
       if (!existsSync(t.path)) {
         if (handleMissingSource(t, (p) => db.clearError(p)) === "restored") {
@@ -302,58 +292,29 @@ export async function runReconcile(
           t.hash,
           projectNameFor(t.path, cfg.claudeProjectsDir),
         );
-        const score = scoreSession(parsed, cfg.filterThreshold);
-        if (!score.passes) {
-          if (keepLastGoodNote(t)) continue;
-          // The filter rejects this now — record as skipped so a future
-          // reconcile pass doesn't keep retrying it.
-          db.record({
-            path: t.path,
-            hash: t.hash,
-            skipped: true,
-            notePaths: [],
-          });
-          continue;
-        }
-        const scrubbedSummary = scrub(parsed.rawSummary);
-        const toolFilter = filterToolCalls(
-          parsed.transcriptText,
-          cfg.filterToolCalls,
-        );
-        const scrubbedContent = scrub(toolFilter.filtered);
-        const note = await distiller.run(
-          parsed,
-          scrubbedSummary,
-          scrubbedContent,
-        );
-        if (!note) {
-          if (keepLastGoodNote(t)) continue;
-          // Low confidence — record as skipped so we don't keep retrying.
-          db.record({
-            path: t.path,
-            hash: t.hash,
-            skipped: true,
-            notePaths: [],
-          });
-          continue;
-        }
-        const written = await writer.write(parsed, note);
-        db.record({
-          path: t.path,
-          hash: t.hash,
-          skipped: false,
-          notePaths: written,
-          content: note.markdown,
-          category: note.classification.category,
-          topic: note.classification.topic,
-          project: note.classification.project,
-          confidence: note.classification.confidence,
-          startedAt: parsed.startedAt,
+        const outcome = await distillOneSession(parsed, t, {
+          cfg,
+          db,
+          distiller,
+          writer,
         });
+        if (outcome.kind !== "distilled") {
+          // Filtered or low confidence. A row with a last good note keeps it
+          // (served again); one without is recorded skipped so a future pass
+          // doesn't keep retrying it.
+          if (outcome.kind !== "deferred" && outcome.keptNote) {
+            recovered += 1;
+            ui.row(
+              ui.success(ui.CHECK),
+              ui.text("skipped retry — kept last good note"),
+            );
+          }
+          continue;
+        }
         recovered += 1;
         ui.categoryRow(
-          note.classification.category,
-          note.classification.topic,
+          outcome.note.classification.category,
+          outcome.note.classification.topic,
         );
         // Same pacing as run.ts — let the provider breathe between calls.
         await new Promise((r) => setTimeout(r, 2000));

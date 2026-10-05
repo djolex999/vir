@@ -127,6 +127,18 @@ describe("review note actions", () => {
     const fm = parseFrontmatter(readFileSync(dest, "utf8"));
     expect(fm.rejected_at).toBe("2026-05-24T12:00:00.000Z");
   });
+  it("refuses rather than overwrite a note already in .rejected/ under that name", () => {
+    const p = join(vault, "patterns", "x-abc12345.md");
+    writeFileSync(p, noteContent());
+    mkdirSync(join(vault, ".rejected"));
+    writeFileSync(join(vault, ".rejected", "x-abc12345.md"), "the earlier rejected copy");
+
+    expect(() => rejectNote(p, vault)).toThrow(/already in \.rejected/);
+    expect(readFileSync(p, "utf8")).toBe(noteContent());
+    expect(readFileSync(join(vault, ".rejected", "x-abc12345.md"), "utf8")).toBe(
+      "the earlier rejected copy",
+    );
+  });
 });
 
 describe("collectNotes filtering", () => {

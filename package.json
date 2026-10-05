@@ -42,6 +42,7 @@
     "dev": "tsc --watch",
     "start": "node dist/cli.js",
     "typecheck": "tsc --noEmit",
+    "typecheck:all": "tsc -p tsconfig.check.json",
     "test": "vitest run",
     "eval:build": "tsc -p eval/tsconfig.json",
     "eval": "npm run eval:build --silent && node eval/dist/eval/main.js",

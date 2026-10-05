@@ -37,6 +37,7 @@ describe("buildIdentifierQuery", () => {
     const a = buildIdentifierQuery(ids, makeRng(3));
     const b = buildIdentifierQuery(ids, makeRng(3));
     expect(a).toBe(b);
+    if (a === null) throw new Error("expected an identifier query");
     const parts = a.split(" ");
     expect(parts.length).toBeGreaterThanOrEqual(1);
     expect(parts.length).toBeLessThanOrEqual(2);

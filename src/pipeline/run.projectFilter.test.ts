@@ -146,7 +146,9 @@ describe("runPipeline — project filtering at the scan phase", () => {
 
   it("interactive path: onUndecidedProjects is asked once and its answers apply", async () => {
     const onUndecidedProjects = vi.fn(
-      async (): Promise<Record<string, "include" | "exclude">> => ({
+      async (
+        _groups: Array<{ name: string; sessionCount: number; estCost: number }>,
+      ): Promise<Record<string, "include" | "exclude">> => ({
         demo: "include",
         scratch: "exclude",
       }),

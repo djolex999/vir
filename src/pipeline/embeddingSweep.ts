@@ -81,6 +81,15 @@ export function selectPdfEmbeddingTargets<T extends PdfEmbeddingTargetRow>(
   );
 }
 
+// Where the sweep reads the text to embed: the note file as the writer wrote
+// it, so a back-filled vector is built from the same text as a write-time one.
+// null means "no file" and the sweep falls back to the stored content.
+export interface EmbeddingTextSource {
+  session(sessionId: string): string | null;
+  file(notePath: string): string | null;
+  topic(id: string): string | null;
+}
+
 export interface EmbedSweepResult {
   // false when the sweep was skipped because Ollama is down — it retries next
   // run rather than erroring now.
@@ -109,6 +118,7 @@ export async function sweepEmbeddings(
   db: StateDb,
   log?: (msg: string) => void,
   provider?: EmbeddingProvider | null,
+  text?: EmbeddingTextSource,
 ): Promise<EmbedSweepResult> {
   const targets = db.listEmbeddingTargets();
   const topicTargets = db.listTopicEmbeddingTargets();
@@ -137,7 +147,8 @@ export async function sweepEmbeddings(
   let errors = 0;
   for (const t of targets) {
     if (!t.content || t.content.trim().length === 0) continue;
-    const vec = await embedNoteWithProvider(active, t.content, log);
+    const source = text?.session(deriveSessionId(t.path)) ?? t.content;
+    const vec = await embedNoteWithProvider(active, source, log);
     if (!vec) {
       errors += 1;
       continue;
@@ -151,7 +162,8 @@ export async function sweepEmbeddings(
   // re-introduce the exact NULL-embedding blind spot the 0.8.2 sweep closed.
   for (const t of topicTargets) {
     if (!t.content || t.content.trim().length === 0) continue;
-    const vec = await embedNoteWithProvider(active, t.content, log);
+    const source = text?.topic(t.id) ?? t.content;
+    const vec = await embedNoteWithProvider(active, source, log);
     if (!vec) {
       errors += 1;
       continue;
@@ -166,7 +178,8 @@ export async function sweepEmbeddings(
   // sweep closed for the topics table.
   for (const a of articleTargets) {
     if (!a.content || a.content.trim().length === 0) continue;
-    const vec = await embedNoteWithProvider(active, a.content, log);
+    const source = (a.notePath ? text?.file(a.notePath) : null) ?? a.content;
+    const vec = await embedNoteWithProvider(active, source, log);
     if (!vec) {
       errors += 1;
       continue;
@@ -180,7 +193,8 @@ export async function sweepEmbeddings(
   // pdfs table can't reopen the NULL-embedding blind spot (the 0.8.2/0.8.3 trap).
   for (const p of pdfTargets) {
     if (!p.content || p.content.trim().length === 0) continue;
-    const vec = await embedNoteWithProvider(active, p.content, log);
+    const source = (p.notePath ? text?.file(p.notePath) : null) ?? p.content;
+    const vec = await embedNoteWithProvider(active, source, log);
     if (!vec) {
       errors += 1;
       continue;

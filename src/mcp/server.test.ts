@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SearchHit } from "../search/retriever.js";
-import { QUERY_TYPES, composeLookup, hitMeta } from "./server.js";
+import {
+  QUERY_TYPES,
+  VIR_QUERY_DESCRIPTION,
+  buildQueryResult,
+  composeLookup,
+  hitMeta,
+} from "./server.js";
 
 function hit(content: string, title: string): SearchHit {
   return { filePath: `/vault/${title}.md`, title, content, score: 1, method: "tfidf" };
@@ -97,5 +103,37 @@ describe("composeLookup", () => {
     expect(res.content).toBe(TOPIC_NOTE);
     expect(res.confidence).toBe(0.8);
     expect(res.model).toBe("claude-sonnet-4-6");
+  });
+});
+
+describe("vir_query synthesis is opt-out and labelled as billed", () => {
+  const hits = [hit(SESSION_NOTE, "gotchas/a-session-lesson-abcd1234")];
+
+  it("synthesize: false returns sources without calling the LLM", async () => {
+    const synth = vi.fn(async () => "answer");
+    const result = await buildQueryResult(hits, { synthesize: false }, synth);
+    expect(synth).not.toHaveBeenCalled();
+    expect(result.answer).toBeNull();
+    expect(result.sources).toHaveLength(1);
+    expect(result.sources[0]).toMatchObject({ category: "gotcha", project: "vir" });
+  });
+
+  it("synthesizes by default", async () => {
+    const synth = vi.fn(async () => "  the answer  ");
+    const result = await buildQueryResult(hits, {}, synth);
+    expect(synth).toHaveBeenCalledTimes(1);
+    expect(result.answer).toBe("the answer");
+  });
+
+  it("no hits: no LLM call either way", async () => {
+    const synth = vi.fn(async () => "answer");
+    const result = await buildQueryResult([], {}, synth);
+    expect(synth).not.toHaveBeenCalled();
+    expect(result).toEqual({ answer: "No matching notes found in the vault.", sources: [] });
+  });
+
+  it("the tool description says synthesis is billed and how to skip it", () => {
+    expect(VIR_QUERY_DESCRIPTION).toMatch(/billed/i);
+    expect(VIR_QUERY_DESCRIPTION).toContain("synthesize: false");
   });
 });

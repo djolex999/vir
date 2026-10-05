@@ -70,19 +70,18 @@ describe("buildInitConfig — every schema key survives re-init (enumerated)", (
 
   it("every key's value survives a re-init that mirrors the existing config", () => {
     const existing = ConfigSchema.parse(SURVIVAL_SAMPLE) as Config;
-    const sample = SURVIVAL_SAMPLE as Record<string, never>;
     const rebuilt = ConfigSchema.parse(
       buildInitConfig(existing, {
-        vaultPath: sample["vaultPath"],
-        outputDir: sample["outputDir"],
-        claudeProjectsDir: sample["claudeProjectsDir"],
-        cadenceHours: sample["cadenceHours"],
-        provider: sample["provider"],
+        vaultPath: existing.vaultPath,
+        outputDir: existing.outputDir,
+        claudeProjectsDir: existing.claudeProjectsDir,
+        cadenceHours: existing.cadenceHours,
+        provider: existing.provider,
         anthropicApiKey: undefined,
         kieApiKey: undefined,
-        filterThreshold: sample["filterThreshold"],
-        articlesDir: sample["articlesDir"],
-        pdfsDir: sample["pdfsDir"],
+        filterThreshold: existing.filterThreshold,
+        articlesDir: existing.articlesDir,
+        pdfsDir: existing.pdfsDir,
         classifyModel: existing.models.classify,
         distillModel: existing.models.distill,
         projects: {},

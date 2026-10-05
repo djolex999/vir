@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src/**/*", "eval/**/*", "vitest.setup.ts", "vitest.config.ts"],
+  "exclude": ["node_modules", "dist", "eval/dist"]
+}
