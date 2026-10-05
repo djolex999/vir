@@ -266,6 +266,16 @@ export async function runReconcile(
     let stillFailed = 0;
     let missingFile = 0;
 
+    // A skipped retry of a failed re-distill restores the last good note
+    // instead of hiding it behind skipped=1.
+    const keepLastGoodNote = (t: SessionRow): boolean => {
+      if (t.content === null || t.content === "") return false;
+      db.keepNote(t.path, t.hash);
+      recovered += 1;
+      ui.row(ui.success(ui.CHECK), ui.text("skipped retry — kept last good note"));
+      return true;
+    };
+
     for (const t of targets) {
       if (!existsSync(t.path)) {
         if (handleMissingSource(t, (p) => db.clearError(p)) === "restored") {
@@ -294,6 +304,7 @@ export async function runReconcile(
         );
         const score = scoreSession(parsed, cfg.filterThreshold);
         if (!score.passes) {
+          if (keepLastGoodNote(t)) continue;
           // The filter rejects this now — record as skipped so a future
           // reconcile pass doesn't keep retrying it.
           db.record({
@@ -316,6 +327,7 @@ export async function runReconcile(
           scrubbedContent,
         );
         if (!note) {
+          if (keepLastGoodNote(t)) continue;
           // Low confidence — record as skipped so we don't keep retrying.
           db.record({
             path: t.path,

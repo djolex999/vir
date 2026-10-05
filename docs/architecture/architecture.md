@@ -1,5 +1,5 @@
 # vir — Architecture
-*Generated: 2026-10-05 · revision `06c6606` · v0.23.0 · §6, §7 and §12 updated for 0.23.2*
+*Generated: 2026-10-05 · revision `06c6606` · v0.23.0 · §6, §7 and §12 updated for 0.23.3*
 
 Supersedes the 2026-06-12 architecture doc and map (v0.8.3; removed, see git history). Changes since that version are listed at the end of this document.
 
@@ -202,11 +202,6 @@ These conventions are specific and mostly well held:
 
 ## 12. Risks & Recommendations
 
-### [DO NOW] Filter and low-confidence skips can hide a distilled note
-**Observation**: `run.ts:956-964` and `993-1001` call `db.record({ skipped: true, notePaths: [] })` with no `isDistilledRow` guard, unlike the gated skips. `record()` assigns `skipped` and `note_paths` directly (`db.ts:846-847`). A resumed session (new hash) or a `--full` rerun that now scores lower flips a serving row to skipped. `reconcile.ts:299-325` does the same.
-**Risk**: the file stays in the vault, but every DB-backed reader drops it: retrieval vectors, `sync-claude`, MCP recent notes. This is the "semi-prune" the code comments warn about.
-**Action**: apply the same `isDistilledRow` no-overwrite guard used at `run.ts:460/498/870`, and add a regression test next to the existing `run.*.test.ts`. (S)
-
 ### [DO LATER] Write-time embeddings no-op for every new item
 **Observation**: `VaultWriter.write` calls `storeEmbedding` (`writer.ts:224-226`), which is an `UPDATE … WHERE path LIKE` (`db.ts:1104-1119`). That runs before `db.record` inserts the row (`run.ts:1007`), so it matches nothing for a new session. The same ordering affects articles, PDFs and topics. The end-of-run sweep re-embeds raw `content` (`embeddingSweep.ts:140`), not the frontmatter + header + body text that was used at write time.
 **Risk**: every new note is embedded twice, and stored vectors are built from different text than Related-link computation used. That skews retrieval and the eval baselines.
@@ -249,6 +244,7 @@ These conventions are specific and mostly well held:
   - `applyPlan` is now tested (`updater.test.ts`);
   - 0.23.1: a claude-cli quota halt no longer loses articles and PDFs, and errored ones retry up to 3 times;
   - 0.23.2: the pidfile lock is atomic, including stale-lock reclaim (guarded by `vir.lock.reclaim`).
+  - 0.23.3: a filter or low-confidence skip of a re-processed session keeps its note (plus a one-time repair of notes it had hidden).
 - **New since then:**
   - the `claude-cli` provider;
   - PDFs;

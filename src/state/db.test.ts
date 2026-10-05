@@ -191,6 +191,62 @@ describe("StateDb doc attempts on a pre-attempts schema", () => {
   });
 });
 
+describe("StateDb repair: notes hidden by a filter or low-confidence skip", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vir-db-"));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function distilled(db: StateDb, path: string): void {
+    db.record({
+      path,
+      hash: "h1",
+      skipped: false,
+      notePaths: ["/vault/vir/patterns/x.md"],
+      content: "## Summary\nkept",
+      category: "pattern",
+      topic: "Kept",
+      project: "demo",
+      confidence: 0.9,
+      startedAt: "2026-07-01T00:00:00.000Z",
+    });
+  }
+
+  it("un-hides only rows that can only be victims of the old skip overwrite", () => {
+    const path = join(dir, "vir.db");
+    const db = new StateDb(path);
+    distilled(db, "/p/victim.jsonl");
+    distilled(db, "/p/gated.jsonl");
+    distilled(db, "/p/errored.jsonl");
+    db.record({ path: "/p/never.jsonl", hash: "h1", skipped: true, notePaths: [] });
+    db.close();
+
+    // Shapes left behind by earlier versions, written with raw SQL.
+    const raw = new Database(path);
+    raw.exec(`
+      UPDATE sessions SET skipped = 1, note_paths = '[]' WHERE path = '/p/victim.jsonl';
+      UPDATE sessions SET skipped = 1, skip_reason = 'project-excluded' WHERE path = '/p/gated.jsonl';
+      UPDATE sessions SET skipped = 1, error = 'boom' WHERE path = '/p/errored.jsonl';
+    `);
+    raw.close();
+
+    const reopened = new StateDb(path);
+    try {
+      const served = reopened.listDistilled().map((r) => r.path);
+      expect(served).toEqual(["/p/victim.jsonl"]);
+      expect(reopened.getByPath("/p/gated.jsonl")?.skipped).toBe(1);
+      expect(reopened.getByPath("/p/errored.jsonl")?.skipped).toBe(1);
+      expect(reopened.getByPath("/p/never.jsonl")?.skipped).toBe(1);
+    } finally {
+      reopened.close();
+    }
+  });
+});
+
 describe("StateDb.recordError — hash records on success, never on attempt", () => {
   let dir: string;
   let db: StateDb;
