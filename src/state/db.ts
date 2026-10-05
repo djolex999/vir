@@ -406,6 +406,17 @@ export class StateDb {
     for (const col of ADDED_COLUMNS) {
       if (!existing.has(col.name)) this.db.exec(col.ddl);
     }
+    // Repair (0.23.3): a filter or low-confidence skip on a re-processed
+    // session used to overwrite its distilled row with skipped=1, hiding a note
+    // whose content was kept. Only that bug leaves skipped=1 with content, no
+    // skip_reason and no error: gated skips carry a reason, never-distilled
+    // skips have no content, and prune/reject/archive use their own columns.
+    // Idempotent; note_paths is never read, so it needs no restore.
+    this.db.exec(
+      `UPDATE sessions SET skipped = 0
+       WHERE skipped = 1 AND skip_reason IS NULL AND error IS NULL
+         AND content IS NOT NULL AND content <> ''`,
+    );
     // Consecutive failed distills for the doc tables, same bound as sessions.
     // Existing rows default to 0, so an errored row left by an earlier version
     // gets the full MAX_DISTILL_ATTEMPTS retries.
@@ -777,6 +788,20 @@ export class StateDb {
       .prepare(`SELECT COALESCE(attempts, 0) AS attempts FROM sessions WHERE path = ?`)
       .get(path) as { attempts: number } | undefined;
     return row !== undefined && row.attempts >= MAX_DISTILL_ATTEMPTS;
+  }
+
+  // A re-processed session whose new bytes were skipped (filter or low
+  // confidence) keeps its existing note: record the bytes as seen so they are
+  // not re-classified every run, and clear any error from a failed re-distill
+  // so the last good note is served again.
+  keepNote(path: string, hash: string): void {
+    this.db
+      .prepare(
+        `UPDATE sessions
+         SET hash = ?, processed_at = ?, error = NULL, attempts = 0
+         WHERE path = ?`,
+      )
+      .run(hash, new Date().toISOString(), path);
   }
 
   // Rescue for orphaned rows whose source transcript is gone: drop the stale

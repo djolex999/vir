@@ -55,6 +55,18 @@ function isDistilledRow(row: SessionRow | undefined): boolean {
     row.content !== ""
   );
 }
+
+// A row that holds a note, served or hidden only by a failed re-distill's
+// error. A filter or low-confidence skip of new bytes must keep that note.
+function holdsNote(row: SessionRow | undefined): boolean {
+  return (
+    row !== undefined &&
+    row.skipped === 0 &&
+    row.content !== null &&
+    row.content !== ""
+  );
+}
+
 import { scrub } from "./scrubber.js";
 import { summarizeProject } from "./summarizer.js";
 import { filterToolCalls } from "./toolCallFilter.js";
@@ -955,6 +967,11 @@ export async function runPipeline(
 
       if (!filter.passes) {
         summary.skippedByFilter += 1;
+        if (holdsNote(db.getByPath(found.path))) {
+          db.keepNote(found.path, found.hash);
+          fileLog(`filtered, kept existing note: ${found.path}`);
+          continue;
+        }
         db.record({
           path: found.path,
           hash: found.hash,
@@ -992,6 +1009,11 @@ export async function runPipeline(
       const note = await distiller.run(parsed, scrubbedSummary, scrubbedContent);
       if (!note) {
         summary.lowConfidence += 1;
+        if (holdsNote(db.getByPath(found.path))) {
+          db.keepNote(found.path, found.hash);
+          fileLog(`low confidence, kept existing note: ${found.path}`);
+          continue;
+        }
         db.record({
           path: found.path,
           hash: found.hash,
