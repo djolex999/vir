@@ -9,7 +9,13 @@ import { Distiller, normalizeModelName, resolveModelShorthand } from "../pipelin
 import { ClaudeCliLimitError } from "../pipeline/claudeCli.js";
 import { acquireLock, LockHeldError, releaseLock } from "../pipeline/lock.js";
 import { parseSession } from "../pipeline/parser.js";
-import { projectNameFor } from "../pipeline/projects.js";
+import {
+  classifyTranscript,
+  decideProject,
+  projectNameFor,
+  readTranscriptHead,
+  sniffAgentEntrypoint,
+} from "../pipeline/projects.js";
 import { scrub } from "../pipeline/scrubber.js";
 import { filterToolCalls } from "../pipeline/toolCallFilter.js";
 import { VaultWriter } from "../pipeline/writer.js";
@@ -19,6 +25,7 @@ import {
   MAX_DISTILL_ATTEMPTS,
   StateDb,
   type SessionRow,
+  type SkipReason,
 } from "../state/db.js";
 import * as ui from "../ui/display.js";
 
@@ -60,6 +67,39 @@ export function selectReconcileTargets(
   );
 }
 
+// The filters `vir run` applies before any paid call, in the same order:
+// transcript category, SDK-agent entrypoint, project decision. A row that
+// errored before these existed (or before a project was excluded) must not be
+// retried past them. Returns the skip reason, or null when the row may retry.
+export function reconcileGate(
+  t: Pick<SessionRow, "path">,
+  cfg: Pick<
+    Config,
+    "claudeProjectsDir" | "workflowTranscripts" | "agentTranscripts" | "projects"
+  >,
+  readHead: (path: string) => string = readTranscriptHead,
+): { reason: SkipReason; entrypoint?: string } | null {
+  if (cfg.workflowTranscripts !== "include") {
+    const cat = classifyTranscript(t.path, cfg.claudeProjectsDir);
+    if (cat !== "session") {
+      return {
+        reason: cat === "workflow" ? "workflow-transcript" : "sidechain-transcript",
+      };
+    }
+  }
+  if (cfg.agentTranscripts !== "include") {
+    const entrypoint = sniffAgentEntrypoint(readHead(t.path));
+    if (entrypoint !== null) return { reason: "agent-transcript", entrypoint };
+  }
+  const decision = decideProject(
+    projectNameFor(t.path, cfg.claudeProjectsDir),
+    cfg.projects ?? {},
+  );
+  if (decision === "exclude") return { reason: "project-excluded" };
+  if (decision === "pending") return { reason: "project-pending" };
+  return null;
+}
+
 // A target whose transcript is gone can't be retried. If an earlier good
 // distill survives (the orphan shape: error set, content kept), the stale
 // error is the only thing hiding that note from listDistilled — clear it.
@@ -78,6 +118,18 @@ export interface ReconcileTargetSummary {
   sessionId: string;
   hadCostRecord: boolean;
   estimatedCost: number;
+  // The transcript is gone (Claude Code deletes old ones): it cannot be
+  // retried, only an earlier note restored, so it costs nothing.
+  missing: boolean;
+}
+
+// Retry cost for display: the subscription path spends quota, not dollars,
+// so it never shows a misleading $0.
+export function reconcileCostLabel(
+  provider: Config["provider"],
+  usd: number,
+): string {
+  return provider === "claude-cli" ? "quota" : ui.formatUsd(usd);
 }
 
 // Build the per-target summary (cost estimate + collateral flag) without doing
@@ -107,8 +159,9 @@ export function summarizeReconcileTargets(
     if (hadCostRecord) collateralCount += 1;
 
     let estimatedCost = 0;
+    const missing = !existsSync(t.path);
     // Subscription path: retries cost quota, not dollars — estimate stays 0.
-    if (cfg.provider !== "claude-cli" && existsSync(t.path)) {
+    if (cfg.provider !== "claude-cli" && !missing) {
       try {
         const parsed = parseSession(t.path, t.hash);
         const classifyIn = Math.ceil(
@@ -146,6 +199,7 @@ export function summarizeReconcileTargets(
       sessionId,
       hadCostRecord,
       estimatedCost,
+      missing,
     });
   }
   return { rows, totalCost, collateralCount };
@@ -191,10 +245,46 @@ export async function runReconcile(
     ui.header(opts.dryRun ? "reconcile  --dry-run" : "reconcile");
     ui.blank();
 
-    const targets = selectReconcileTargets(
+    const candidates = selectReconcileTargets(
       db.listReconcileTargets(),
       opts.force === true,
     );
+    // Same filters as `vir run`. A gated row leaves the retry list with its
+    // skip reason (it re-enters if the config changes); one that still holds
+    // an earlier good note keeps it, since excluding never touches notes.
+    const targets: SessionRow[] = [];
+    const gatedBy = new Map<SkipReason, number>();
+    for (const t of candidates) {
+      const gate = existsSync(t.path) ? reconcileGate(t, cfg) : null;
+      if (gate === null) {
+        targets.push(t);
+        continue;
+      }
+      gatedBy.set(gate.reason, (gatedBy.get(gate.reason) ?? 0) + 1);
+      if (opts.dryRun) continue;
+      if (t.content !== null && t.content !== "") {
+        db.keepNote(t.path, t.hash);
+      } else {
+        db.record({
+          path: t.path,
+          hash: t.hash,
+          skipped: true,
+          notePaths: [],
+          skipReason: gate.reason,
+          ...(gate.entrypoint ? { entrypoint: gate.entrypoint } : {}),
+        });
+      }
+    }
+    if (gatedBy.size > 0) {
+      const total = [...gatedBy.values()].reduce((a, b) => a + b, 0);
+      const parts = [...gatedBy.entries()].map(([r, n]) => `${n} ${r}`).join(", ");
+      ui.row(
+        ui.warn(ui.WARN_GLYPH),
+        ui.text(
+          `${total} excluded by the same filters as vir run (${parts})${opts.dryRun ? "" : " — recorded, not retried"}`,
+        ),
+      );
+    }
     if (targets.length === 0) {
       ui.row(
         ui.success(ui.CHECK),
@@ -227,15 +317,26 @@ export async function runReconcile(
     for (const r of rows) {
       const id = r.sessionId.slice(0, 8);
       const marker = r.hadCostRecord ? ui.warn("$") : ui.dim(" ");
+      const est = r.missing
+        ? "transcript gone"
+        : `est ${reconcileCostLabel(cfg.provider, r.estimatedCost)}`;
       ui.line(
-        `  ${ui.dim(ui.BULLET)} ${marker} ${ui.text(id.padEnd(10))}  ${ui.dim(`est ${ui.formatUsd(r.estimatedCost)}`)}`,
+        `  ${ui.dim(ui.BULLET)} ${marker} ${ui.text(id.padEnd(10))}  ${ui.dim(est)}`,
       );
     }
+    const missingCount = rows.filter((r) => r.missing).length;
     ui.blank();
     ui.divider();
     ui.summary({
-      recoverable: { value: rows.length, color: ui.info },
-      "est. retry cost": { value: ui.formatUsd(totalCost), color: ui.warn },
+      recoverable: { value: rows.length - missingCount, color: ui.info },
+      "transcript gone": {
+        value: missingCount,
+        color: missingCount > 0 ? ui.warn : ui.dim,
+      },
+      "est. retry cost": {
+        value: reconcileCostLabel(cfg.provider, totalCost),
+        color: ui.warn,
+      },
       "false-cost collateral": {
         value: collateralCount,
         color: collateralCount > 0 ? ui.warn : ui.dim,
@@ -327,11 +428,19 @@ export async function runReconcile(
           process.exitCode = 1;
           break;
         }
-        // A retry that fails again must leave the row as-is (content still
-        // null/empty) so the next reconcile pass can catch it. Do NOT mark
-        // it processed-with-empty.
+        // A retry that fails again stays a reconcile target (content still
+        // null/empty, never marked processed-with-empty).
         stillFailed += 1;
         const msg = (err as Error).message ?? String(err);
+        // Count the failure like vir run does: recordError keeps the row's
+        // hash and content and bumps attempts, so a target that keeps failing
+        // is parked after MAX_DISTILL_ATTEMPTS instead of retried (and paid
+        // for) on every pass. --force still retries parked rows.
+        try {
+          db.recordError(t.path, t.hash, msg);
+        } catch {
+          // a bookkeeping failure must not hide the retry result
+        }
         ui.row(
           ui.errorColor(ui.CROSS),
           ui.text(`retry failed: ${deriveSessionId(t.path).slice(0, 8)} — ${msg}`),

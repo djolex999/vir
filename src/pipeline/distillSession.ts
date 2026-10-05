@@ -11,6 +11,28 @@ import type { DistilledNote, ParsedSession } from "./types.js";
 // bound, ...), its own counters and UI, and its own error policy (run records
 // the error; reconcile leaves the row for the next pass).
 
+// Distill input ceiling: ~150k tokens at the ~3 chars/token transcripts run
+// at (the same cap projects.ts's estimator assumes). Above it a single session
+// can exceed the model's context, fail every attempt and get parked.
+export const MAX_DISTILL_INPUT_CHARS = 450_000;
+// Of the kept text: the opening (task, context) and a larger share of the
+// end, where decisions and outcomes land.
+const HEAD_SHARE = 0.3;
+
+// Trims an oversized transcript to MAX_DISTILL_INPUT_CHARS, keeping its start
+// and end with a marker where the middle was cut. Returns null when it fits.
+export function trimTranscript(text: string): string | null {
+  if (text.length <= MAX_DISTILL_INPUT_CHARS) return null;
+  const head = Math.floor(MAX_DISTILL_INPUT_CHARS * HEAD_SHARE);
+  const tail = MAX_DISTILL_INPUT_CHARS - head;
+  const omitted = text.length - head - tail;
+  return (
+    text.slice(0, head) +
+    `\n\n[… ${omitted} characters of this transcript omitted to fit the model's context …]\n\n` +
+    text.slice(text.length - tail)
+  );
+}
+
 export type DistillOutcome =
   | { kind: "filtered"; keptNote: boolean }
   | { kind: "deferred" }
@@ -93,7 +115,14 @@ export async function distillOneSession(
       `filtered ${toolFilter.toolCallsStripped} tool results${skills}, saved ~${toolFilter.tokensSaved} tokens`,
     );
   }
-  const scrubbedContent = scrub(toolFilter.filtered);
+  let scrubbedContent = scrub(toolFilter.filtered);
+  const trimmed = trimTranscript(scrubbedContent);
+  if (trimmed !== null) {
+    deps.log?.(
+      `trimmed ${parsed.sessionId.slice(0, 8)} from ${scrubbedContent.length} to ${MAX_DISTILL_INPUT_CHARS} chars to fit the model's context`,
+    );
+    scrubbedContent = trimmed;
+  }
 
   // Everything above is free bookkeeping; the distill is the paid call.
   if (deps.beforePaidCall && !deps.beforePaidCall()) {

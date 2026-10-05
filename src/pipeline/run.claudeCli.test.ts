@@ -456,3 +456,28 @@ describe("runPipeline — doc retry bound", () => {
     expect(docRow("pdfs", "/p/wall-2.pdf")).toBeUndefined();
   });
 });
+
+describe("runPipeline --full also re-processes articles and PDFs", () => {
+  it("re-distills a clean, already-processed article and PDF", async () => {
+    spies.articles.mockReturnValue([article("/a/full.md", "hfull")]);
+    spies.distillArticle.mockResolvedValue(docNote);
+    spies.pdfs.mockReturnValue([{ filePath: "/p/full.pdf", hash: "hfullp" }]);
+    spies.parsePdf.mockImplementation(async (filePath: string) => ({
+      filePath,
+      hash: "hfullp",
+      title: "Paper",
+      text: "body",
+      pageCount: 1,
+    }));
+    spies.distillPdf.mockResolvedValue(docNote);
+
+    await runPipeline(withDocs("anthropic"), { quiet: true });
+    await runPipeline(withDocs("anthropic"), { quiet: true });
+    expect(spies.distillArticle).toHaveBeenCalledTimes(1);
+    expect(spies.distillPdf).toHaveBeenCalledTimes(1);
+
+    await runPipeline(withDocs("anthropic"), { quiet: true, full: true });
+    expect(spies.distillArticle).toHaveBeenCalledTimes(2);
+    expect(spies.distillPdf).toHaveBeenCalledTimes(2);
+  });
+});

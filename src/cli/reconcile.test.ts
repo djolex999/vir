@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleMissingSource, selectReconcileTargets } from "./reconcile.js";
+import {
+  handleMissingSource,
+  reconcileCostLabel,
+  selectReconcileTargets,
+  summarizeReconcileTargets,
+} from "./reconcile.js";
 import type { SessionRow } from "../state/db.js";
 
 function row(overrides: Partial<SessionRow>): SessionRow {
@@ -112,5 +117,29 @@ describe("handleMissingSource — transcript gone from disk", () => {
     const clearError = vi.fn();
     expect(handleMissingSource(row({ content }), clearError)).toBe("missing");
     expect(clearError).not.toHaveBeenCalled();
+  });
+});
+
+describe("summarizeReconcileTargets — missing transcripts and quota", () => {
+  const cfg = (provider: "anthropic" | "claude-cli") =>
+    ({
+      provider,
+      filterToolCalls: "moderate",
+      kieTopUpTier: "standard",
+      models: { classify: "claude-haiku-4-5-20251001", distill: "claude-sonnet-5" },
+    }) as unknown as Parameters<typeof summarizeReconcileTargets>[0];
+
+  it("marks a target whose transcript is gone as missing, not recoverable", () => {
+    const { rows } = summarizeReconcileTargets(
+      cfg("anthropic"),
+      [row({ path: "/gone/abc.jsonl", content: null })],
+      new Set(),
+    );
+    expect(rows[0]).toMatchObject({ missing: true, estimatedCost: 0 });
+  });
+
+  it("labels the subscription path as quota, never $0", () => {
+    expect(reconcileCostLabel("claude-cli", 0)).toBe("quota");
+    expect(reconcileCostLabel("anthropic", 0.25)).toBe("$0.250");
   });
 });

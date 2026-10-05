@@ -37,3 +37,16 @@ describe("scrub true positives still redact", () => {
     expect(out).not.toContain("eyJhbGciOiJIUzI1NiJ9");
   });
 });
+
+describe("scrub — other users' home paths", () => {
+  it("collapses Linux /home/<user>/... paths like macOS /Users/...", () => {
+    expect(scrub("see /home/alice/projects/app/src/index.ts")).toBe("see ~/index.ts");
+    expect(scrub("open /Users/bob/work/notes.md")).toBe("open ~/notes.md");
+    // A bare home dir collapses the same way as before (to its basename).
+    expect(scrub("in /Users/bob and /home/alice")).toBe("in ~/bob and ~/alice");
+  });
+
+  it("leaves system paths and a bare /home alone", () => {
+    expect(scrub("ran /usr/bin/node in /home")).toBe("ran /usr/bin/node in /home");
+  });
+});

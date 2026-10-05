@@ -33,6 +33,7 @@ import {
   estimateSessionCost,
 } from "./projects.js";
 import { ClaudeCliLimitError } from "./claudeCli.js";
+import { resolvePricing } from "../cost/pricing.js";
 import {
   readTranscriptHead,
   sniffAgentEntrypoint,
@@ -78,10 +79,12 @@ export interface RunOptions {
   // Estimate per-session cost after filtering, print a table, and exit before
   // any LLM call. Skips the cost-confirmation prompt.
   dryRun?: boolean;
-  // Called after the scan with the count of sessions that will be distilled.
-  // Return false to abort cleanly. If omitted, the run always proceeds —
-  // daemon callers rely on this default.
-  onConfirm?: (newCount: number) => Promise<boolean>;
+  // Called after the scan with the count of sessions that will be distilled
+  // and an upper-bound dollar estimate from their sizes (null when the cost is
+  // not in dollars: claude-cli quota, or a model with no price). Return false
+  // to abort cleanly. If omitted, the run always proceeds — daemon callers
+  // rely on this default.
+  onConfirm?: (newCount: number, estimatedUsd: number | null) => Promise<boolean>;
   // One-off project scoping for this run only — never persisted to config.
   onlyProjects?: string[];
   excludeProjects?: string[];
@@ -346,7 +349,7 @@ export async function runPipeline(
       db.close();
       return summary;
     }
-    await runArticlePhase(cfg, db, writer, summary, fileLog, interactive);
+    await runArticlePhase(cfg, db, writer, summary, fileLog, interactive, opts.full === true);
     await runEmbeddingSweep(cfg, db, writer, fileLog, interactive);
     if (interactive) {
       ui.blank();
@@ -384,7 +387,7 @@ export async function runPipeline(
       db.close();
       return summary;
     }
-    await runPdfPhase(cfg, db, writer, summary, fileLog, interactive);
+    await runPdfPhase(cfg, db, writer, summary, fileLog, interactive, opts.full === true);
     await runEmbeddingSweep(cfg, db, writer, fileLog, interactive);
     if (interactive) {
       ui.blank();
@@ -589,13 +592,32 @@ export async function runPipeline(
   // stale-cache no-op (the symptom of the state.db → vir.db rename bug).
   let preflightNew = 0;
   let preflightFiltered = 0;
+  let preflightUsd = 0;
   for (const found of sessionsInScope) {
     if (decisionFor(found.path) !== "include") {
       preflightFiltered += 1;
       continue;
     }
-    if (opts.full || !db.isProcessed(found.path, found.hash)) preflightNew += 1;
+    if (opts.full || !db.isProcessed(found.path, found.hash)) {
+      preflightNew += 1;
+      preflightUsd += estimateSessionCost(
+        cfg.provider,
+        classifyModelId,
+        distillModelId,
+        found.size,
+        cfg.pricing,
+        cfg.kieTopUpTier,
+      );
+    }
   }
+  // Dollars only when the provider bills dollars and both models are priced.
+  const billing = cfg.provider;
+  const priced =
+    billing !== "claude-cli" &&
+    [classifyModelId, distillModelId].every(
+      (m) => resolvePricing(billing, m, cfg.pricing, cfg.kieTopUpTier) !== null,
+    );
+  const preflightEstimate = priced ? preflightUsd : null;
   const cached = sessionsInScope.length - preflightNew - preflightFiltered;
   // Notes distilled but never embedded (write-time Ollama outage) — surfaced so
   // a retrieval blind spot is visible, not silent. Counts all three embeddable
@@ -800,7 +822,7 @@ export async function runPipeline(
   }
 
   if (opts.onConfirm) {
-    const proceed = await opts.onConfirm(preflightNew);
+    const proceed = await opts.onConfirm(preflightNew, preflightEstimate);
     if (!proceed) {
       fileLog("aborted by user at cost prompt");
       db.close();
@@ -1119,14 +1141,14 @@ export async function runPipeline(
   // Second input source: web articles. Gated on config; a session-only install
   // (no articlesDir) skips this entirely and behaves exactly as before.
   if (!halted && cfg.articlesDir && cfg.distillArticles) {
-    await runArticlePhase(cfg, db, writer, summary, fileLog, interactive);
+    await runArticlePhase(cfg, db, writer, summary, fileLog, interactive, opts.full === true);
   }
 
   // Third input source: PDFs / papers. Gated identically; an install without
   // pdfsDir skips this entirely (the article pattern, cloned).
   // The article phase may itself hit the limit and halt.
   if (summary.limitHalted === null && cfg.pdfsDir && cfg.distillPdfs) {
-    await runPdfPhase(cfg, db, writer, summary, fileLog, interactive);
+    await runPdfPhase(cfg, db, writer, summary, fileLog, interactive, opts.full === true);
   }
 
   // Self-heal: back-fill notes whose write-time embedding silently no-op'd
@@ -1308,6 +1330,8 @@ async function runArticlePhase(
   summary: RunSummary,
   fileLog: (msg: string) => void,
   interactive: boolean,
+  // --full re-processes every item, as it does for sessions.
+  full = false,
 ): Promise<void> {
   if (!cfg.articlesDir) return;
 
@@ -1334,7 +1358,7 @@ async function runArticlePhase(
 
   for (const article of articles) {
     try {
-      if (db.isArticleProcessed(article.filePath, article.hash)) continue;
+      if (!full && db.isArticleProcessed(article.filePath, article.hash)) continue;
 
       const distilled = await distillArticle(article, cfg);
       if (!distilled) {
@@ -1423,6 +1447,8 @@ async function runPdfPhase(
   summary: RunSummary,
   fileLog: (msg: string) => void,
   interactive: boolean,
+  // --full re-processes every item, as it does for sessions.
+  full = false,
 ): Promise<void> {
   if (!cfg.pdfsDir) return;
 
@@ -1445,7 +1471,7 @@ async function runPdfPhase(
 
   for (const src of sources) {
     try {
-      if (db.isPdfProcessed(src.filePath, src.hash)) continue;
+      if (!full && db.isPdfProcessed(src.filePath, src.hash)) continue;
 
       // Extraction is heavy and only happens for new files (gated above).
       const parsed = await parsePdf(src.filePath);

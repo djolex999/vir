@@ -295,10 +295,21 @@ function excerpt(content: string): string {
 // Opens the note in $EDITOR (or $VISUAL), falling back to nano. Synchronous so
 // the review loop blocks until the editor exits. Returns false if the editor
 // couldn't be launched at all.
-function openInEditor(filePath: string): boolean {
-  const editor = process.env.EDITOR || process.env.VISUAL || "nano";
-  const res = spawnSync(editor, [filePath], { stdio: "inherit" });
-  return !res.error;
+//
+// $EDITOR is a shell fragment, not a binary name: `code --wait` and
+// `subl -w` carry arguments. Run it through sh the way git does, passing the
+// path as "$1" so it is never re-parsed by the shell. Exported for tests.
+export function openInEditor(
+  filePath: string,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const editor = env.EDITOR || env.VISUAL || "nano";
+  const res = spawnSync("/bin/sh", ["-c", `${editor} "$1"`, "vir-editor", filePath], {
+    stdio: "inherit",
+    env,
+  });
+  // 126/127: the shell could not run the editor (not executable / not found).
+  return !res.error && res.status !== 126 && res.status !== 127;
 }
 
 function renderNote(

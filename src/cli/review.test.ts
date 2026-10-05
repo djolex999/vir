@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -13,6 +14,7 @@ import { StateDb } from "../state/db.js";
 import {
   approveNote,
   collectNotes,
+  openInEditor,
   orderForAudit,
   parseFrontmatter,
   rejectNote,
@@ -376,5 +378,32 @@ describe("orderForAudit", () => {
 
   it("ignores notes with no verdict at all", () => {
     expect(orderForAudit([note("a", "2026-05-01")], [])).toEqual([]);
+  });
+});
+
+describe("openInEditor", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vir-editor-"));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("runs an $EDITOR that carries arguments, with a path containing spaces", () => {
+    const fakeEditor = join(dir, "fake-editor");
+    const out = join(dir, "argv.txt");
+    writeFileSync(fakeEditor, `#!/bin/sh\nprintf '%s\\n' "$@" > "${out}"\n`);
+    chmodSync(fakeEditor, 0o755);
+    const note = join(dir, "my note.md");
+    writeFileSync(note, "x");
+
+    expect(openInEditor(note, { ...process.env, EDITOR: `${fakeEditor} --wait` })).toBe(true);
+    expect(readFileSync(out, "utf8")).toBe(`--wait\n${note}\n`);
+  });
+
+  it("reports an editor that does not exist", () => {
+    expect(openInEditor(join(dir, "n.md"), { ...process.env, EDITOR: "definitely-not-an-editor-xyz" })).toBe(false);
   });
 });
