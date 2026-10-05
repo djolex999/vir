@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.23.1 — 2026-10-05
+
+**A claude-cli quota halt no longer loses articles and PDFs.** When `vir run`
+hit the subscription limit, the session loop stopped, but the article and PDF
+phases still ran into the same wall and recorded every new item as processed
+with an error. Those items were never tried again.
+
+- **A quota halt now stops the whole run.** Project summaries, articles and PDFs are skipped after a halt, and a limit first hit inside the article or PDF phase halts there. Nothing is recorded, so the skipped items are simply new on the next run.
+- **Items lost this way in earlier versions are retried automatically on the next run.** An errored article or PDF no longer counts as processed, so no manual step is needed.
+- **Failing items stop retrying after 3 attempts,** the same bound sessions have. A changed file starts the count over. Articles and PDFs gain an `attempts` column (additive migration).
+
 ## 0.23.0 — 2026-09-29
 
 **`vir review --json`: review from the Obsidian plugin.** The terminal review
