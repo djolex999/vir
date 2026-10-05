@@ -1,5 +1,5 @@
 # vir — Architecture
-*Generated: 2026-10-05 · revision `06c6606` · v0.23.0*
+*Generated: 2026-10-05 · revision `06c6606` · v0.23.0 · §6, §7 and §12 updated for 0.23.2*
 
 Supersedes the 2026-06-12 architecture doc and map (v0.8.3; removed, see git history). Changes since that version are listed at the end of this document.
 
@@ -112,7 +112,7 @@ Rules worth knowing:
 
 - **Verdicts are split across storage.** Review approval (`verified: true`) lives only in note frontmatter. Rejection lives in the file's location (`.rejected/`) plus `rejected_at`. Audit verdicts live only in the DB and never gate serving.
 - **Read-only consumers skip migrations.** The MCP server and doctor open the DB read-only, so they guard with `columnsOf`, `servingGate` and `sqlite_master` probes. Only `pruned_at`/`rejected_at` and the table existence checks are guarded. `listDistilled`, `getEmbeddings` and `listDistillFailures` name later-migrated columns without a guard, so they would throw on a pre-migration DB.
-- **Articles and PDFs have no retry model.** An error is recorded together with the hash, and `isArticleProcessed`/`isPdfProcessed` compare only the hash. A failed item therefore stays failed until its source file changes.
+- **Articles and PDFs retry up to 3 times (0.23.1).** An error is recorded with the hash and bumps `attempts`. `isArticleProcessed`/`isPdfProcessed` treat an errored row as unprocessed until it has failed 3 times on the same bytes; a changed file starts over.
 
 ## 7. Data Flow
 
@@ -130,7 +130,7 @@ Rules worth knowing:
   → after the loop: project summaries, articles, PDFs, embedding sweep
 ```
 
-Error handling is per session. A generic error calls `recordError` and increments `attempts`. A `ClaudeCliLimitError` halts the session loop and writes no error rows. **Flag:** the article and PDF phases still run after that halt (see §12).
+Error handling is per session. A generic error calls `recordError` and increments `attempts`. A `ClaudeCliLimitError` halts the run and writes no error rows; since 0.23.1 that includes skipping project summaries and the article and PDF phases.
 
 **Flow: MCP query.** Diagram: [sequence-mcp-query.html](./sequence-mcp-query.html)
 
@@ -202,16 +202,6 @@ These conventions are specific and mostly well held:
 
 ## 12. Risks & Recommendations
 
-### [DO NOW] A claude-cli quota halt permanently loses new articles and PDFs
-**Observation**: on `ClaudeCliLimitError` the session loop `break`s (`run.ts:1044-1050`), but the article and PDF phases still run unconditionally (`run.ts:1136-1144`). Each item hits the same wall, which is not retryable (`distiller.ts:663`). The generic catch then records the error **with the hash** (`run.ts:1398-1405`), and `isArticleProcessed` compares only the hash (`db.ts:1213-1219`).
-**Risk**: every article or PDF clipped since the last run is marked processed-with-error and never retried. There is no reconcile path for them. This is silent data loss on the exact path subscription users hit routinely.
-**Action**: skip the article and PDF phases (and `summarizeProject`) when `summary.limitHalted` is set. Separately, stop treating an errored article or PDF row as processed: either check `error IS NULL` in `isArticleProcessed`/`isPdfProcessed`, or extend `vir reconcile` to cover them. (S)
-
-### [DO NOW] Make the pidfile lock atomic
-**Observation**: `acquireLock` does `existsSync`, then a PID check, then `writeFileSync` without `wx` (`lock.ts:38-52`).
-**Risk**: when the daemon and a manual `vir run` start together, both can take the lock and double-spend on the same sessions.
-**Action**: create the file with `writeFileSync(path, pid, { flag: "wx" })`. On `EEXIST`, run the stale check, unlink, and retry once. (S)
-
 ### [DO NOW] Filter and low-confidence skips can hide a distilled note
 **Observation**: `run.ts:956-964` and `993-1001` call `db.record({ skipped: true, notePaths: [] })` with no `isDistilledRow` guard, unlike the gated skips. `record()` assigns `skipped` and `note_paths` directly (`db.ts:846-847`). A resumed session (new hash) or a `--full` rerun that now scores lower flips a serving row to skipped. `reconcile.ts:299-325` does the same.
 **Risk**: the file stays in the vault, but every DB-backed reader drops it: retrieval vectors, `sync-claude`, MCP recent notes. This is the "semi-prune" the code comments warn about.
@@ -256,7 +246,9 @@ These conventions are specific and mostly well held:
 
 - **Fixed:**
   - the article NULL-embedding blind spot (`selectArticleEmbeddingTargets`);
-  - `applyPlan` is now tested (`updater.test.ts`).
+  - `applyPlan` is now tested (`updater.test.ts`);
+  - 0.23.1: a claude-cli quota halt no longer loses articles and PDFs, and errored ones retry up to 3 times;
+  - 0.23.2: the pidfile lock is atomic, including stale-lock reclaim (guarded by `vir.lock.reclaim`).
 - **New since then:**
   - the `claude-cli` provider;
   - PDFs;
