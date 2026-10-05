@@ -26,6 +26,10 @@ jobs:
       - run: npm ci
       - name: typecheck and build
         run: npm run build
+      # tsconfig.json excludes tests and eval/ from the build; this checks them
+      # too (vitest only strips types, so a broken fixture would never fail).
+      - name: typecheck tests and eval
+        run: npm run typecheck:all
       - name: test
         run: npm test
 

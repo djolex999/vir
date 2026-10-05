@@ -22,6 +22,20 @@ export interface SessionRow {
   attempts: number;
   skip_reason: string | null;
   entrypoint: string | null;
+  // Added by later migrations: absent on a pre-migration DB read without
+  // migrating (the read-only MCP path), so optional here.
+  archived?: number;
+  embedding?: string | null;
+  embedding_model?: string | null;
+  embedding_dim?: number | null;
+  pruned_at?: string | null;
+  prune_reason?: string | null;
+  rejected_at?: string | null;
+  audit_verdict?: string | null;
+  audit_reason?: string | null;
+  audit_merge_into?: string | null;
+  audit_content_hash?: string | null;
+  audited_at?: string | null;
 }
 
 // Why a session was skipped without ever reaching a paid call. Heuristic-

@@ -17,6 +17,8 @@ function row(overrides: Partial<SessionRow>): SessionRow {
     confidence: 0.8,
     started_at: null,
     attempts: 0,
+    skip_reason: null,
+    entrypoint: null,
     ...overrides,
   };
 }

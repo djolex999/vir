@@ -23,7 +23,7 @@ function plan(target: string): PlanItem {
     hasBlock: true,
     lastUpdated: null,
     newBlock: BLOCK,
-    diff: { added: 0, removed: 0 } as PlanItem["diff"],
+    diff: { added: [], removed: [], upgraded: [], unchanged: [] },
     scope: "global",
   };
 }

@@ -50,6 +50,11 @@ function makeCfg(vaultPath: string): Config {
     distillPdfs: true,
     filterToolCalls: "moderate",
     retrievalDiversity: 0.3,
+    projects: {},
+    notifications: false,
+    workflowTranscripts: "exclude",
+    agentTranscripts: "exclude",
+    logQueries: false,
     models: {
       classify: "claude-haiku-4-5-20251001",
       distill: "claude-sonnet-4-6",
@@ -73,6 +78,8 @@ function makeSession(sessionId: string): ParsedSession {
     rawSummary: "",
     transcriptText: "",
     branches: [],
+    isSidechain: false,
+    entrypoint: null,
   };
 }
 

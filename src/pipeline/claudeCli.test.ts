@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   ClaudeCliError,
   ClaudeCliLimitError,
+  type CallClaudeCliTestOpts,
   buildClaudeCliArgs,
   callClaudeCli,
   parseCliEnvelope,
@@ -121,7 +122,7 @@ function spawnRecorder(stdout: string, stderr = "", code = 0) {
     calls.push({ cmd, args, opts });
     return fakeChild(stdout, stderr, code);
   };
-  return { calls, impl };
+  return { calls, impl: impl as unknown as SpawnImpl };
 }
 
 const OK_ENVELOPE = JSON.stringify({
@@ -129,6 +130,9 @@ const OK_ENVELOPE = JSON.stringify({
   result: "distilled text",
   usage: { input_tokens: 1000, output_tokens: 200 },
 });
+
+// The fake child implements only what callClaudeCli touches.
+type SpawnImpl = NonNullable<CallClaudeCliTestOpts["spawnImpl"]>;
 
 beforeEach(() => resetRawEnvelopeLogGate());
 
@@ -204,7 +208,7 @@ describe("callClaudeCli", () => {
     await expect(
       callClaudeCli(
         { prompt: "p", model: "claude-sonnet-5" },
-        { spawnImpl: () => child, timeoutMs: 20 },
+        { spawnImpl: (() => child) as unknown as SpawnImpl, timeoutMs: 20 },
       ),
     ).rejects.toThrow(/timed out/i);
     expect(child.killed).toBe(true);
