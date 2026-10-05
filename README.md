@@ -22,7 +22,7 @@ developer-tools, mcp, local-first, cross-platform, llm-wiki
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/v/@djolex999/vir-cli?color=7c6af7&label=npm" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/dw/@djolex999/vir-cli?color=4fd1a0" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee" alt="license"></a>
-  <a href="#project-status"><img src="https://img.shields.io/badge/tests-612%20passing-22c55e" alt="tests"></a>
+  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1073%20passing-22c55e" alt="tests"></a>
   <a href="#project-status"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey" alt="platforms"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-c084fc" alt="mcp"></a>
   <a href="#"><img src="https://img.shields.io/badge/local--first-yes-f59e0b" alt="local-first"></a>
@@ -146,8 +146,8 @@ worse results, not better."_ Fair. Vir addresses it in layers:
 - **Lint and dedupe.** `vir lint` flags contradictions and stale notes;
   `vir dedupe` merges near-duplicate notes that have drifted apart.
 - **Active learning** via `vir review`. Walk through new distillations and
-  approve, edit, or reject each one. Verified notes rank first in retrieval
-  (in `vir query` and the MCP server). Rejected notes move to `.rejected/`,
+  approve, edit, or reject each one. Verified notes get a ranking boost in
+  retrieval (in `vir query` and the MCP server). Rejected notes move to `.rejected/`,
   recoverable, not deleted.
 - **MMR-diverse retrieval.** Queries return notes covering different aspects
   of the topic, not 5 similar duplicates.
@@ -408,8 +408,8 @@ Restart Claude Code. The vault is now queryable mid-session via six tools:
 `vir_query`, `vir_status`, `vir_recent_notes`, `vir_recent_articles`,
 `vir_project_summary`, `vir_compose`. `vir_query` takes a `type` filter
 (`session` | `article` | `topic` | `pdf` | `all`). Human-verified notes
-(approved via `vir review`) rank first; pass `verified_only: true` to see
-only those. The server never writes the vault. `vir_query` is the one tool
+(approved via `vir review`) get a +0.2 score boost; pass `verified_only: true`
+to see only those. The server never writes the vault. `vir_query` is the one tool
 that spends tokens: it synthesizes an answer with your provider, and
 `synthesize: false` returns just the matching notes.
 
@@ -524,8 +524,8 @@ improvements. Delete it any time; disable it with `"logQueries": false` in
 
 |                |                                           |
 | -------------- | ----------------------------------------- |
-| Version        | 0.22.0                                    |
-| Tests          | 887 passing                               |
+| Version        | 0.24.2                                    |
+| Tests          | 1073 passing                              |
 | Platforms      | macOS (launchd), Linux (systemd/cron)     |
 | Node           | 20+                                       |
 | First-run cost | $1 to $5 (Kie.ai optional, ~72% cheaper)  |
@@ -536,7 +536,7 @@ improvements. Delete it any time; disable it with `"logQueries": false` in
 Shipped:
 
 - [x] Linux support (systemd timer + cron fallback), experimental
-- [x] Active learning: `vir review`, verified notes ranked first in retrieval
+- [x] Active learning: `vir review`, verified notes boosted in retrieval
 - [x] Web article ingestion (Obsidian Web Clipper folder → same vault)
 - [x] PDF and paper ingestion
 - [x] Obsidian plugin: [vir-obsidian](https://github.com/djolex999/vir-obsidian), sidebar queries against the vault

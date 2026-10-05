@@ -1,7 +1,7 @@
 /**
  * Machine-readable output contract for programmatic consumers (the vir-obsidian
- * plugin). These two schemas are the entire surface between the CLI and the
- * plugin — keep them pure and stable. The CLI wiring in cli.ts / doctor.ts
+ * plugin): the query, doctor and review schemas plus the error payload are the
+ * entire surface between the CLI and the plugin — keep them pure and stable. The CLI wiring in cli.ts / doctor.ts
  * serializes the output of these builders; this module never touches stdout.
  */
 import { relative } from "node:path";

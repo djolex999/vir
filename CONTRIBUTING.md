@@ -13,15 +13,16 @@ npm test
 ```
 
 Built with TypeScript strict mode (`noImplicitAny`, `noUncheckedIndexedAccess`).
-Run `npm run build` (or `npm run typecheck`) before submitting — it must pass
-clean. Tests use Vitest; run `npm test` or `npm test -- --watch` for watch mode.
+Run `npm run build` and `npm run typecheck:all` before submitting — both must
+pass clean (`typecheck:all` also checks the tests and `eval/`, and CI runs it). Tests use Vitest; run `npm test` or `npm test -- --watch` for watch mode.
 
 ## Conventions
 
 See [CLAUDE.md](CLAUDE.md) for the architectural conventions this codebase
 follows — path expansion, per-session error isolation, provider routing,
-the sacred `VIR:START`/`VIR:END` markers, and the rule that all user-facing
-output goes through `src/ui/display.ts`.
+the sacred `VIR:START`/`VIR:END` markers, and the rule that new user-facing
+output goes through `src/ui/display.ts` (some older command code still calls
+`console.log` directly; don't add more).
 
 ## Regenerating the demo GIF
 
