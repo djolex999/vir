@@ -281,6 +281,7 @@ export async function composeFromSources(
     createdAt,
     updatedAt: now,
   });
+  writer.flushPendingEmbeddings();
 
   return {
     notePath,

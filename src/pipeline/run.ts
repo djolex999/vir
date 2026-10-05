@@ -1039,6 +1039,7 @@ export async function runPipeline(
         startedAt: parsed.startedAt,
         entrypoint: parsed.entrypoint,
       });
+      writer.flushPendingEmbeddings();
       if (interactive) {
         ui.categoryRow(note.classification.category, note.classification.topic);
       }
@@ -1255,7 +1256,12 @@ async function runEmbeddingSweep(
       }
       fileLog("no embedding provider — keyword search only");
     }
-    const sweep = await sweepEmbeddings(db, fileLog, provider);
+    const sweep = await sweepEmbeddings(
+      db,
+      fileLog,
+      provider,
+      writer.embeddingText,
+    );
     if (sweep.ran) {
       if (sweep.embedded > 0 || sweep.errors > 0) {
         fileLog(
@@ -1406,6 +1412,7 @@ async function runArticlePhase(
         confidence: distilled.classification.confidence,
         distilledAt: new Date().toISOString(),
       });
+      writer.flushPendingEmbeddings();
       if (interactive) {
         ui.categoryRow(distilled.classification.category, article.title);
       }
@@ -1516,6 +1523,7 @@ async function runPdfPhase(
         confidence: distilled.classification.confidence,
         distilledAt: new Date().toISOString(),
       });
+      writer.flushPendingEmbeddings();
       if (interactive) {
         ui.categoryRow(distilled.classification.category, parsed.title);
       }

@@ -42,6 +42,7 @@ import {
 import { kebab, makeSlug, sessionSuffix } from "./slug.js";
 
 import { REJECTED_DIR } from "./vaultDirs.js";
+import type { EmbeddingTextSource } from "./embeddingSweep.js";
 
 export { REJECTED_DIR };
 
@@ -222,14 +223,14 @@ export class VaultWriter {
     this.noteIndex?.set(sessionSuffix(session.sessionId), fullPath);
 
     if (vec && provider && this.db) {
-      try {
-        this.db.storeEmbedding(session.sessionId, vec, provider.provenance());
-        console.log(
-          chalk.dim(`  embedded ${note.classification.topic} (${vec.length}d)`),
-        );
-      } catch {
-        // never crash the writer on embedding failure
-      }
+      const db = this.db;
+      const provenance = provider.provenance();
+      this.storeOrDefer(() =>
+        db.storeEmbedding(session.sessionId, vec, provenance),
+      );
+      console.log(
+        chalk.dim(`  embedded ${note.classification.topic} (${vec.length}d)`),
+      );
     }
     // Rewrite mode re-renders existing notes from stored content; the index is
     // rebuilt wholesale via regenerateIndex() afterward and log.md is left
@@ -345,7 +346,11 @@ export class VaultWriter {
       if (!provider) return;
       const vec = await embedNoteWithProvider(provider, fileContent);
       if (!vec) return;
-      this.db.storeArticleEmbedding(article.filePath, vec, provider.provenance());
+      const db = this.db;
+      const provenance = provider.provenance();
+      this.storeOrDefer(() =>
+        db.storeArticleEmbedding(article.filePath, vec, provenance),
+      );
     } catch {
       // never crash the writer on embedding failure
     }
@@ -399,7 +404,11 @@ export class VaultWriter {
       if (!provider) return;
       const vec = await embedNoteWithProvider(provider, fileContent);
       if (!vec) return;
-      this.db.storePdfEmbedding(parsed.filePath, vec, provider.provenance());
+      const db = this.db;
+      const provenance = provider.provenance();
+      this.storeOrDefer(() =>
+        db.storePdfEmbedding(parsed.filePath, vec, provenance),
+      );
     } catch {
       // never crash the writer on embedding failure
     }
@@ -471,7 +480,9 @@ export class VaultWriter {
       if (!provider) return;
       const vec = await embedNoteWithProvider(provider, fileContent);
       if (!vec) return;
-      this.db.storeTopicEmbedding(id, vec, provider.provenance());
+      const db = this.db;
+      const provenance = provider.provenance();
+      this.storeOrDefer(() => db.storeTopicEmbedding(id, vec, provenance));
     } catch {
       // never crash the writer on embedding failure
     }
@@ -580,6 +591,52 @@ export class VaultWriter {
       return false;
     }
   }
+
+  // A new note's row is recorded by the caller AFTER the write returns, so a
+  // write-time store can match no row. Such a store is kept and replayed by
+  // flushPendingEmbeddings() once the caller has recorded the row; without it
+  // every new item was embedded again by the sweep, from different text.
+  private pendingEmbeddings: Array<() => boolean> = [];
+
+  private storeOrDefer(store: () => boolean): void {
+    try {
+      if (!store()) this.pendingEmbeddings.push(store);
+    } catch {
+      // never crash the writer on embedding failure
+    }
+  }
+
+  // Call after recording the row(s) for notes this writer just wrote. Stores
+  // that still match no row stay pending (best-effort, as before).
+  flushPendingEmbeddings(): void {
+    this.pendingEmbeddings = this.pendingEmbeddings.filter((store) => {
+      try {
+        return !store();
+      } catch {
+        return false;
+      }
+    });
+  }
+
+  // The text a note's vector is built from, read back from the note file, for
+  // the self-heal sweep and `vir embed`. Session notes embed frontmatter +
+  // header + body without the generated Related and Archived sections (see
+  // write()); articles, PDFs and topics embed the whole file.
+  readonly embeddingText: EmbeddingTextSource = {
+    session: (sessionId) => {
+      const path = this.locateBySession(sessionId);
+      if (path === null || dirname(path) === join(this.root, REJECTED_DIR)) {
+        return null;
+      }
+      const content = readIfExists(path);
+      return content === null
+        ? null
+        : stripRelatedSection(stripArchivedSection(content));
+    },
+    file: (notePath) => readIfExists(notePath),
+    topic: (id) =>
+      readIfExists(join(this.root, composeRelPath(id, this.topicsDir))),
+  };
 
   private locateBySession(sessionId: string): string | null {
     this.noteIndex ??= this.buildNoteIndex();
@@ -874,6 +931,31 @@ interface RelatedLink {
 // next heading or EOF). Session notes rebuild Related from embedding
 // neighbors; legacy stored content still carries the old section, so the
 // rewrite path must strip it too.
+function readIfExists(path: string): string | null {
+  try {
+    return existsSync(path) ? readFileSync(path, "utf8") : null;
+  } catch {
+    return null;
+  }
+}
+
+// Drops the `## Archived Duplicates` block that `vir dedupe` appends to the
+// file only; it is never part of a note's embedded text.
+export function stripArchivedSection(markdown: string): string {
+  const lines = markdown.split("\n");
+  const out: string[] = [];
+  let inArchived = false;
+  for (const line of lines) {
+    if (/^##\s+archived duplicates\b/i.test(line)) {
+      inArchived = true;
+      continue;
+    }
+    if (inArchived && /^#{1,6}\s+/.test(line)) inArchived = false;
+    if (!inArchived) out.push(line);
+  }
+  return out.join("\n");
+}
+
 export function stripRelatedSection(markdown: string): string {
   const lines = markdown.split("\n");
   const out: string[] = [];

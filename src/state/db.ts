@@ -1145,17 +1145,19 @@ export class StateDb {
     sessionId: string,
     embedding: number[],
     provenance: EmbeddingProvenance,
-  ): void {
-    this.db
-      .prepare(
-        "UPDATE sessions SET embedding = ?, embedding_model = ?, embedding_dim = ? WHERE path LIKE ?",
-      )
-      .run(
-        JSON.stringify(embedding),
-        provenance.model,
-        provenance.dim,
-        `%/${sessionId}.jsonl`,
-      );
+  ): boolean {
+    return (
+      this.db
+        .prepare(
+          "UPDATE sessions SET embedding = ?, embedding_model = ?, embedding_dim = ? WHERE path LIKE ?",
+        )
+        .run(
+          JSON.stringify(embedding),
+          provenance.model,
+          provenance.dim,
+          `%/${sessionId}.jsonl`,
+        ).changes > 0
+    );
   }
 
   getEmbeddings(vaultRoot: string): EmbeddingRow[] {
@@ -1393,12 +1395,14 @@ export class StateDb {
     path: string,
     embedding: number[],
     provenance: EmbeddingProvenance,
-  ): void {
-    this.db
-      .prepare(
-        "UPDATE articles SET embedding = ?, embedding_model = ?, embedding_dim = ? WHERE path = ?",
-      )
-      .run(JSON.stringify(embedding), provenance.model, provenance.dim, path);
+  ): boolean {
+    return (
+      this.db
+        .prepare(
+          "UPDATE articles SET embedding = ?, embedding_model = ?, embedding_dim = ? WHERE path = ?",
+        )
+        .run(JSON.stringify(embedding), provenance.model, provenance.dim, path).changes > 0
+    );
   }
 
   // Article embeddings, shaped like session EmbeddingRow so the retriever can
@@ -1596,12 +1600,14 @@ export class StateDb {
     path: string,
     embedding: number[],
     provenance: EmbeddingProvenance,
-  ): void {
-    this.db
-      .prepare(
-        "UPDATE pdfs SET embedding = ?, embedding_model = ?, embedding_dim = ? WHERE path = ?",
-      )
-      .run(JSON.stringify(embedding), provenance.model, provenance.dim, path);
+  ): boolean {
+    return (
+      this.db
+        .prepare(
+          "UPDATE pdfs SET embedding = ?, embedding_model = ?, embedding_dim = ? WHERE path = ?",
+        )
+        .run(JSON.stringify(embedding), provenance.model, provenance.dim, path).changes > 0
+    );
   }
 
   // PDF embeddings, shaped like session/article EmbeddingRow so the retriever can
@@ -1812,12 +1818,14 @@ export class StateDb {
     id: string,
     embedding: number[],
     provenance: EmbeddingProvenance,
-  ): void {
-    this.db
-      .prepare(
-        "UPDATE topics SET embedding = ?, embedding_model = ?, embedding_dim = ? WHERE id = ?",
-      )
-      .run(JSON.stringify(embedding), provenance.model, provenance.dim, id);
+  ): boolean {
+    return (
+      this.db
+        .prepare(
+          "UPDATE topics SET embedding = ?, embedding_model = ?, embedding_dim = ? WHERE id = ?",
+        )
+        .run(JSON.stringify(embedding), provenance.model, provenance.dim, id).changes > 0
+    );
   }
 
   close(): void {

@@ -62,6 +62,8 @@ vi.mock("./writer.js", () => ({
     write = vi.fn(async (): Promise<string[]> => []);
     writeArticle = vi.fn(async () => "/vault/vir/articles/a.md");
     writePdf = vi.fn(async () => "/vault/vir/pdfs/p.md");
+    flushPendingEmbeddings = vi.fn();
+    embeddingText = undefined;
     regenerateIndex = vi.fn();
   },
 }));

@@ -1161,6 +1161,9 @@ program
     const provenance = provider.provenance();
     const db = new StateDb();
     try {
+      // Same text the writer embeds (note file minus generated sections),
+      // falling back to stored content when a file is gone.
+      const text = new VaultWriter(cfg, db).embeddingText;
       const rows = db.listDistilled();
       const root = join(cfg.vaultPath, cfg.outputDir);
       const embeddedRows = [
@@ -1226,15 +1229,31 @@ program
       // distilled while Ollama was down heals on a manual `vir embed`, not only
       // the next `vir run` sweep. --force re-embeds all embeddable articles
       // (keyed by source path); otherwise just the NULL-embedding ones.
-      const articleTargets: Array<{ path: string; content: string | null }> =
+      const articleTargets: Array<{
+        path: string;
+        notePath: string | null;
+        content: string | null;
+      }> =
         opts.force
-          ? db.listArticles().map((a) => ({ path: a.path, content: a.content }))
+          ? db.listArticles().map((a) => ({
+              path: a.path,
+              notePath: a.notePath,
+              content: a.content,
+            }))
           : db.listArticleEmbeddingTargets();
 
       // PDFs live in their own table too — same back-fill rationale as articles.
-      const pdfTargets: Array<{ path: string; content: string | null }> =
+      const pdfTargets: Array<{
+        path: string;
+        notePath: string | null;
+        content: string | null;
+      }> =
         opts.force
-          ? db.listPdfs().map((p) => ({ path: p.path, content: p.content }))
+          ? db.listPdfs().map((p) => ({
+              path: p.path,
+              notePath: p.notePath,
+              content: p.content,
+            }))
           : db.listPdfEmbeddingTargets();
 
       const total =
@@ -1258,7 +1277,10 @@ program
           skipped += 1;
           continue;
         }
-        const vec = await embedNoteWithProvider(provider, r.content);
+        const vec = await embedNoteWithProvider(
+          provider,
+          text.session(r.sessionId) ?? r.content,
+        );
         if (!vec) {
           errors += 1;
           continue;
@@ -1272,7 +1294,10 @@ program
           skipped += 1;
           continue;
         }
-        const vec = await embedNoteWithProvider(provider, t.content);
+        const vec = await embedNoteWithProvider(
+          provider,
+          text.topic(t.id) ?? t.content,
+        );
         if (!vec) {
           errors += 1;
           continue;
@@ -1286,7 +1311,10 @@ program
           skipped += 1;
           continue;
         }
-        const vec = await embedNoteWithProvider(provider, a.content);
+        const vec = await embedNoteWithProvider(
+          provider,
+          (a.notePath ? text.file(a.notePath) : null) ?? a.content,
+        );
         if (!vec) {
           errors += 1;
           continue;
@@ -1300,7 +1328,10 @@ program
           skipped += 1;
           continue;
         }
-        const vec = await embedNoteWithProvider(provider, p.content);
+        const vec = await embedNoteWithProvider(
+          provider,
+          (p.notePath ? text.file(p.notePath) : null) ?? p.content,
+        );
         if (!vec) {
           errors += 1;
           continue;

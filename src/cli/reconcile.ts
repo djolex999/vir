@@ -350,6 +350,7 @@ export async function runReconcile(
           confidence: note.classification.confidence,
           startedAt: parsed.startedAt,
         });
+        writer.flushPendingEmbeddings();
         recovered += 1;
         ui.categoryRow(
           note.classification.category,
