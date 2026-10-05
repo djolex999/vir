@@ -213,7 +213,8 @@ program
               : undefined,
             onConfirm: skipPrompt
               ? undefined
-              : async (newCount) => confirmCostIfNeeded(cfg, newCount),
+              : async (newCount, estimatedUsd) =>
+                  confirmCostIfNeeded(cfg, newCount, estimatedUsd),
           });
         } finally {
           if (needsLock) releaseLock();
@@ -238,13 +239,20 @@ program
 async function confirmCostIfNeeded(
   cfg: Config,
   newCount: number,
+  estimatedUsd: number | null,
 ): Promise<boolean> {
   if (newCount <= 20) return true;
+  // Upper bound from transcript sizes; sessions the filter drops cost nothing.
+  const estimate =
+    cfg.provider === "claude-cli"
+      ? "subscription quota (no $)"
+      : estimatedUsd === null
+        ? "unknown (no price for the configured models)"
+        : `up to ${ui.formatUsd(estimatedUsd)}`;
   ui.box(
     [
       `${ui.text(String(newCount))} ${ui.dim("new sessions to process")}`,
-      `${ui.dim("estimated:")} ${ui.warn("$1–5")} ${ui.dim("depending on session")}`,
-      `${ui.dim("depth (deep code reviews cost more)")}`,
+      `${ui.dim("estimated:")} ${ui.warn(estimate)} ${ui.dim("(filtered sessions cost nothing)")}`,
       `${ui.dim("provider:")} ${ui.accent(cfg.provider)}`,
     ],
     { title: "cost estimate" },

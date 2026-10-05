@@ -182,3 +182,26 @@ describe("runPipeline — a skip never hides an existing note", () => {
     expect(served()).toBe(false);
   });
 });
+
+describe("runPipeline — the cost prompt gets a real estimate", () => {
+  it("passes the new-session count and a dollar estimate from transcript sizes", async () => {
+    spies.scan.mockReturnValue([{ path: PATH, hash: "h-new", size: 1_300_000 } as never]);
+    const onConfirm = vi.fn(async () => false);
+
+    await runPipeline(cfg, { quiet: true, onConfirm });
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    const [count, usd] = onConfirm.mock.calls[0] as unknown as [number, number | null];
+    expect(count).toBe(1);
+    expect(usd).toBeGreaterThan(0);
+  });
+
+  it("passes null on the subscription path (quota, not dollars)", async () => {
+    spies.scan.mockReturnValue([{ path: PATH, hash: "h-new", size: 1_300_000 } as never]);
+    const onConfirm = vi.fn(async () => false);
+
+    await runPipeline({ ...cfg, provider: "claude-cli" } as Config, { quiet: true, onConfirm });
+
+    expect((onConfirm.mock.calls[0] as unknown as [number, number | null])[1]).toBeNull();
+  });
+});
