@@ -1,5 +1,5 @@
 # vir — Architecture
-*Generated: 2026-10-05 · revision `06c6606` · v0.23.0 · §6, §7 and §12 updated for 0.23.3*
+*Generated: 2026-10-05 at revision `06c6606` (v0.23.0) · updated for 0.24.0. `file:line` references and the diagrams are pinned to `06c6606`.*
 
 Supersedes the 2026-06-12 architecture doc and map (v0.8.3; removed, see git history). Changes since that version are listed at the end of this document.
 
@@ -11,7 +11,7 @@ vir is a local-first Node CLI and daemon. It distills Claude Code session transc
 
 | Layer | Technology | Version | Notes |
 |---|---|---|---|
-| Language | TypeScript, NodeNext, `strict` + `noUncheckedIndexedAccess` | 5.6 / Node ≥20 | Test files are excluded from every `tsc` run, so tests are never type-checked |
+| Language | TypeScript, NodeNext, `strict` + `noUncheckedIndexedAccess` | 5.6 / Node ≥20 | The build excludes tests and `eval/`; `npm run typecheck:all` (`tsconfig.check.json`) checks them |
 | CLI | commander, @inquirer/*, chalk, ora | 12.x | 29 actions, all wrapped in `runAction` |
 | State | better-sqlite3, WAL mode | 11.x | Additive `ALTER TABLE` migrations; no `user_version` |
 | Validation | zod | 3.x | Config schema plus MCP tool inputs |
@@ -22,17 +22,18 @@ vir is a local-first Node CLI and daemon. It distills Claude Code session transc
 | Scheduling | launchd (macOS), systemd user timer, falling back to cron (Linux) | — | Windows is unsupported |
 | Notifications | Swift `Vir.app` helper (committed, ad-hoc signed), osascript, notify-send | — | |
 | Testing | vitest, colocated `*.test.ts`, `HOME` sandboxed in `vitest.setup.ts` | 4.x | 72 test files in src, 39 in eval |
-| CI | GitHub Actions: `cli` (Node 20 build + test) and `site` (Node 22 check/test/build/links) | — | Linux only; no lint, no `eval:build`, no release workflow |
+| CI | GitHub Actions: `cli` (Node 20 build, `typecheck:all`, test) and `site` (Node 22 check/test/build/links) | — | Linux only; no linter, no release workflow |
 | Docs site | Astro 7 + Starlight, Preact islands, Tailwind 4 | — | Static output, deployed on Vercel at virwiki.dev |
 
 ## 3. Directory Structure
 
 ```
 src/
-  cli.ts              # commander entry, 2,642 lines: 29 actions plus a lot of inline command logic
+  cli.ts              # commander wiring for 29 actions (1,269 lines); big command bodies live in cli/
   config.ts           # ~/.vir/config.json (zod, dir 0700 / file 0600)
-  cli/                # runAction chokepoint, review (+ --json), reconcile, projects, prune, embed setup
-  pipeline/           # run.ts orchestrator, scanner, parser, filter, toolCallFilter, scrubber,
+  cli/                # runAction chokepoint, guards (lock + paid-step confirm), one module per large
+                      #   command (init, lint, embed, summarize, audit, compose, dedupe), review, reconcile
+  pipeline/           # run.ts orchestrator, distillSession (core shared with reconcile), scanner, parser, filter, toolCallFilter, scrubber,
                       #   distiller (callLLM), claudeCli, writer, lock, articles/PDFs, composer, summaries
   search/             # retriever (vectors → TF-IDF, MMR), embedding providers, synthesizer, query log
   state/              # db.ts (sessions/articles/topics/pdfs), rejections sync
@@ -66,21 +67,21 @@ vir has no HTTP routes. Its surfaces are CLI commands, MCP tools and the `--json
 
 | Tool | Reads | Side effects |
 |---|---|---|
-| `vir_query` | retriever over SQLite vectors plus vault files | **Paid LLM synthesis on every query with hits**; appends to `queries.jsonl` and `cost.log` |
+| `vir_query` | retriever over SQLite vectors plus vault files | Paid LLM synthesis on queries with hits, skipped with `synthesize: false`; appends to `queries.jsonl` and `cost.log` |
 | `vir_status`, `vir_recent_notes`, `vir_recent_articles` | read-only DB | none |
 | `vir_project_summary`, `vir_compose` | cached `projects/` and `topics/` pages | none; they point at the CLI when a page is missing |
 
-**Flag:** the server header says it "must never mutate state" (`src/mcp/server.ts:20-23`). That holds for the DB, but `vir_query` spends tokens and writes logs. Agents call this tool freely, so spend from this path is invisible unless someone reads `vir cost`.
+The server never writes the vault or the DB. `vir_query` is its one paid call; since 0.24.0 its tool description says synthesis is billed, so an agent can pass `synthesize: false` to get the notes alone.
 
 ## 5. Module Architecture
 
 System map: [architecture-system-map.html](./architecture-system-map.html)
 
-Business logic lives in `src/pipeline/`, with `run.ts` as the orchestrator. Commands are meant to be thin wrappers that load config and the DB and call into modules. Many still aren't: `lint`, `summarize`, `embed`, `compose`, `audit`, `dedupe` and `init` carry 150–400 lines each inline in `cli.ts`.
+Business logic lives in `src/pipeline/`, with `run.ts` as the orchestrator. `cli.ts` only wires commander to command functions; the large ones live in `src/cli/<command>.ts`. `vir run` and `vir reconcile` share one session core, `distillOneSession`, and keep only their own gates, counters and error policy.
 
 ```
 cli.ts action → runAction → pipeline/run.ts
-  scan → gates → parse → filter → toolCallFilter → scrub → Distiller(callLLM) → VaultWriter → StateDb
+  scan → gates → parse → distillOneSession: filter → toolCallFilter → scrub → Distiller(callLLM) → VaultWriter → StateDb
 query / MCP → retriever (provider → vectors | TF-IDF) → synthesizer(callLLM)
 sync-claude → StateDb.listDistilled → updater.planUpdates → applyPlan → CLAUDE.md
 ```
@@ -91,7 +92,7 @@ The design relies on a few single chokepoints:
 - **`toolCallFilter.ts`** is the only owner of the transcript tool-block grammar.
 - **`runAction`** is the only error-to-exit-code mapper.
 - **`recordQueryEvent`** is the only writer of the query log.
-- **`ui/display.ts`** is meant to be the only console owner. In practice it isn't: `cli.ts` has 37 `console.log` and 19 `console.error` calls, and there is one `console.log` inside library code at `writer.ts:227`.
+- **`ui/display.ts`** is meant to be the only console owner. In practice it isn't: the CLI command modules still make 59 raw `console.*` calls, and library code makes 3 (`writer.ts`, `distiller.ts`).
 
 Where tests matter, pure builders are kept separate from side-effectful orchestrators (`buildPrunePlan`/`applyPrunePlan`, `buildReviewQueue`, `selectEmbeddingTargets`, `planUpdates`/`applyPlan`).
 
@@ -138,10 +139,10 @@ Error handling is per session. A generic error calls `recordError` and increment
 Claude Code → vir_query (stdio)
   → searchWithOutcome: embed query → same-model vectors from all 4 tables → cosine floor
     → read files, +0.2 for verified → MMR top-k   (TF-IDF over vault files on 0 hits)
-  → recordQueryEvent → synthesize via callLLM (paid) → answer + sources
+  → recordQueryEvent → synthesize via callLLM (paid; skipped with synthesize: false) → answer + sources
 ```
 
-**Flow: knowledge return.** `vir sync-claude` reads `listDistilled` and rewrites the bytes between `VIR:START` and `VIR:END` in the global and per-project `CLAUDE.md` files. It refuses to touch a file with unbalanced markers. Writes are plain `writeFileSync` (not atomic), and a failed `applyPlan` still exits 0 (`cli.ts:636-645`).
+**Flow: knowledge return.** `vir sync-claude` reads `listDistilled` and rewrites the bytes between `VIR:START` and `VIR:END` in the global and per-project `CLAUDE.md` files. It refuses to touch a file with unbalanced markers. Since 0.24.0 writes are atomic (temp file + rename onto the resolved path, so a dotfiles symlink survives). A failed `applyPlan` still exits 0.
 
 ## 8. External Services
 
@@ -149,7 +150,7 @@ Claude Code → vir_query (stdio)
 |---|---|---|---|---|
 | Anthropic API | classify, distill, synthesis, compose, audit | `@anthropic-ai/sdk` | `~/.vir/config.json` (0600, plaintext) | Critical when selected |
 | Kie.ai | cheaper Anthropic proxy | fetch with Bearer token, 120s abort | same | High: errors arrive inside HTTP-200 bodies (handled by `kieResponseError`), and `claude-sonnet-5` has no Kie pricing row, so its spend logs as $0 |
-| `claude` CLI | subscription-quota provider | `spawn("claude")` with argv array, 600s timeout | Claude Code's own auth | High: quota walls, plus a daemon PATH that may not resolve `claude` |
+| `claude` CLI | subscription-quota provider | `spawn` of the binary found by `resolveClaudeBin` (PATH, then common install dirs), argv array, 600s timeout | Claude Code's own auth | High: quota walls |
 | Ollama | 768d embeddings at localhost:11434 | fetch | none | Low; best-effort |
 | fastembed (local) | 384d embeddings, installed into `~/.vir/embedder` | dynamic import | none | Low |
 | SQLite | state and idempotency | better-sqlite3 | local file | High: source of truth |
@@ -191,49 +192,36 @@ These conventions are specific and mostly well held:
 **Inconsistencies:**
 
 - **The display monopoly is eroding.** There are 56 raw console calls in `cli.ts`, plus `writer.ts:227` and `distiller.ts:621,710`. The MCP server imports `writer.ts`, so any future stdout write on that path corrupts JSON-RPC.
-- **Several mutating or paid commands take no lock:** terminal `review`, `dedupe`, `audit`, `summarize`, `compose`.
-- **Paid commands with no cost confirmation:** `dedupe` (up to 30 detect calls) and bare `lint` (up to 20 contradiction calls).
 - **Duplicated code:**
   - `kebab` is copied in three files, even though `slug.ts` claims to be the single definition.
   - `parseFrontmatter` appears in three places.
   - The `runArticlePhase` and `runPdfPhase` functions are near-clones.
-  - `reconcile.ts:289-340` re-implements the session chain without the project, agent, pruned and probe gates.
-- **`runPipeline` is about 1,000 lines in one function** (`run.ts:194-1198`).
+- **`runPipeline` is still about 1,000 lines in one function.** The shared session core moved out; the gates, dry-run estimator and phases did not.
 
 ## 12. Risks & Recommendations
 
-### [DO LATER] Write-time embeddings no-op for every new item
-**Observation**: `VaultWriter.write` calls `storeEmbedding` (`writer.ts:224-226`), which is an `UPDATE … WHERE path LIKE` (`db.ts:1104-1119`). That runs before `db.record` inserts the row (`run.ts:1007`), so it matches nothing for a new session. The same ordering affects articles, PDFs and topics. The end-of-run sweep re-embeds raw `content` (`embeddingSweep.ts:140`), not the frontmatter + header + body text that was used at write time.
-**Risk**: every new note is embedded twice, and stored vectors are built from different text than Related-link computation used. That skews retrieval and the eval baselines.
-**Action**: record the row before storing the embedding (or return the vector from `write` and persist it in `record`), and embed the same text in both paths. (M)
+The original `[DO NOW]` and `[DO LATER]` items are all fixed (see the end of this document). What remains is small:
 
-### [DO LATER] Make the `vir_query` spend visible and bounded
-**Observation**: the MCP server is documented as read-only, but `vir_query` makes a paid synthesis call on every query with hits (`server.ts:312`).
-**Risk**: an agent looping on `vir_query` can rack up spend outside any run, with no confirmation and no cap.
-**Action**: add a `synthesize: false` option, or a per-session call budget, and say in the tool description that it bills. (S)
+### [DO LATER] Kie spend on `claude-sonnet-5` logs as $0
+**Observation**: the default distill model has no Kie pricing row, and `normalizeModelName` passes it through unchanged on the Kie path, so `computeCost` returns 0 instead of null.
+**Risk**: `vir cost` under-reports real Kie spend, the failure `cost/log.ts` warns about.
+**Action**: add the Kie row, or return null for an unpriced model so the report says "unknown". (S)
 
-### [DO LATER] Close the daemon-environment gaps for `provider: claude-cli`
-**Observation**: launchd hardcodes PATH to `/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin` (`launchd.ts:104-105`), and systemd and cron set no PATH. `claudeCli.ts` spawns `claude` by bare name.
-**Risk**: a `claude` installed under `~/.local/bin` or nvm works interactively but fails every scheduled run. The preflight marker catches this, but only after the fact.
-**Action**: resolve `claude` to an absolute path at `schedule install` time and bake it into the job, or record it in config. Have `vir doctor` check it from the daemon's PATH. (S)
+### [DO LATER] `saveConfig` writes API keys with the default umask
+**Observation**: `config.json` is written and then chmodded to 0600, leaving a short window where it is readable by others.
+**Action**: pass `{ mode: 0o600 }` to the write. (S)
 
-### [DO LATER] Lock the remaining mutating commands and confirm paid ones
-**Observation**: terminal `review`, `dedupe`, `audit`, `compose` and `summarize` take no lock. `dedupe` and bare `lint` make up to 30 and 20 paid calls respectively with no prompt.
-**Risk**: races with the daemon writing the same notes, and surprise spend.
-**Action**: wrap these commands in `withLock`, and reuse the `audit` cost-confirm pattern (`cli.ts:1908`). (S–M)
+### [DO LATER] `sync-claude` exits 0 when a file failed
+**Observation**: a failed `applyPlan` is printed with ✗ but sets no exit code.
+**Action**: set `process.exitCode = 1` on any failed plan. (S)
 
-### [DO LATER] Break up `cli.ts` and `runPipeline`
-**Observation**: `cli.ts` is 2,642 lines with large inline command bodies. `runPipeline` is about 1,000 lines, and `reconcile.ts` duplicates its session chain without the gates.
-**Risk**: fixes like the guard above have to be made twice and get missed. Reconcile already diverges on the project, agent and probe gates and on `recordError`.
-**Action**: extract `distillOneSession(found, ctx)` from `run.ts` and have reconcile call it. Move inline command bodies into `src/cli/<command>.ts`, routing their output through `ui/display.ts` along the way. (M–L)
+### [DO IF IT BREAKS] Finish the display monopoly and the remaining duplication
+**Observation**: 59 raw console calls in the CLI modules and 3 in library code; `kebab` and `parseFrontmatter` copied three times; `runArticlePhase`/`runPdfPhase` near-clones; `runPipeline` still ~1,000 lines.
+**Action**: route command output through `ui/display.ts` module by module; merge the doc phases when either changes next. (M)
 
-### [DO IF IT BREAKS] Type-check tests and eval in CI
-**Observation**: tests are excluded from `tsc`, `eval:build` is not in CI, CI is Linux-only, and there is no linter.
-**Action**: add `tsc -p eval/tsconfig.json` and a tests-included `tsc --noEmit` to the `cli` job. Add a macOS runner only if the launchd or notifier paths regress. (S)
-
-### [DO IF IT BREAKS] Non-atomic writes to user-owned files
-**Observation**: `CLAUDE.md` (`updater.ts:326`), vault notes and `.rejected/` moves all use plain write-then-rm, and `rejectNote` doesn't check for name collisions.
-**Action**: write to a temp file and rename into place for `CLAUDE.md` first, since it is the one file vir does not own. (S)
+### [DO IF IT BREAKS] Read-only paths on a pre-migration DB
+**Observation**: the MCP server and doctor skip migrations; `listDistilled`, `getEmbeddings` and `listDistillFailures` name later-migrated columns without a guard.
+**Action**: guard them like `getStats` if an old DB is ever served read-only before a write. (S)
 
 ---
 
@@ -244,7 +232,8 @@ These conventions are specific and mostly well held:
   - `applyPlan` is now tested (`updater.test.ts`);
   - 0.23.1: a claude-cli quota halt no longer loses articles and PDFs, and errored ones retry up to 3 times;
   - 0.23.2: the pidfile lock is atomic, including stale-lock reclaim (guarded by `vir.lock.reclaim`).
-  - 0.23.3: a filter or low-confidence skip of a re-processed session keeps its note (plus a one-time repair of notes it had hidden).
+  - 0.23.3: a filter or low-confidence skip of a re-processed session keeps its note (plus a one-time repair of notes it had hidden);
+  - 0.24.0: write-time embeddings reach new rows and the sweep embeds the same text; `vir_query` `synthesize: false`; `claude` found under the daemon's PATH; locks on review/dedupe/audit/compose/summarize and cost prompts for dedupe/lint; atomic `CLAUDE.md` writes; tests and `eval/` type-checked in CI; `distillOneSession` shared by run and reconcile; large commands moved out of `cli.ts`.
 - **New since then:**
   - the `claude-cli` provider;
   - PDFs;
@@ -253,4 +242,4 @@ These conventions are specific and mostly well held:
   - project triage;
   - the eval harness;
   - CI.
-- **Still open:** the console-monopoly erosion.
+- **Still open:** see §12.
