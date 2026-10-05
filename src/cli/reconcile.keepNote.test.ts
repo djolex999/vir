@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Config } from "../config.js";
 import { StateDb } from "../state/db.js";
+import { projectNameFor } from "../pipeline/projects.js";
 import { runReconcile } from "./reconcile.js";
 
 // Reconcile retries a note whose re-distill failed (error set, last good
@@ -83,6 +84,10 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "vir-reconcile-"));
   path = join(dir, "sess-rec.jsonl");
   writeFileSync(path, "{}\n");
+  // Reconcile applies vir run's filters: transcripts live under the projects
+  // dir, and this test's project is included.
+  cfg.claudeProjectsDir = dir;
+  cfg.projects = { [projectNameFor(path, cfg.claudeProjectsDir)]: "include" };
   withDb((db) => db.reset());
   spies.passes.value = true;
   spies.distill.mockReset();
@@ -144,5 +149,22 @@ describe("runReconcile — a skipped retry restores the last good note", () => {
 
     expect(withDb((db) => db.getByPath(path))).toMatchObject({ skipped: 1 });
     expect(served()).toBe(false);
+  });
+});
+
+describe("runReconcile — applies vir run's filters", () => {
+  it("records a subagent transcript as gated and never distills it", async () => {
+    const side = join(dir, "s1", "subagents", "agent-a1.jsonl");
+    mkdirSync(join(dir, "s1", "subagents"), { recursive: true });
+    writeFileSync(side, "{}\n");
+    withDb((db) => db.recordError(side, "h1", "fetch failed"));
+
+    await runReconcile(cfg, { yes: true });
+
+    expect(spies.distill).not.toHaveBeenCalled();
+    expect(withDb((db) => db.getByPath(side))).toMatchObject({
+      skipped: 1,
+      skip_reason: "sidechain-transcript",
+    });
   });
 });
