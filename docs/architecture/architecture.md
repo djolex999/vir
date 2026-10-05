@@ -1,5 +1,5 @@
 # vir — Architecture
-*Generated: 2026-10-05 at revision `06c6606` (v0.23.0) · updated for 0.24.0. `file:line` references and the diagrams are pinned to `06c6606`.*
+*Generated: 2026-10-05 at revision `06c6606` (v0.23.0) · updated for 0.24.1. `file:line` references and the diagrams are pinned to `06c6606`.*
 
 Supersedes the 2026-06-12 architecture doc and map (v0.8.3; removed, see git history). Changes since that version are listed at the end of this document.
 
@@ -142,14 +142,14 @@ Claude Code → vir_query (stdio)
   → recordQueryEvent → synthesize via callLLM (paid; skipped with synthesize: false) → answer + sources
 ```
 
-**Flow: knowledge return.** `vir sync-claude` reads `listDistilled` and rewrites the bytes between `VIR:START` and `VIR:END` in the global and per-project `CLAUDE.md` files. It refuses to touch a file with unbalanced markers. Since 0.24.0 writes are atomic (temp file + rename onto the resolved path, so a dotfiles symlink survives). A failed `applyPlan` still exits 0.
+**Flow: knowledge return.** `vir sync-claude` reads `listDistilled` and rewrites the bytes between `VIR:START` and `VIR:END` in the global and per-project `CLAUDE.md` files. It refuses to touch a file with unbalanced markers. Since 0.24.0 writes are atomic (temp file + rename onto the resolved path, so a dotfiles symlink survives). A failed `applyPlan` exits 1.
 
 ## 8. External Services
 
 | Service | Purpose | SDK | Credentials | Risk |
 |---|---|---|---|---|
 | Anthropic API | classify, distill, synthesis, compose, audit | `@anthropic-ai/sdk` | `~/.vir/config.json` (0600, plaintext) | Critical when selected |
-| Kie.ai | cheaper Anthropic proxy | fetch with Bearer token, 120s abort | same | High: errors arrive inside HTTP-200 bodies (handled by `kieResponseError`), and `claude-sonnet-5` has no Kie pricing row, so its spend logs as $0 |
+| Kie.ai | cheaper Anthropic proxy | fetch with Bearer token, 120s abort | same | High: errors arrive inside HTTP-200 bodies (handled by `kieResponseError`); a model with no Kie price is logged as unpriced, never $0 |
 | `claude` CLI | subscription-quota provider | `spawn` of the binary found by `resolveClaudeBin` (PATH, then common install dirs), argv array, 600s timeout | Claude Code's own auth | High: quota walls |
 | Ollama | 768d embeddings at localhost:11434 | fetch | none | Low; best-effort |
 | fastembed (local) | 384d embeddings, installed into `~/.vir/embedder` | dynamic import | none | Low |
@@ -162,7 +162,7 @@ Claude Code → vir_query (stdio)
 
 This is a local single-user tool: no accounts, no sessions, no network listener (MCP runs over stdio). The security model has three parts:
 
-- **Secrets at rest.** The `~/.vir` directory is 0700 and the config file is 0600, and permissions are healed silently on load. One gap: `saveConfig` writes with the default umask and chmods afterwards (`config.ts:254-257`), which leaves a short window where the keys are readable.
+- **Secrets at rest.** The `~/.vir` directory is 0700 and the config file is 0600, and permissions are healed silently on load. `saveConfig` writes a 0600 temp file and renames it into place, so the keys are never readable by others.
 - **Scrub before persist.** Anthropic, OpenAI, GitHub and AWS keys, Bearer tokens, emails and home paths are masked before anything is written to the vault, the DB or the logs. Only `/Users/` paths outside `$HOME` are collapsed; Linux equivalents are not.
 - **Path-guarded `--json` review actions.** Targets must resolve to `<category>/<name>.md` under the vault root, and the action takes the pidfile lock.
 
@@ -200,20 +200,7 @@ These conventions are specific and mostly well held:
 
 ## 12. Risks & Recommendations
 
-The original `[DO NOW]` and `[DO LATER]` items are all fixed (see the end of this document). What remains is small:
-
-### [DO LATER] Kie spend on `claude-sonnet-5` logs as $0
-**Observation**: the default distill model has no Kie pricing row, and `normalizeModelName` passes it through unchanged on the Kie path, so `computeCost` returns 0 instead of null.
-**Risk**: `vir cost` under-reports real Kie spend, the failure `cost/log.ts` warns about.
-**Action**: add the Kie row, or return null for an unpriced model so the report says "unknown". (S)
-
-### [DO LATER] `saveConfig` writes API keys with the default umask
-**Observation**: `config.json` is written and then chmodded to 0600, leaving a short window where it is readable by others.
-**Action**: pass `{ mode: 0o600 }` to the write. (S)
-
-### [DO LATER] `sync-claude` exits 0 when a file failed
-**Observation**: a failed `applyPlan` is printed with ✗ but sets no exit code.
-**Action**: set `process.exitCode = 1` on any failed plan. (S)
+The original `[DO NOW]` and `[DO LATER]` items are all fixed (see the end of this document). What remains is maintenance:
 
 ### [DO IF IT BREAKS] Finish the display monopoly and the remaining duplication
 **Observation**: 59 raw console calls in the CLI modules and 3 in library code; `kebab` and `parseFrontmatter` copied three times; `runArticlePhase`/`runPdfPhase` near-clones; `runPipeline` still ~1,000 lines.
@@ -233,7 +220,8 @@ The original `[DO NOW]` and `[DO LATER]` items are all fixed (see the end of thi
   - 0.23.1: a claude-cli quota halt no longer loses articles and PDFs, and errored ones retry up to 3 times;
   - 0.23.2: the pidfile lock is atomic, including stale-lock reclaim (guarded by `vir.lock.reclaim`).
   - 0.23.3: a filter or low-confidence skip of a re-processed session keeps its note (plus a one-time repair of notes it had hidden);
-  - 0.24.0: write-time embeddings reach new rows and the sweep embeds the same text; `vir_query` `synthesize: false`; `claude` found under the daemon's PATH; locks on review/dedupe/audit/compose/summarize and cost prompts for dedupe/lint; atomic `CLAUDE.md` writes; tests and `eval/` type-checked in CI; `distillOneSession` shared by run and reconcile; large commands moved out of `cli.ts`.
+  - 0.24.0: write-time embeddings reach new rows and the sweep embeds the same text; `vir_query` `synthesize: false`; `claude` found under the daemon's PATH; locks on review/dedupe/audit/compose/summarize and cost prompts for dedupe/lint; atomic `CLAUDE.md` writes; tests and `eval/` type-checked in CI; `distillOneSession` shared by run and reconcile; large commands moved out of `cli.ts`;
+  - 0.24.1: no crash when the preflight probe fails; `sync-claude` exits 1 on a failed write; `config.json` written owner-only from the first byte; unpriced models logged as unknown, not $0.
 - **New since then:**
   - the `claude-cli` provider;
   - PDFs;
