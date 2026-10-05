@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.24.2 — 2026-10-05
+
+**`vir reconcile` follows the same rules as `vir run`, and cost prompts show
+real numbers.**
+
+- **Reconcile no longer retries what `vir run` skips.** Rows that errored before the transcript and project filters existed (subagent and workflow transcripts, SDK-agent transcripts, sessions from excluded or undecided projects) were still retried, at full cost. Reconcile now applies the same filters and records those rows with their skip reason; they come back if you change the config.
+- **Reconcile tells you when a transcript is gone.** Claude Code deletes old transcripts; those rows can't be retried and are now listed as "transcript gone" instead of "recoverable". On claude-cli the retry cost reads "quota" instead of "$0".
+- **A failed reconcile retry counts toward the 3-attempt limit,** like a failed `vir run`, so a session that keeps failing is parked instead of retried on every pass (`--force` still retries it).
+- **The `vir run` cost prompt shows a real estimate** ("up to $X", "subscription quota", or "unknown" for an unpriced model) instead of a fixed "$1–5".
+- **`$EDITOR` with arguments works in `vir review`** (e.g. `code --wait`).
+- **`vir run --full` also re-processes articles and PDFs.**
+- **Very large transcripts are trimmed to fit the model's context** (the start and the end are kept, and the trim is logged), instead of failing every attempt.
+- **Linux home paths are scrubbed** like macOS ones before anything is stored.
+
 ## 0.24.1 — 2026-10-05
 
 **Four small fixes: an outage no longer crashes the run, and cost and config
