@@ -1,4 +1,14 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "../config.js";
@@ -322,11 +332,31 @@ export function applyPlan(plan: PlanItem): ApplyResult {
       updated.slice(0, first.from) + plan.newBlock + updated.slice(first.to);
   }
 
+  return writeAtomically(plan.target, updated)
+    ? { ok: true }
+    : { ok: false, reason: "could not write file" };
+}
+
+// CLAUDE.md belongs to the user: a crash or full disk mid-write must leave the
+// old file, never a truncated one. Write a sibling temp file and rename it over
+// the real path (resolving a dotfiles symlink so the link survives), keeping
+// the file's mode.
+function writeAtomically(target: string, content: string): boolean {
+  let real: string;
   try {
-    writeFileSync(plan.target, updated);
-    return { ok: true };
+    real = realpathSync(target);
   } catch {
-    return { ok: false, reason: "could not write file" };
+    return false;
+  }
+  const tmp = `${real}.vir-${process.pid}.tmp`;
+  try {
+    writeFileSync(tmp, content, { mode: statSync(real).mode & 0o777 });
+    chmodSync(tmp, statSync(real).mode & 0o777);
+    renameSync(tmp, real);
+    return true;
+  } catch {
+    rmSync(tmp, { force: true });
+    return false;
   }
 }
 

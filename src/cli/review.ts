@@ -145,6 +145,13 @@ export function rejectNote(
   const rejectedDir = join(vaultRoot, REJECTED_DIR);
   if (!existsSync(rejectedDir)) mkdirSync(rejectedDir, { recursive: true });
   const dest = join(rejectedDir, basename(filePath));
+  // Never overwrite an earlier rejected copy: it is the recoverable one.
+  if (existsSync(dest)) {
+    throw new Error(
+      `a note named ${basename(filePath)} is already in .rejected/ — ` +
+        `restore or remove it first (vir review --restore ${basename(filePath)})`,
+    );
+  }
   writeFileSync(dest, updated);
   rmSync(filePath);
   return dest;
@@ -448,7 +455,14 @@ async function reviewWithDb(
         edited += 1;
         ui.row(ui.success(ui.CHECK), ui.text("edited + approved"));
       } else if (ans === "r") {
-        const dest = rejectNote(n.filePath, vaultRoot);
+        let dest: string;
+        try {
+          dest = rejectNote(n.filePath, vaultRoot);
+        } catch (err) {
+          ui.row(ui.warn(ui.WARN_GLYPH), ui.text((err as Error).message));
+          skipped += 1;
+          continue;
+        }
         const sid = parseFrontmatter(readFileSync(dest, "utf8")).session_id;
         if (sid) db.markRejected(sid);
         rejected += 1;

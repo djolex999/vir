@@ -1,4 +1,14 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  lstatSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -114,5 +124,52 @@ describe("applyPlan marker handling", () => {
     expect(out).toContain("fresh vir content");
     // The fenced example survives untouched and the real block was appended.
     expect(out.indexOf("fresh vir content")).toBeGreaterThan(out.indexOf("```"));
+  });
+});
+
+// CLAUDE.md is the one file vir rewrites that the user owns: a crash or a full
+// disk mid-write must not leave it truncated, and a dotfiles symlink must stay
+// a symlink.
+describe("applyPlan writes atomically", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vir-claudemd-"));
+  });
+  afterEach(() => {
+    chmodSync(dir, 0o755);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("leaves no temp file and keeps the file's mode", () => {
+    const target = join(dir, "CLAUDE.md");
+    writeFileSync(target, "# mine\n");
+    chmodSync(target, 0o600);
+
+    expect(applyPlan(plan(target)).ok).toBe(true);
+    expect(readFileSync(target, "utf8")).toContain("fresh vir content");
+    expect(statSync(target).mode & 0o777).toBe(0o600);
+    expect(readdirSync(dir)).toEqual(["CLAUDE.md"]);
+  });
+
+  it("writes through a symlinked CLAUDE.md and keeps the link", () => {
+    const real = join(dir, "dotfiles-CLAUDE.md");
+    const link = join(dir, "CLAUDE.md");
+    writeFileSync(real, "# mine\n");
+    symlinkSync(real, link);
+
+    expect(applyPlan(plan(link)).ok).toBe(true);
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(readFileSync(real, "utf8")).toContain("fresh vir content");
+  });
+
+  it("a failed write leaves the original untouched", () => {
+    const target = join(dir, "CLAUDE.md");
+    writeFileSync(target, "# mine\n");
+    chmodSync(dir, 0o555); // no new files: the temp write fails
+
+    const result = applyPlan(plan(target));
+    expect(result.ok).toBe(false);
+    expect(readFileSync(target, "utf8")).toBe("# mine\n");
   });
 });
