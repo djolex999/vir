@@ -93,7 +93,7 @@ const DEFAULT_DISTILL_THRESHOLD = 100_000;
 // large sessions, where Day-7 calibration showed Haiku misses higher-order
 // judgment. Hybrid is OFF (returns distill for everything) until distillFast is
 // set — so existing installs see no quality shift on upgrade. `--force-model`
-// bypasses this function entirely (see Distiller.selectModelFor).
+// bypasses this function entirely (see Distiller.modelFor).
 export function selectDistillModel(
   classification: Classification,
   inputTokens: number,

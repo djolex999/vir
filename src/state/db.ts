@@ -1825,9 +1825,8 @@ export class StateDb {
     return rows.map(mapTopicRow);
   }
 
-  // Future-proofing for v0.7.3 (topic-aware retrieval). Stored now so topics
-  // are searchable then without a backfill; the retriever does not read these
-  // yet — keeping topics out of `vir query` per the plugin-compat contract.
+  // Topic vectors join the retriever's embedding pool (getTopicEmbeddings →
+  // searchByEmbedding, since 0.8.3), so topic pages are searchable.
   storeTopicEmbedding(
     id: string,
     embedding: number[],

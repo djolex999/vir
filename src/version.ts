@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// The ONE runtime read of the published version. rootDir is ./src, so
+// The shared runtime read of the published version (the MCP server uses it;
+// cli.ts and doctor.ts still keep their own reads). rootDir is ./src, so
 // package.json can't be imported — and every hand-counted `..` hop to reach it
 // is a chance to drift (the MCP server shipped a hardcoded "0.1.1" for
 // sixteen releases). This module compiles to dist/version.js, so package.json
