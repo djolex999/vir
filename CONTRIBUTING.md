@@ -18,11 +18,20 @@ pass clean (`typecheck:all` also checks the tests and `eval/`, and CI runs it). 
 
 ## Conventions
 
-See [CLAUDE.md](CLAUDE.md) for the architectural conventions this codebase
-follows — path expansion, per-session error isolation, provider routing,
-the sacred `VIR:START`/`VIR:END` markers, and the rule that new user-facing
-output goes through `src/ui/display.ts` (some older command code still calls
-`console.log` directly; don't add more).
+The architectural conventions this codebase follows:
+
+- Expand every configured path with `expandHome()` before using it.
+- One bad session must never stop a run: each one is isolated and its error
+  is recorded.
+- Provider routing goes through `callLLM`, the one place LLM calls and their
+  costs are recorded.
+- `sync-claude` only ever changes bytes between the `VIR:START`/`VIR:END`
+  markers.
+- New user-facing output goes through `src/ui/display.ts` (some older command
+  code still calls `console.log` directly; don't add more).
+
+[docs/architecture/architecture.md](docs/architecture/architecture.md) maps
+how the pieces fit together.
 
 ## Regenerating the demo GIF
 
