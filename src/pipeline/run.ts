@@ -349,7 +349,7 @@ export async function runPipeline(
       db.close();
       return summary;
     }
-    await runArticlePhase(cfg, db, writer, summary, fileLog, interactive);
+    await runArticlePhase(cfg, db, writer, summary, fileLog, interactive, opts.full === true);
     await runEmbeddingSweep(cfg, db, writer, fileLog, interactive);
     if (interactive) {
       ui.blank();
@@ -387,7 +387,7 @@ export async function runPipeline(
       db.close();
       return summary;
     }
-    await runPdfPhase(cfg, db, writer, summary, fileLog, interactive);
+    await runPdfPhase(cfg, db, writer, summary, fileLog, interactive, opts.full === true);
     await runEmbeddingSweep(cfg, db, writer, fileLog, interactive);
     if (interactive) {
       ui.blank();
@@ -1141,14 +1141,14 @@ export async function runPipeline(
   // Second input source: web articles. Gated on config; a session-only install
   // (no articlesDir) skips this entirely and behaves exactly as before.
   if (!halted && cfg.articlesDir && cfg.distillArticles) {
-    await runArticlePhase(cfg, db, writer, summary, fileLog, interactive);
+    await runArticlePhase(cfg, db, writer, summary, fileLog, interactive, opts.full === true);
   }
 
   // Third input source: PDFs / papers. Gated identically; an install without
   // pdfsDir skips this entirely (the article pattern, cloned).
   // The article phase may itself hit the limit and halt.
   if (summary.limitHalted === null && cfg.pdfsDir && cfg.distillPdfs) {
-    await runPdfPhase(cfg, db, writer, summary, fileLog, interactive);
+    await runPdfPhase(cfg, db, writer, summary, fileLog, interactive, opts.full === true);
   }
 
   // Self-heal: back-fill notes whose write-time embedding silently no-op'd
@@ -1330,6 +1330,8 @@ async function runArticlePhase(
   summary: RunSummary,
   fileLog: (msg: string) => void,
   interactive: boolean,
+  // --full re-processes every item, as it does for sessions.
+  full = false,
 ): Promise<void> {
   if (!cfg.articlesDir) return;
 
@@ -1356,7 +1358,7 @@ async function runArticlePhase(
 
   for (const article of articles) {
     try {
-      if (db.isArticleProcessed(article.filePath, article.hash)) continue;
+      if (!full && db.isArticleProcessed(article.filePath, article.hash)) continue;
 
       const distilled = await distillArticle(article, cfg);
       if (!distilled) {
@@ -1445,6 +1447,8 @@ async function runPdfPhase(
   summary: RunSummary,
   fileLog: (msg: string) => void,
   interactive: boolean,
+  // --full re-processes every item, as it does for sessions.
+  full = false,
 ): Promise<void> {
   if (!cfg.pdfsDir) return;
 
@@ -1467,7 +1471,7 @@ async function runPdfPhase(
 
   for (const src of sources) {
     try {
-      if (db.isPdfProcessed(src.filePath, src.hash)) continue;
+      if (!full && db.isPdfProcessed(src.filePath, src.hash)) continue;
 
       // Extraction is heavy and only happens for new files (gated above).
       const parsed = await parsePdf(src.filePath);
