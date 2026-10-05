@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { makeSlug } from "../pipeline/writer.js";
 import Database from "better-sqlite3";
-import { StateDb } from "./db.js";
+import { MAX_DISTILL_ATTEMPTS, StateDb } from "./db.js";
 
 const LONG_TOPIC =
   "Prompt Injection Is Self Inflicted In User Scoped Endpoints Everywhere";
@@ -114,6 +114,80 @@ describe("StateDb.isArticleProcessed", () => {
   it("a skipped row stays processed (skip is final for those bytes)", () => {
     db.recordArticle({ path: "/clips/thin.md", hash: "h1", skipped: true });
     expect(db.isArticleProcessed("/clips/thin.md", "h1")).toBe(true);
+  });
+
+  it(`stops retrying the same bytes after ${MAX_DISTILL_ATTEMPTS} consecutive errors`, () => {
+    for (let i = 1; i < MAX_DISTILL_ATTEMPTS; i++) {
+      db.recordArticle({ path: "/clips/a.md", hash: "h1", skipped: false, error: `fail ${i}` });
+      expect(db.isArticleProcessed("/clips/a.md", "h1")).toBe(false);
+    }
+    db.recordArticle({ path: "/clips/a.md", hash: "h1", skipped: false, error: "fail last" });
+    expect(db.isArticleProcessed("/clips/a.md", "h1")).toBe(true);
+  });
+
+  it("a changed file starts the count over", () => {
+    for (let i = 0; i < MAX_DISTILL_ATTEMPTS; i++) {
+      db.recordArticle({ path: "/clips/a.md", hash: "h1", skipped: false, error: "fail" });
+    }
+    expect(db.isArticleProcessed("/clips/a.md", "h2")).toBe(false);
+    db.recordArticle({ path: "/clips/a.md", hash: "h2", skipped: false, error: "fail again" });
+    expect(db.isArticleProcessed("/clips/a.md", "h2")).toBe(false);
+  });
+
+  it("a success resets the count", () => {
+    for (let i = 1; i < MAX_DISTILL_ATTEMPTS; i++) {
+      db.recordArticle({ path: "/clips/a.md", hash: "h1", skipped: false, error: "fail" });
+    }
+    db.recordArticle({ path: "/clips/a.md", hash: "h1", skipped: false, notePath: "/vault/vir/articles/a.md" });
+    for (let i = 1; i < MAX_DISTILL_ATTEMPTS; i++) {
+      db.recordArticle({ path: "/clips/a.md", hash: "h1", skipped: false, error: "fail" });
+    }
+    expect(db.isArticleProcessed("/clips/a.md", "h1")).toBe(false);
+  });
+});
+
+describe("StateDb doc attempts on a pre-attempts schema", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vir-db-"));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("migrates articles and pdfs, and an old errored row is retried", () => {
+    const path = join(dir, "vir.db");
+    const raw = new Database(path);
+    raw.exec(`
+      CREATE TABLE articles (
+        path TEXT PRIMARY KEY, hash TEXT NOT NULL, processed_at TEXT NOT NULL,
+        skipped INTEGER NOT NULL DEFAULT 0, note_path TEXT, error TEXT,
+        content TEXT, category TEXT, title TEXT, url TEXT, author TEXT,
+        published TEXT, confidence REAL, distilled_at TEXT, embedding TEXT
+      );
+      CREATE TABLE pdfs (
+        path TEXT PRIMARY KEY, hash TEXT NOT NULL, processed_at TEXT NOT NULL,
+        skipped INTEGER NOT NULL DEFAULT 0, note_path TEXT, error TEXT,
+        content TEXT, category TEXT, title TEXT, pages INTEGER,
+        confidence REAL, distilled_at TEXT, embedding TEXT
+      );
+      INSERT INTO articles (path, hash, processed_at, skipped, error)
+        VALUES ('/clips/old.md', 'h1', '2026-09-01T00:00:00Z', 0, 'limit');
+      INSERT INTO pdfs (path, hash, processed_at, skipped, error)
+        VALUES ('/papers/old.pdf', 'h1', '2026-09-01T00:00:00Z', 0, 'limit');
+    `);
+    raw.close();
+
+    const db = new StateDb(path);
+    try {
+      expect(db.isArticleProcessed("/clips/old.md", "h1")).toBe(false);
+      expect(db.isPdfProcessed("/papers/old.pdf", "h1")).toBe(false);
+      db.recordArticle({ path: "/clips/old.md", hash: "h1", skipped: false, error: "again" });
+      expect(db.isArticleProcessed("/clips/old.md", "h1")).toBe(false);
+    } finally {
+      db.close();
+    }
   });
 });
 

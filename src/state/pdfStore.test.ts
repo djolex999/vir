@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { StateDb } from "./db.js";
+import { MAX_DISTILL_ATTEMPTS, StateDb } from "./db.js";
 
 describe("StateDb — pdfs table", () => {
   let dir: string;
@@ -66,6 +66,18 @@ describe("StateDb — pdfs table", () => {
   it("a skipped row stays processed (skip is final for those bytes)", () => {
     db.recordPdf({ path: "/papers/empty.pdf", hash: "z", skipped: true });
     expect(db.isPdfProcessed("/papers/empty.pdf", "z")).toBe(true);
+  });
+
+  it(`stops retrying the same bytes after ${MAX_DISTILL_ATTEMPTS} consecutive errors; a changed file starts over`, () => {
+    for (let i = 1; i < MAX_DISTILL_ATTEMPTS; i++) {
+      db.recordPdf({ path: "/papers/bad.pdf", hash: "hb", skipped: false, error: "parse failed" });
+      expect(db.isPdfProcessed("/papers/bad.pdf", "hb")).toBe(false);
+    }
+    db.recordPdf({ path: "/papers/bad.pdf", hash: "hb", skipped: false, error: "parse failed" });
+    expect(db.isPdfProcessed("/papers/bad.pdf", "hb")).toBe(true);
+
+    db.recordPdf({ path: "/papers/bad.pdf", hash: "hb2", skipped: false, error: "parse failed" });
+    expect(db.isPdfProcessed("/papers/bad.pdf", "hb2")).toBe(false);
   });
 
   it("excludes skipped pdfs from listPdfs", () => {

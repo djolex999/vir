@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { STATE_PATH, type Config } from "../config.js";
 import { CLAUDE_CLI_SESSION_CAP, runPipeline } from "./run.js";
 import { ClaudeCliLimitError } from "./claudeCli.js";
+import { MAX_DISTILL_ATTEMPTS } from "../state/db.js";
 
 // Two claude-cli-specific run-loop behaviors:
 // 1. A subscription limit is ONE environmental fact — halt the loop, burn no
@@ -398,5 +399,58 @@ describe("runPipeline — errored doc rows left by earlier versions", () => {
     expect(summary.pdfsDistilled).toBe(1);
     expect(docRow("articles", "/a/legacy.md")).toEqual({ hash: "hl", error: null });
     expect(docRow("pdfs", "/p/legacy.pdf")).toEqual({ hash: "hlp", error: null });
+  });
+});
+
+describe("runPipeline — doc retry bound", () => {
+  it(`an article failing ${MAX_DISTILL_ATTEMPTS} runs in a row is not tried again; editing it retries`, async () => {
+    spies.articles.mockReturnValue([article("/a/stubborn.md", "hs")]);
+    spies.distillArticle.mockRejectedValue(new Error("context too long"));
+
+    for (let i = 0; i < MAX_DISTILL_ATTEMPTS + 1; i++) {
+      await runPipeline(withDocs("anthropic"), { quiet: true });
+    }
+    expect(spies.distillArticle).toHaveBeenCalledTimes(MAX_DISTILL_ATTEMPTS);
+
+    spies.articles.mockReturnValue([article("/a/stubborn.md", "hs-edited")]);
+    spies.distillArticle.mockResolvedValue(docNote);
+    const summary = await runPipeline(withDocs("anthropic"), { quiet: true });
+    expect(summary.articlesDistilled).toBe(1);
+    expect(docRow("articles", "/a/stubborn.md")).toEqual({ hash: "hs-edited", error: null });
+  });
+
+  it("a limit first hit in the article phase halts both doc phases and records nothing", async () => {
+    spies.articles.mockReturnValue([
+      article("/a/wall-1.md", "hw1"),
+      article("/a/wall-2.md", "hw2"),
+    ]);
+    spies.distillArticle.mockRejectedValue(new ClaudeCliLimitError("session", "3:45pm"));
+    spies.pdfs.mockReturnValue([{ filePath: "/p/wall.pdf", hash: "hwp" }]);
+
+    const summary = await runPipeline(withDocs("claude-cli"), { quiet: true });
+
+    expect(summary.limitHalted).toContain("3:45pm");
+    expect(spies.distillArticle).toHaveBeenCalledTimes(1);
+    expect(spies.parsePdf).not.toHaveBeenCalled();
+    expect(summary.articlesErrored).toBe(0);
+    // No row means no attempt burned: the wall is not the article's fault.
+    expect(docRow("articles", "/a/wall-1.md")).toBeUndefined();
+    expect(docRow("articles", "/a/wall-2.md")).toBeUndefined();
+  });
+
+  it("a limit first hit in the PDF phase halts it and records nothing", async () => {
+    spies.pdfs.mockReturnValue([
+      { filePath: "/p/wall-1.pdf", hash: "hp1" },
+      { filePath: "/p/wall-2.pdf", hash: "hp2" },
+    ]);
+    spies.distillPdf.mockRejectedValue(new ClaudeCliLimitError("session", "3:45pm"));
+
+    const summary = await runPipeline(withDocs("claude-cli"), { quiet: true });
+
+    expect(summary.limitHalted).toContain("3:45pm");
+    expect(spies.distillPdf).toHaveBeenCalledTimes(1);
+    expect(summary.pdfsErrored).toBe(0);
+    expect(docRow("pdfs", "/p/wall-1.pdf")).toBeUndefined();
+    expect(docRow("pdfs", "/p/wall-2.pdf")).toBeUndefined();
   });
 });

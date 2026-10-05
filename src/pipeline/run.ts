@@ -1149,7 +1149,8 @@ export async function runPipeline(
 
   // Third input source: PDFs / papers. Gated identically; an install without
   // pdfsDir skips this entirely (the article pattern, cloned).
-  if (!halted && cfg.pdfsDir && cfg.distillPdfs) {
+  // The article phase may itself hit the limit and halt.
+  if (summary.limitHalted === null && cfg.pdfsDir && cfg.distillPdfs) {
     await runPdfPhase(cfg, db, writer, summary, fileLog, interactive);
   }
 
@@ -1400,6 +1401,15 @@ async function runArticlePhase(
       }
       await new Promise((r) => setTimeout(r, 2000));
     } catch (err) {
+      // Same rule as the session loop: a subscription limit is one
+      // environmental fact. Halt, and record nothing, so the wall burns no
+      // attempts and the article is simply new again next run.
+      if (err instanceof ClaudeCliLimitError) {
+        summary.limitHalted = err.message;
+        if (interactive) ui.row(ui.errorColor(ui.CROSS), ui.text(err.message));
+        fileLog(`article phase halted: ${err.message}`);
+        break;
+      }
       summary.articlesErrored += 1;
       const msg = (err as Error).message ?? String(err);
       if (interactive) {
@@ -1498,6 +1508,12 @@ async function runPdfPhase(
       }
       await new Promise((r) => setTimeout(r, 2000));
     } catch (err) {
+      if (err instanceof ClaudeCliLimitError) {
+        summary.limitHalted = err.message;
+        if (interactive) ui.row(ui.errorColor(ui.CROSS), ui.text(err.message));
+        fileLog(`pdf phase halted: ${err.message}`);
+        break;
+      }
       summary.pdfsErrored += 1;
       const msg = (err as Error).message ?? String(err);
       if (interactive) {
@@ -1505,11 +1521,10 @@ async function runPdfPhase(
       }
       fileLog(`error on pdf ${src.filePath}: ${msg}`);
       try {
-        // The error row keeps the source hash for diagnosis, but
-        // isPdfProcessed ignores errored rows, so the PDF is retried next run
-        // (same contract as articles). A corrupt PDF therefore fails on every
-        // run until it is fixed or removed; the parse fails before any paid
-        // call.
+        // The error row keeps the source hash and bumps attempts;
+        // isPdfProcessed retries it until MAX_DISTILL_ATTEMPTS failures on
+        // these bytes (same contract as articles), so a corrupt PDF stops
+        // being retried after three runs. A changed file starts over.
         db.recordPdf({
           path: src.filePath,
           hash: src.hash,
