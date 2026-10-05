@@ -362,3 +362,41 @@ describe("runPipeline — errored articles and PDFs retry", () => {
     expect(docRow("pdfs", "/p/flaky.pdf")).toEqual({ hash: "hpf", error: null });
   });
 });
+
+describe("runPipeline — errored doc rows left by earlier versions", () => {
+  it("an article and a PDF already stored with error + the same hash are retried on the first run", async () => {
+    // Create the schema, then write the rows with raw SQL, exactly as the
+    // pre-fix error path left them (skipped=0, error set, source hash).
+    new (await import("../state/db.js")).StateDb().close();
+    const raw = new Database(STATE_PATH);
+    const at = "2026-09-01T00:00:00.000Z";
+    raw
+      .prepare("INSERT INTO articles (path, hash, processed_at, skipped, error) VALUES (?, ?, ?, 0, ?)")
+      .run("/a/legacy.md", "hl", at, "claude-cli limit reached");
+    raw
+      .prepare("INSERT INTO pdfs (path, hash, processed_at, skipped, error) VALUES (?, ?, ?, 0, ?)")
+      .run("/p/legacy.pdf", "hlp", at, "claude-cli limit reached");
+    raw.close();
+
+    spies.articles.mockReturnValue([article("/a/legacy.md", "hl")]);
+    spies.distillArticle.mockResolvedValue(docNote);
+    spies.pdfs.mockReturnValue([{ filePath: "/p/legacy.pdf", hash: "hlp" }]);
+    spies.parsePdf.mockImplementation(async (filePath: string) => ({
+      filePath,
+      hash: "hlp",
+      title: "Paper",
+      text: "body",
+      pageCount: 1,
+    }));
+    spies.distillPdf.mockResolvedValue(docNote);
+
+    const summary = await runPipeline(withDocs("anthropic"), { quiet: true });
+
+    expect(spies.distillArticle).toHaveBeenCalledTimes(1);
+    expect(spies.distillPdf).toHaveBeenCalledTimes(1);
+    expect(summary.articlesDistilled).toBe(1);
+    expect(summary.pdfsDistilled).toBe(1);
+    expect(docRow("articles", "/a/legacy.md")).toEqual({ hash: "hl", error: null });
+    expect(docRow("pdfs", "/p/legacy.pdf")).toEqual({ hash: "hlp", error: null });
+  });
+});
