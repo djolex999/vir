@@ -207,6 +207,59 @@ function noteIsVerified(vaultRoot: string, dir: string, fileBase: string): boole
   }
 }
 
+export const VIR_QUERY_DESCRIPTION =
+  "Search the knowledge vault for patterns, gotchas, decisions, and " +
+  "tool insights from past Claude Code sessions, concepts, techniques, " +
+  "references, and opinions distilled from web articles, and notes " +
+  "distilled from PDFs/papers. " +
+  "Use this before working on a task to consult prior learnings. " +
+  "Human-verified notes (approved via `vir review`) are ranked above " +
+  "unverified ones. " +
+  "By default the matching notes are synthesized into one answer with an " +
+  "LLM call that is billed to the user's provider; pass synthesize: false " +
+  "to get only the matching notes, with no LLM call.";
+
+export interface QueryResult {
+  answer: string | null;
+  sources: Array<{
+    topic: string;
+    category: string;
+    project: string;
+    type: string;
+    url?: string;
+    score: number;
+    file: string;
+  }>;
+}
+
+// The answer step of vir_query, after retrieval. Synthesis is the only paid
+// call this server makes, so it runs only when there are hits and the caller
+// did not opt out.
+export async function buildQueryResult(
+  selected: SearchHit[],
+  opts: { synthesize?: boolean },
+  synth: (hits: SearchHit[]) => Promise<string>,
+): Promise<QueryResult> {
+  if (selected.length === 0) {
+    return { answer: "No matching notes found in the vault.", sources: [] };
+  }
+  const answer =
+    opts.synthesize === false ? null : (await synth(selected)).trim();
+  const sources = selected.map((h) => {
+    const meta = hitMeta(h);
+    return {
+      topic: meta.topic,
+      category: meta.category,
+      project: meta.project,
+      type: meta.type,
+      ...(meta.url ? { url: meta.url } : {}),
+      score: h.score,
+      file: h.title,
+    };
+  });
+  return { answer, sources };
+}
+
 export async function runMcpServer(cfg: Config): Promise<void> {
   let db: StateDb;
   try {
@@ -222,14 +275,7 @@ export async function runMcpServer(cfg: Config): Promise<void> {
   server.registerTool(
     "vir_query",
     {
-      description:
-        "Search the knowledge vault for patterns, gotchas, decisions, and " +
-        "tool insights from past Claude Code sessions, concepts, techniques, " +
-        "references, and opinions distilled from web articles, and notes " +
-        "distilled from PDFs/papers. " +
-        "Use this before working on a task to consult prior learnings. " +
-        "Human-verified notes (approved via `vir review`) are ranked above " +
-        "unverified ones.",
+      description: VIR_QUERY_DESCRIPTION,
       inputSchema: {
         query: z.string().describe("The question or topic to search for"),
         top_k: z
@@ -262,9 +308,24 @@ export async function runMcpServer(cfg: Config): Promise<void> {
             "Return only human-verified notes (approved via `vir review`). " +
               "Default false.",
           ),
+        synthesize: z
+          .boolean()
+          .optional()
+          .describe(
+            "Synthesize the notes into one answer (an LLM call billed to the " +
+              "user). Default true; false returns the notes only.",
+          ),
       },
     },
-    async ({ query, top_k, type, category, project, verified_only }) => {
+    async ({
+      query,
+      top_k,
+      type,
+      category,
+      project,
+      verified_only,
+      synthesize: wantSynthesis,
+    }) => {
       try {
         const topK = Math.min(Math.max(top_k ?? 5, 1), 10);
         const typeFilter = type ?? "all";
@@ -302,27 +363,13 @@ export async function runMcpServer(cfg: Config): Promise<void> {
           latencyMs,
         });
 
-        if (selected.length === 0) {
-          return ok({
-            answer: "No matching notes found in the vault.",
-            sources: [],
-          });
-        }
-
-        const answer = await synthesize(cfg, query, selected);
-        const sources = selected.map((h) => {
-          const meta = hitMeta(h);
-          return {
-            topic: meta.topic,
-            category: meta.category,
-            project: meta.project,
-            type: meta.type,
-            ...(meta.url ? { url: meta.url } : {}),
-            score: h.score,
-            file: h.title,
-          };
-        });
-        return ok({ answer: answer.trim(), sources });
+        return ok(
+          await buildQueryResult(
+            selected,
+            { synthesize: wantSynthesis },
+            (hits) => synthesize(cfg, query, hits),
+          ),
+        );
       } catch (err) {
         return fail((err as Error).message);
       }

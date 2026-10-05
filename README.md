@@ -409,8 +409,9 @@ Restart Claude Code. The vault is now queryable mid-session via six tools:
 `vir_project_summary`, `vir_compose`. `vir_query` takes a `type` filter
 (`session` | `article` | `topic` | `pdf` | `all`). Human-verified notes
 (approved via `vir review`) rank first; pass `verified_only: true` to see
-only those. The server is read-only: it never spends tokens and never writes
-files.
+only those. The server never writes the vault. `vir_query` is the one tool
+that spends tokens: it synthesizes an answer with your provider, and
+`synthesize: false` returns just the matching notes.
 
 To unregister: `vir mcp uninstall`.
 
