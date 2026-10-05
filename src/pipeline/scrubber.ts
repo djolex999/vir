@@ -54,10 +54,13 @@ function normalizePaths(input: string): string {
   const homeRe = new RegExp(escapeRegex(HOME), "g");
   let out = input.replace(homeRe, "~");
 
-  // Replace remaining absolute paths with ~/<basename>
-  // Match paths like /Users/.../file, /var/..., /tmp/..., /etc/...
-  // Conservative: only collapse deeply-nested user-ish paths to avoid mangling /usr/bin/node etc.
-  out = out.replace(/\/Users\/[^\s"'`)\]]+/g, (m) => `~/${basename(m)}`);
+  // Replace other users' home paths with ~/<basename>: macOS /Users/<name>/...
+  // and Linux /home/<name>/... alike (the old rule covered macOS only).
+  // Conservative: only home-rooted paths, so /usr/bin/node etc. stay intact.
+  out = out.replace(
+    /\/(?:Users|home)\/[^\s"'`)\]\/]+(?:\/[^\s"'`)\]]+)?/g,
+    (m) => `~/${basename(m)}`,
+  );
   return out;
 }
 
