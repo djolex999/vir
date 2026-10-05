@@ -1,5 +1,5 @@
 import type { Config } from "../config.js";
-import { computeCost } from "../cost/pricing.js";
+import { computeCost, resolvePricing } from "../cost/pricing.js";
 import * as ui from "../ui/display.js";
 
 // Dollar-estimate label for the ACTIVE provider. On the subscription path the
@@ -12,6 +12,9 @@ export function estCostLabel(
   outputTokens: number,
 ): string {
   if (cfg.provider === "claude-cli") return "subscription quota (no $)";
+  if (resolvePricing(cfg.provider, model, cfg.pricing, cfg.kieTopUpTier) === null) {
+    return `unknown (no price for ${model})`;
+  }
   return ui.formatUsd(
     computeCost(
       cfg.provider,

@@ -10,7 +10,9 @@ import {
   pendingProjectsCheck,
   queryLogCheck,
   prunedNotesCheck,
+  pricedModelsCheck,
 } from "./doctor.js";
+import type { Config } from "../config.js";
 
 // The doctor Ollama check must be probe-based, not reachability-based: a
 // daemon that answers /api/tags while embed() throws (model deleted, legacy
@@ -356,5 +358,31 @@ describe("notificationsCheck", () => {
 
   it("helper unavailable → warn, never fail", () => {
     expect(notificationsCheck(null).status).toBe("warn");
+  });
+});
+
+describe("pricedModelsCheck", () => {
+  const base = { kieTopUpTier: "standard" } as const;
+  it("warns when a configured Kie model has no price", () => {
+    const r = pricedModelsCheck({
+      ...base,
+      provider: "kie",
+      models: { classify: "claude-haiku-4-5", distill: "claude-sonnet-5" },
+    } as unknown as Config);
+    expect(r?.status).toBe("warn");
+    expect(r?.detail).toContain("claude-sonnet-5");
+  });
+
+  it("is ok when every configured model is priced", () => {
+    const r = pricedModelsCheck({
+      ...base,
+      provider: "kie",
+      models: { classify: "claude-haiku-4-5-20251001", distill: "claude-sonnet-4-6" },
+    } as unknown as Config);
+    expect(r?.status).toBe("ok");
+  });
+
+  it("says nothing for claude-cli (quota, no prices)", () => {
+    expect(pricedModelsCheck({ ...base, provider: "claude-cli", models: { classify: "x", distill: "y" } } as unknown as Config)).toBeNull();
   });
 });

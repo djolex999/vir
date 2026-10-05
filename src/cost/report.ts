@@ -20,16 +20,19 @@ export interface CostReport {
   // dollar aggregate above (a silent $0.00 would corrupt total/median/p90),
   // surfaced as their own count instead.
   subscriptionCalls: number;
+  // API calls whose model had no price: real spend of unknown size, counted
+  // rather than summed as $0.
+  unpricedCalls: number;
 }
 
 export function buildReport(records: CostRecord[]): CostReport {
   if (records.length === 0) {
-    return { total: 0, recordCount: 0, sessionCount: 0, median: 0, p90: 0, bySession: [], subscriptionCalls: 0 };
+    return { total: 0, recordCount: 0, sessionCount: 0, median: 0, p90: 0, bySession: [], subscriptionCalls: 0, unpricedCalls: 0 };
   }
 
-  const subscriptionCalls = records.filter(
-    (r) => r.estimated_cost_usd === null,
-  ).length;
+  const unpriced = records.filter((r) => r.estimated_cost_usd === null);
+  const subscriptionCalls = unpriced.filter((r) => r.provider === "claude-cli").length;
+  const unpricedCalls = unpriced.length - subscriptionCalls;
   const priced = records.filter((r) => r.estimated_cost_usd !== null);
 
   const groups = new Map<string, SessionCost>();
@@ -75,6 +78,7 @@ export function buildReport(records: CostRecord[]): CostReport {
     p90,
     bySession,
     subscriptionCalls,
+    unpricedCalls,
   };
 }
 

@@ -5,7 +5,7 @@ import {
   ClaudeCliLimitError,
   callClaudeCli,
 } from "./claudeCli.js";
-import { computeCost } from "../cost/pricing.js";
+import { computeCost, resolvePricing } from "../cost/pricing.js";
 import { appendCostRecord } from "../cost/log.js";
 import type {
   Category,
@@ -270,9 +270,9 @@ function estimateTokens(s: string): number {
   return Math.ceil(s.length / 4);
 }
 
-// claude-cli distills cost zero DOLLARS and some subscription quota — record
-// the provider with cost marked not-applicable (null), never $0.00, so dollar
-// aggregates in `vir cost` stay honest. Exported for tests.
+// claude-cli distills cost zero DOLLARS and some subscription quota, and an
+// unpriced model's cost is unknown — both are recorded as null, never $0.00,
+// so dollar aggregates in `vir cost` stay honest. Exported for tests.
 export function costForRecord(
   provider: Config["provider"],
   model: string,
@@ -282,6 +282,9 @@ export function costForRecord(
   tier: Config["kieTopUpTier"],
 ): number | null {
   if (provider === "claude-cli") return null;
+  // No price for this model on this provider (e.g. claude-sonnet-5 on Kie):
+  // unknown, never $0, or `vir cost` silently under-reports real spend.
+  if (resolvePricing(provider, model, overrides, tier) === null) return null;
   return computeCost(provider, model, inputTokens, outputTokens, overrides, tier);
 }
 
@@ -377,7 +380,13 @@ export async function probeProvider(
       () => reject(new Error(`no response within ${PROBE_TIMEOUT_MS / 1000}s`)),
       PROBE_TIMEOUT_MS,
     );
-    void probe.finally(() => clearTimeout(t));
+    // Both branches handled: `probe.finally(...)` alone returned a promise
+    // that re-rejected with nobody listening, and Node 20 kills the process
+    // on an unhandled rejection right after run.ts has handled the outage.
+    probe.then(
+      () => clearTimeout(t),
+      () => clearTimeout(t),
+    );
   });
   await Promise.race([probe, timeout]);
 }

@@ -1,4 +1,12 @@
-import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -57,6 +65,17 @@ describe("config file permissions", () => {
     const dir = join(tmpHome, ".vir");
     expect(existsSync(dir)).toBe(true);
     expect(statSync(dir).mode & 0o777).toBe(0o700);
+  });
+
+  it("saveConfig never leaves the keys in a world-readable file, even one that already was", () => {
+    const file = join(tmpHome, ".vir", "config.json");
+    cfg.saveConfig(sampleConfig());
+    chmodSync(file, 0o644);
+    cfg.saveConfig({ ...sampleConfig(), outputDir: "Changed" });
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+    expect(readFileSync(file, "utf8")).toContain("Changed");
+    // Written to a 0600 temp file and renamed into place: no temp left behind.
+    expect(readdirSync(join(tmpHome, ".vir")).filter((f) => f.startsWith("config.json"))).toEqual(["config.json"]);
   });
 
   it("saveConfig writes config.json owner read/write only (0600)", () => {

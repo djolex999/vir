@@ -3,6 +3,8 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  renameSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -251,11 +253,17 @@ export function saveConfig(cfg: Config): void {
   if (!existsSync(dirname(CONFIG_PATH))) {
     mkdirSync(dirname(CONFIG_PATH), { recursive: true });
   }
-  writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
-  // config.json contains API keys — owner read/write only.
+  // config.json contains API keys — owner read/write only, from the first
+  // byte. Writing in place created the file with the default umask (often
+  // 0644) and left an existing file's wider mode in place until the chmod.
+  // A 0600 temp file renamed over it is never readable by anyone else.
+  const tmp = `${CONFIG_PATH}.${process.pid}.tmp`;
   try {
-    chmodSync(CONFIG_PATH, 0o600);
-  } catch {
-    // best-effort; a failed chmod must not fail the save
+    writeFileSync(tmp, JSON.stringify(cfg, null, 2), { mode: 0o600 });
+    chmodSync(tmp, 0o600);
+    renameSync(tmp, CONFIG_PATH);
+  } catch (err) {
+    rmSync(tmp, { force: true });
+    throw err;
   }
 }
