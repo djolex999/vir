@@ -23,7 +23,7 @@ developer-tools, mcp, local-first, cross-platform, llm-wiki
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/v/@djolex999/vir-cli?color=7c6af7&label=npm" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/dw/@djolex999/vir-cli?color=4fd1a0" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee" alt="license"></a>
-  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1075%20passing-22c55e" alt="tests"></a>
+  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1099%20passing-22c55e" alt="tests"></a>
   <a href="#project-status"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey" alt="platforms"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-c084fc" alt="mcp"></a>
   <a href="#"><img src="https://img.shields.io/badge/local--first-yes-f59e0b" alt="local-first"></a>
@@ -414,6 +414,23 @@ Most commands take `--dry-run`, `--yes`, or `--json` where they make sense;
 run `vir <command> --help` for the full flag list. `vir query --json` and
 `vir doctor --json` are the machine contracts the
 [vir-obsidian](https://github.com/djolex999/vir-obsidian) plugin consumes.
+
+## Use vir from any agent (skill)
+
+vir ships an [Agent Skills](https://agentskills.io) skill that teaches Claude
+Code, Codex, Cursor and other skill-aware agents to check your notes before
+they work: search with `vir query --json` (free, no LLM call), cite the notes
+they use, and verify them against the current code.
+
+```bash
+npx skills add djolex999/vir
+```
+
+The skill is read-only. It never writes your notes, never runs paid commands
+like `vir run` unless you ask, and if vir isn't installed it tells you how to
+set it up instead of installing it. It prefers the MCP server when that's
+registered, and falls back to reading the notes folder directly. Source:
+[`skills/vir/SKILL.md`](skills/vir/SKILL.md).
 
 ## MCP server (Claude Code integration)
 

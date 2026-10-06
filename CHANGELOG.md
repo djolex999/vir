@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Use vir from any agent.** New Agent Skills skill (`npx skills add djolex999/vir`) teaches Claude Code, Codex, Cursor and other skill-aware agents to check your vir notes before they work. It uses the MCP server when registered (with `synthesize: false`, so no LLM cost), else `vir query --json`, else the notes folder directly. It is read-only and never runs paid commands unless asked. A test pins every command, flag and MCP tool it names to the real CLI.
+
 ## 0.24.3 — 2026-10-06
 
 **Obsidian is optional. vir writes a folder of markdown, and Obsidian is one good way to read it.**
