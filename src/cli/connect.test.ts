@@ -22,6 +22,12 @@ describe("formatConnectSummary", () => {
     expect(out).not.toContain("$0.00");
   });
 
+  it("uses singular nouns for one", () => {
+    const out = formatConnectSummary({ ...base, lessons: 1, clusters: 1, candidates: 1, deferred: 0 }, true).join("\n");
+    expect(out).toContain("1 lesson · 1 cluster · 1 candidate");
+    expect(out).not.toMatch(/1 (lessons|clusters|candidates)/);
+  });
+
   it("says unknown when the model has no price", () => {
     expect(formatConnectSummary({ ...base, estCostUsd: null }, true).join("\n")).toContain("cost unknown");
   });

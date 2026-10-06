@@ -19,7 +19,8 @@ export function formatConnectSummary(
   dryRun: boolean,
   opts: { quota?: boolean } = {},
 ): string[] {
-  const lines = [`${s.lessons} lessons · ${s.clusters} clusters · ${s.candidates} candidates`];
+  const n = (count: number, noun: string): string => `${count} ${noun}${count === 1 ? "" : "s"}`;
+  const lines = [`${n(s.lessons, "lesson")} · ${n(s.clusters, "cluster")} · ${n(s.candidates, "candidate")}`];
   const skipped: string[] = [];
   if (s.unchanged > 0) skipped.push(`${s.unchanged} unchanged`);
   if (s.skippedRejected > 0) skipped.push(`${s.skippedRejected} previously rejected`);

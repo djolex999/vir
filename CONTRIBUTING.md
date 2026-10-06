@@ -48,3 +48,11 @@ git commit -m "docs: regenerate demo GIF"
 Edit `demo.tape` to change the recorded commands or timing, then regenerate.
 Don't hand-edit the GIF — overwrite it cleanly each time so it doesn't
 accumulate binary diff cruft.
+
+`demo-connect.tape` (the `vir connect` → review → sync-claude GIF) runs against a
+sandbox, never your real setup: it expects `/tmp/virdemo/home` holding copies of
+`~/.vir` (config with `vaultPath` pointed into the sandbox) and the vault, a
+stand-in `projects/<name>/CLAUDE.md`, and two DB snapshots, `db-none.db` (the
+rule removed, for the dry run) and `db-proposed.db` (the rule reset to
+`proposed`). It replays an existing proposal instead of calling `vir connect`,
+so recording costs nothing.
