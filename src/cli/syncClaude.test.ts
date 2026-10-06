@@ -73,6 +73,37 @@ describe("sync-claude rule promotion", () => {
     expect(again.asked.some((q) => q.includes("add this rule"))).toBe(true);
   });
 
+  it("asks again on a typo instead of treating it as skip", async () => {
+    const t = io(["t", "y", "x", "y"]);
+    await runSyncClaude(cfg, db, opts, t);
+    expect(t.asked.filter((q) => q.includes("add this rule"))).toHaveLength(2);
+    expect(t.asked.filter((q) => q.includes("apply these changes"))).toHaveLength(2);
+    expect(promotion()).toBe("promoted");
+  });
+
+  it("without a terminal, an unreadable answer aborts once instead of looping", async () => {
+    const t = io([""], false);
+    await runSyncClaude(cfg, db, opts, t);
+    expect(t.asked).toEqual(["apply these changes? (y/n) "]);
+    expect(t.printed).toContain("aborted");
+  });
+
+  it("gives up after 5 unreadable answers in a terminal", async () => {
+    const t = io(["s", "?", "?", "?", "?", "?"]);
+    await runSyncClaude(cfg, db, opts, t);
+    expect(t.asked.filter((q) => q.includes("apply these changes"))).toHaveLength(5);
+    expect(t.printed).toContain("aborted");
+  });
+
+  it("never offers a rule whose CLAUDE.md doesn't exist, and says why", async () => {
+    rmSync(join(home, ".claude", "CLAUDE.md"));
+    const t = io(["y", "y"]);
+    await runSyncClaude(cfg, db, opts, t);
+    expect(t.asked.some((q) => q.includes("add this rule"))).toBe(false);
+    expect(t.printed.join("\n")).toContain("1 accepted rule(s) wait for a CLAUDE.md that doesn't exist");
+    expect(promotion()).toBe("none");
+  });
+
   it.each([
     ["--force", { ...opts, force: true }, true],
     ["--dry-run", { ...opts, dryRun: true }, true],
