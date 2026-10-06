@@ -64,7 +64,19 @@ function evidenceOf(v: ValidatedRule): InsightEvidence[] {
 function reconsider(cfg: Config, db: StateDb, slug: string, now: Date): ConnectSummary {
   const row = db.getInsightBySlug(slug);
   if (row === null) throw new Error(`no rule with slug ${slug}`);
-  const next: InsightRow = { ...row, status: "proposed", promotion: "none", updatedAt: now.toISOString() };
+  // Spec §9: the way back for a rejected or declined rule — never a silent
+  // demotion of one the owner accepted and promoted.
+  if (row.status !== "rejected" && row.promotion !== "declined") {
+    throw new Error(`only a rejected or declined rule can be reconsidered — ${slug} is ${row.status}`);
+  }
+  const next: InsightRow = {
+    ...row,
+    status: "proposed",
+    promotion: "none",
+    evidenceChanged: false,
+    pending: null,
+    updatedAt: now.toISOString(),
+  };
   db.upsertInsight(next);
   writeInsightFile(vaultRoot(cfg), next);
   return emptySummary();
@@ -108,8 +120,13 @@ export async function runConnect(
         summary.unchanged += 1;
         continue;
       }
-      if (pre.kind === "update-proposed") {
-        const known = new Set(pre.insight.memberSessionIds);
+      if (pre.kind === "update-proposed" || pre.kind === "accepted-additions") {
+        // Sessions already flagged as pending additions are known too: the
+        // owner hasn't decided on them yet, so asking the model again is waste.
+        const known = new Set([
+          ...pre.insight.memberSessionIds,
+          ...(pre.insight.pending ?? []).map((e) => e.sessionId),
+        ]);
         if (c.rec.sessions.every((s) => known.has(s))) {
           summary.unchanged += 1;
           continue;

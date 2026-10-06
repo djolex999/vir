@@ -72,6 +72,13 @@ export async function cmdConnect(opts: { dryRun?: boolean; reconsider?: string; 
     ui.blank();
 
     if (opts.reconsider !== undefined) {
+      if (opts.dryRun) {
+        const row = db.getInsightBySlug(opts.reconsider);
+        ui.line(ui.text(row === null
+          ? `  no rule with slug ${opts.reconsider}`
+          : `  would reset ${opts.reconsider} (${row.status}, ${row.promotion}) to proposed — nothing written`));
+        return;
+      }
       await runConnect(cfg, db, { dryRun: false, reconsider: opts.reconsider }, deps);
       ui.row(ui.success(ui.CHECK), ui.text(`${opts.reconsider} is proposed again — vir review --insights`));
       return;

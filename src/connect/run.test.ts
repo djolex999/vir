@@ -121,6 +121,19 @@ describe("runConnect", () => {
     expect(after?.sessions).toBe(4);
   });
 
+  it("flags new evidence on an accepted rule once, then makes no further paid call", async () => {
+    await runConnect(cfg, db, { dryRun: false }, deps([]));
+    const row = db.listInsights()[0];
+    if (row) db.upsertInsight({ ...row, status: "accepted" });
+    note("d", "s4", "2026-07-01", "proxy.ts once more in Next 16");
+    const first = await runConnect(cfg, db, { dryRun: false }, deps([]));
+    expect(first.additionsFlagged).toBe(1);
+    const calls: string[] = [];
+    const second = await runConnect(cfg, db, { dryRun: false }, deps(calls));
+    expect(calls).toHaveLength(0);
+    expect(second.unchanged).toBe(1);
+  });
+
   it("keeps a rejection after every member note is rewritten", async () => {
     await runConnect(cfg, db, { dryRun: false }, deps([]));
     const row = db.listInsights()[0];
@@ -169,6 +182,25 @@ describe("runConnect", () => {
     expect(s.llmCalls).toBe(0);
     expect(db.listInsights()[0]).toMatchObject({ status: "proposed", promotion: "none" });
     expect(readFileSync(join(vault, "vir", "insights", "rules", `${row?.slug}.md`), "utf8")).toContain("status: proposed");
+  });
+
+  it("reconsider refuses an accepted, promoted rule", async () => {
+    await runConnect(cfg, db, { dryRun: false }, deps([]));
+    const row = db.listInsights()[0];
+    if (row) db.upsertInsight({ ...row, status: "accepted", promotion: "promoted" });
+    await expect(runConnect(cfg, db, { dryRun: false, reconsider: row?.slug ?? "" }, deps([]))).rejects.toThrow(
+      "only a rejected or declined rule can be reconsidered",
+    );
+    expect(db.listInsights()[0]).toMatchObject({ status: "accepted", promotion: "promoted" });
+  });
+
+  it("reconsider clears pending additions", async () => {
+    await runConnect(cfg, db, { dryRun: false }, deps([]));
+    const row = db.listInsights()[0];
+    const pending = [{ sessionId: "s9", citeSlug: "z", project: "", date: "2026-08-01", quote: "q" }];
+    if (row) db.upsertInsight({ ...row, status: "rejected", evidenceChanged: true, pending });
+    await runConnect(cfg, db, { dryRun: false, reconsider: row?.slug ?? "" }, deps([]));
+    expect(db.listInsights()[0]).toMatchObject({ status: "proposed", evidenceChanged: false, pending: null });
   });
 
   it("reconsider of an unknown slug throws", async () => {
