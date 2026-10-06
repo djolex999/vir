@@ -7,6 +7,7 @@
 - **`vir init` asks for a notes folder, not an Obsidian vault.** If the usual vault (`~/Documents/Obsidian/MyVault`) exists it is still the default; otherwise vir suggests `~/notes` and offers to create it. Notes land in `<folder>/vir/` as before. Existing configs are unchanged.
 - **The articles folder defaults to `raw/` inside your notes folder** instead of a hard-coded Obsidian path, and the prompt no longer assumes Obsidian Web Clipper.
 - **README: new "Without Obsidian" section.** Notes are plain markdown with YAML frontmatter; `vir query` and the MCP server need no editor, and VS Code (Foam / Markdown Memo) resolves the `[[wikilinks]]`.
+- **Internal:** transcript discovery, filtering and parsing now go through a session-source layer (Claude Code is the first source), groundwork for supporting more coding agents. No behavior change: `vir run --dry-run`, `vir projects` and `vir doctor` output is identical before and after.
 
 ## 0.24.2 — 2026-10-05
 
