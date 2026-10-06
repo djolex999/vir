@@ -6,7 +6,7 @@ import type { Config } from "../config.js";
 import { LockHeldError } from "../pipeline/lock.js";
 import type { EmbeddingProvider } from "../search/provider.js";
 import { StateDb } from "../state/db.js";
-import { runConnect, type ConnectDeps } from "./run.js";
+import { runConnect, VERIFY_MAX_TOKENS, type ConnectDeps } from "./run.js";
 
 let dir: string;
 let vault: string;
@@ -89,6 +89,19 @@ describe("runConnect", () => {
     expect(db.listInsights()).toEqual([]);
   });
 
+  it("estimates cost with the same output cap the real call uses", async () => {
+    const seen: number[] = [];
+    await runConnect(cfg, db, { dryRun: true }, deps([], { estimateCostUsd: (_i, out) => { seen.push(out); return 0; } }));
+    expect(seen).toEqual([VERIFY_MAX_TOKENS]);
+  });
+
+  it("dry run writes nothing, not even the embedding cache", async () => {
+    await runConnect(cfg, db, { dryRun: true }, deps([]));
+    const rows = (db as unknown as { db: { prepare: (s: string) => { get: () => { n: number } } } }).db
+      .prepare("SELECT COUNT(*) AS n FROM lesson_embeddings").get();
+    expect(rows.n).toBe(0);
+  });
+
   it("proposes one cited rule from a recurring lesson", async () => {
     const calls: string[] = [];
     const s = await runConnect(cfg, db, { dryRun: false }, deps(calls));
@@ -98,6 +111,20 @@ describe("runConnect", () => {
     expect(row?.memberSessionIds.sort()).toEqual(["s1", "s2", "s3"]);
     expect(ruleFiles()).toEqual([`${row?.slug}.md`]);
     expect(readFileSync(join(vault, "vir", "insights", "rules", `${row?.slug}.md`), "utf8")).toContain("**Rule:** Use proxy.ts in Next 16");
+  });
+
+  it("flags evidence that came from a merged duplicate", async () => {
+    mkdirSync(join(vault, "vir", "archived"), { recursive: true });
+    writeFileSync(
+      join(vault, "vir", "archived", "c-old.md"),
+      "---\ncategory: gotcha\nproject: \"growthq\"\nsession_id: s0\ndate: 2026-05-20\n---\n## What Was Learned\n\n**proxy.ts before the merge**\n",
+    );
+    const c = join(vault, "vir", "gotchas", "c.md");
+    writeFileSync(c, readFileSync(c, "utf8") + "\n## Archived Duplicates\n- [[c-old]]\n");
+    await runConnect(cfg, db, { dryRun: false }, deps([]));
+    const ev = db.listInsights()[0]?.evidence ?? [];
+    expect(ev.find((e) => e.sessionId === "s0")).toMatchObject({ citeSlug: "c", merged: true });
+    expect(ev.find((e) => e.sessionId === "s1")?.merged).toBeFalsy();
   });
 
   it("re-running over unchanged notes makes no paid call", async () => {

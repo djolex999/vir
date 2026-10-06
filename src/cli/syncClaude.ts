@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { applyPlan, planRules, planUpdates, renderRuleHunk, type PlanItem } from "../claude/updater.js";
 import type { Config } from "../config.js";
@@ -53,6 +54,23 @@ function setPromotion(cfg: Config, db: StateDb, row: InsightRow, promotion: Insi
 
 const yes = (a: string): boolean => ["y", "yes"].includes(a.trim().toLowerCase());
 const no = (a: string): boolean => ["n", "no"].includes(a.trim().toLowerCase());
+const skip = (a: string): boolean => ["s", "skip"].includes(a.trim().toLowerCase());
+
+// In a terminal, ask again on an answer we don't understand: a typo must never
+// count as a decision about the owner's CLAUDE.md. Capped, and only one try
+// without a terminal, so ended or piped input can't loop. An answer that is
+// still unreadable is treated as neither yes nor no (skip / abort).
+const MAX_TRIES = 5;
+async function askUntil(io: SyncIo, question: string, valid: (a: string) => boolean): Promise<string> {
+  const tries = io.isTTY ? MAX_TRIES : 1;
+  let answer = "";
+  for (let i = 0; i < tries; i += 1) {
+    answer = await io.ask(question);
+    if (valid(answer)) return answer;
+    if (i < tries - 1) io.print("please answer with one of the listed letters");
+  }
+  return answer;
+}
 
 // Update the VIR blocks in CLAUDE.md files. Connect-pass rules are promoted
 // one at a time, only on an interactive "y", and recorded as promoted only
@@ -60,13 +78,24 @@ const no = (a: string): boolean => ["n", "no"].includes(a.trim().toLowerCase());
 export async function runSyncClaude(cfg: Config, db: StateDb, opts: SyncOptions, io: SyncIo): Promise<void> {
   const planOpts = { project: opts.project, globalOnly: opts.globalOnly === true };
   const interactive = opts.force !== true && opts.dryRun !== true && io.isTTY;
-  const pending = planRules(db, planOpts);
+  const allPending = planRules(db, planOpts);
+  // A rule for a missing CLAUDE.md can't be written; asking would only repeat
+  // every run. Say so once instead.
+  const pending = allPending.filter((c) => existsSync(c.target));
+  const orphaned = allPending.length - pending.length;
+  if (orphaned > 0) {
+    io.print(`${orphaned} accepted rule(s) wait for a CLAUDE.md that doesn't exist — create it to be asked`);
+  }
   const approved = new Map<string, { target: string; row: InsightRow }>();
 
   if (interactive) {
     for (const c of pending) {
       io.print(renderRuleHunk(c));
-      const answer = await io.ask(`add this rule to ${collapseHome(c.target)}? (y / n / s=skip for now) `);
+      const answer = await askUntil(
+        io,
+        `add this rule to ${collapseHome(c.target)}? (y / n / s=skip for now) `,
+        (a) => yes(a) || no(a) || skip(a),
+      );
       if (yes(answer)) approved.set(c.insight.id, { target: c.target, row: c.insight });
       else if (no(answer)) setPromotion(cfg, db, c.insight, "declined");
     }
@@ -88,7 +117,8 @@ export async function runSyncClaude(cfg: Config, db: StateDb, opts: SyncOptions,
     io.print("run without --dry-run to apply");
     return;
   }
-  const proceed = opts.force === true || yes(await io.ask("apply these changes? (y/n) "));
+  const proceed =
+    opts.force === true || yes(await askUntil(io, "apply these changes? (y/n) ", (a) => yes(a) || no(a)));
   if (!proceed) {
     io.print("aborted");
     return;

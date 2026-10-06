@@ -25,6 +25,9 @@ export interface InsightEvidence {
   project: string;
   date: string;
   quote: string;
+  // From a note `vir dedupe` merged away: citeSlug is the note it merged into,
+  // so the same slug can appear twice — this tells them apart.
+  merged?: boolean;
 }
 
 // One proposed/accepted/rejected rule. The DB row is the source of truth; the

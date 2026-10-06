@@ -102,6 +102,21 @@ describe("rule text is inert in CLAUDE.md", () => {
   });
 });
 
+describe("merged sources", () => {
+  it("marks a source that came from a merged duplicate", () => {
+    const ins = sampleInsight({
+      status: "accepted", scope: "global",
+      evidence: [
+        { sessionId: "s1", citeSlug: "winner", project: "p", date: "2026-05-13", quote: "q" },
+        { sessionId: "s2", citeSlug: "winner", project: "p", date: "2026-05-13", quote: "q2", merged: true },
+      ],
+    });
+    db.upsertInsight(ins);
+    const hunk = renderRuleHunk(planRules(db, {})[0]!);
+    expect(hunk).toContain("[[winner]] (p, 2026-05-13), [[winner]] (p, 2026-05-13, merged)");
+  });
+});
+
 describe("planRules", () => {
   it("maps accepted, unpromoted rules to their CLAUDE.md target", () => {
     db.upsertInsight(sampleInsight({ id: "g", slug: "g", status: "accepted", scope: "global" }));

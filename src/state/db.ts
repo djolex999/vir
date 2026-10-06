@@ -1998,12 +1998,14 @@ export class StateDb {
 
   // Rule vectors by insight id for one status — the connect pass matches a
   // reworded re-discovery against REJECTED rules by embedding.
-  getInsightVectors(status: InsightRow["status"]): Map<string, number[]> {
+  getInsightVectors(status: InsightRow["status"], model: string): Map<string, number[]> {
     const out = new Map<string, number[]>();
     if (!this.hasInsightsTable()) return out;
     const rows = this.db
-      .prepare("SELECT id, embedding FROM insights WHERE status = ? AND embedding IS NOT NULL")
-      .all(status) as Array<{ id: string; embedding: string }>;
+      .prepare(
+        "SELECT id, embedding FROM insights WHERE status = ? AND embedding IS NOT NULL AND embedding_model = ?",
+      )
+      .all(status, model) as Array<{ id: string; embedding: string }>;
     for (const r of rows) {
       try {
         const v = (JSON.parse(r.embedding) as unknown[]).map((x) => Number(x));

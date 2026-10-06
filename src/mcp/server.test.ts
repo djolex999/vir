@@ -72,6 +72,15 @@ describe("hitMeta — insights", () => {
   });
 });
 
+describe("hitMeta — project-scoped insight", () => {
+  it("reports the project from scope so project filters keep the rule", () => {
+    const meta = hitMeta({
+      title: "insights/rules/x", content: "---\ntype: insight\nscope: project:pripremi-rs\n---\n**Rule:** R\n",
+    } as Parameters<typeof hitMeta>[0]);
+    expect(meta.project).toBe("pripremi-rs");
+  });
+});
+
 describe("hitMeta", () => {
   it("classifies a topic note as type and category 'topic'", () => {
     const meta = hitMeta(hit(TOPIC_NOTE, "topics/auth-flow-patterns"));

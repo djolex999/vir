@@ -146,7 +146,7 @@ export function hitMeta(hit: SearchHit): {
     return {
       topic: hit.content.match(/^\*\*Rule:\*\*[ \t]*(.+)$/m)?.[1]?.trim() ?? base,
       category: "insight",
-      project: "",
+      project: fm.scope?.startsWith("project:") ? fm.scope.slice("project:".length) : "",
       type: "insight",
     };
   }

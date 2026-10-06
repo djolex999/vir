@@ -34,10 +34,12 @@ export function renderInsight(row: InsightRow): string {
     "---",
   ];
   const evidence = row.evidence.map(
-    (e) => `- [[${e.citeSlug}]] (${e.project || "-"}, ${e.date.slice(0, 10)}): ${q(e.quote)}`,
+    (e) => `- [[${e.citeSlug}]] (${e.project || "-"}, ${e.date.slice(0, 10)}${e.merged ? ", merged" : ""}): ${q(e.quote)}`,
   );
   return [
     ...fm,
+    "<!-- Only the **Rule:** and **Why:** lines are kept when you edit this file; the rest is regenerated. -->",
+    "",
     `**Rule:** ${row.rule}`,
     "",
     `**Why:** ${row.why}`,

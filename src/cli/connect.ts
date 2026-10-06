@@ -1,6 +1,6 @@
 import confirm from "@inquirer/confirm";
 import { loadConfig } from "../config.js";
-import { runConnect, type ConnectDeps, type ConnectSummary } from "../connect/run.js";
+import { runConnect, VERIFY_MAX_TOKENS, type ConnectDeps, type ConnectSummary } from "../connect/run.js";
 import { computeCost, resolvePricing } from "../cost/pricing.js";
 import {
   callLLM,
@@ -13,7 +13,6 @@ import { resolveActiveProviderCached } from "../search/provider.js";
 import { StateDb } from "../state/db.js";
 import * as ui from "../ui/display.js";
 
-const VERIFY_MAX_TOKENS = 1200;
 
 export function formatConnectSummary(
   s: ConnectSummary,

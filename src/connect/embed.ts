@@ -11,7 +11,10 @@ export async function embedLessons(
   lessons: Lesson[],
   db: StateDb,
   provider: EmbeddingProvider,
+  // false for dry runs: embed what's missing but write nothing.
+  opts: { store?: boolean } = {},
 ): Promise<Map<string, number[]>> {
+  const store = opts.store !== false;
   const textByHash = new Map<string, string>();
   for (const l of lessons) textByHash.set(l.contentHash, l.text);
   const hashes = [...textByHash.keys()];
@@ -27,7 +30,7 @@ export async function embedLessons(
         `embedding provider failed after ${embedded} lesson(s) — nothing written: ${(err as Error).message}`,
       );
     }
-    db.storeLessonEmbedding(hash, provider.modelName, vec);
+    if (store) db.storeLessonEmbedding(hash, provider.modelName, vec);
     out.set(hash, vec);
     embedded += 1;
   }

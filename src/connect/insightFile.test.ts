@@ -28,12 +28,25 @@ describe("insight files", () => {
     expect(renderInsight(sampleInsight({ status: "accepted" }))).toContain("verified: true");
   });
 
+  it("marks merged evidence in the file", () => {
+    const md = renderInsight(sampleInsight({
+      evidence: [{ sessionId: "s2", citeSlug: "note-a", project: "growthq", date: "2026-06-02", quote: "q", merged: true }],
+    }));
+    expect(md).toContain('- [[note-a]] (growthq, 2026-06-02, merged): "q"');
+  });
+
+  it("tells an editor which lines are kept", () => {
+    const md = renderInsight(sampleInsight());
+    expect(md).toContain("<!-- Only the **Rule:** and **Why:** lines are kept when you edit this file; the rest is regenerated. -->");
+    expect(parseRuleEdit(md)?.rule).toBe("Use proxy.ts in Next 16");
+  });
+
   it("round-trips rule and why through an edit", () => {
     const md = renderInsight(sampleInsight());
     expect(parseRuleEdit(md)).toEqual({ rule: "Use proxy.ts in Next 16", why: "middleware.ts is deprecated and warns." });
     const edited = md.replace("**Rule:** Use proxy.ts in Next 16", "**Rule:** Always use proxy.ts on Next 16+");
     expect(parseRuleEdit(edited)?.rule).toBe("Always use proxy.ts on Next 16+");
-    expect(parseRuleEdit(md.replace(/\*\*Rule:\*\*.*\n/, ""))).toBeNull();
+    expect(parseRuleEdit(md.replace(/^\*\*Rule:\*\*.*\n/m, ""))).toBeNull();
   });
 
   it("writes atomically and overwrites in place", () => {
