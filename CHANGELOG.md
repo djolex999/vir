@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.25.1 — 2026-10-06
+
+- **`vir sync-claude` finds projects whose folder name isn't already a slug.** A project folder like `pripremi.rs` or `My App` never matched its own project slug (`pripremi-rs`, `my-app`), so its CLAUDE.md was reported as missing and skipped — it never got a VIR block, and a connect-pass rule scoped to it could not be promoted. Folders under `~/projects`, `~/code` and `~/dev` whose kebab-cased name equals the slug are now matched, after every exact match, so projects that already resolved are unaffected.
+
 ## 0.25.0 — 2026-10-06
 
 **vir notices lessons you keep re-learning and proposes them as rules — cited, reviewed, and added to CLAUDE.md only with your yes. Plus a skill so any coding agent can use your notes.**
