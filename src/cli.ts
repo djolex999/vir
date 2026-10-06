@@ -56,6 +56,7 @@ import * as ui from "./ui/display.js";
 import { VaultWriter } from "./pipeline/writer.js";
 import { withPipelineLock } from "./cli/guards.js";
 import { cmdConnect } from "./cli/connect.js";
+import { cmdReviewInsights } from "./cli/reviewInsights.js";
 import { runDoctor, runDoctorJson } from "./diagnostics/doctor.js";
 import { embedCommand } from "./cli/embed.js";
 import { lintCommand } from "./cli/lint.js";
@@ -1005,11 +1006,22 @@ program
   .option("--limit <n>", "Max notes to review in this session", "50")
   .option("--restore <note>", "Move one rejected note back out of .rejected/")
   .option("--audited", "Walk notes vir audit flagged, worst first")
+  .option("--insights", "Walk rules proposed by vir connect: accept, edit or reject")
   .option("--approve <path>", "Approve one note (needs --json)")
   .option("--reject <path>", "Reject one note into .rejected/ (needs --json)")
   .option("--json", "Non-interactive: print the --audited queue or one action's result as JSON")
   .action(
-    runAction(async (opts: ReviewCliOptions & ReviewJsonOptions & { json?: boolean }) => {
+    runAction(async (opts: ReviewCliOptions & ReviewJsonOptions & { json?: boolean; insights?: boolean }) => {
+      if (opts.insights) {
+        const cfg = loadConfig();
+        const db = new StateDb();
+        try {
+          await withPipelineLock(() => cmdReviewInsights(cfg, db));
+        } finally {
+          db.close();
+        }
+        return;
+      }
       if (opts.json) {
         runReviewJson(opts);
         return;
