@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { classifyRow, type PruneRow } from "./classify.js";
+import { createClaudeCodeSource } from "../sources/claudeCode.js";
+import { classifyRow, classifyRowWith, type PruneRow } from "./classify.js";
 
 const PROJECTS = "/home/u/.claude/projects";
 const row = (over: Partial<PruneRow> = {}): PruneRow => ({
@@ -82,5 +83,30 @@ describe("prune classification", () => {
         PROJECTS,
       ),
     ).toEqual({ action: "keep", reason: "merge-winner" });
+  });
+});
+
+describe("classifyRowWith (sources)", () => {
+  const cases: PruneRow[] = [
+    row({ path: `${PROJECTS}/-home-u-app/subagents/xyz.jsonl` }),
+    row({ path: `${PROJECTS}/-home-u-app/subagents/wf_123/x.jsonl` }),
+    row({ entrypoint: "sdk-py" }),
+    row({ entrypoint: "claude-desktop" }),
+    row({ isMergeWinner: true, entrypoint: "sdk-py" }),
+    row(),
+    row({ path: "/elsewhere/-home-u-app/subagents/xyz.jsonl" }),
+  ];
+
+  it("decides every row exactly like classifyRow", () => {
+    const sources = [createClaudeCodeSource(PROJECTS)];
+    for (const r of cases) {
+      expect(classifyRowWith(r, sources), r.path).toEqual(classifyRow(r, PROJECTS));
+    }
+  });
+
+  it("treats a path no source owns as an ordinary session", () => {
+    expect(
+      classifyRowWith(row({ path: "/elsewhere/-home-u-app/subagents/xyz.jsonl" }), []),
+    ).toEqual({ action: "keep", reason: "unclassifiable" });
   });
 });

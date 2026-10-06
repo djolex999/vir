@@ -1,4 +1,6 @@
-import { classifyTranscript } from "../pipeline/projects.js";
+import { createClaudeCodeSource } from "../sources/claudeCode.js";
+import { resolveSource } from "../sources/registry.js";
+import type { SessionSource } from "../sources/types.js";
 
 // Why a row is being demoted. These mirror the forward-only skip reasons
 // 0.14.0 introduced, so the vault tells one story about agent transcripts
@@ -29,6 +31,15 @@ export interface PruneRow {
 // needs to READ the transcript can decide almost nothing. Everything here comes
 // from the stored path and the stored entrypoint.
 export function classifyRow(row: PruneRow, projectsDir: string): PruneDecision {
+  return classifyRowWith(row, [createClaudeCodeSource(projectsDir)]);
+}
+
+// Same decision, with the structural check asked of whichever source owns the
+// path. A path no source owns is an ordinary session: never guess.
+export function classifyRowWith(
+  row: PruneRow,
+  sources: SessionSource[],
+): PruneDecision {
   // A merge winner's sources are not recorded anywhere, so it can never be
   // SHOWN to be all-agent. Checked first: it outranks every prune signal.
   if (row.isMergeWinner) return { action: "keep", reason: "merge-winner" };
@@ -42,7 +53,7 @@ export function classifyRow(row: PruneRow, projectsDir: string): PruneDecision {
       : { action: "keep", reason: "human-entrypoint" };
   }
 
-  const structural = classifyTranscript(row.path, projectsDir);
+  const structural = resolveSource(sources, row.path).category(row.path);
   if (structural === "workflow")
     return { action: "prune", reason: "workflow-transcript" };
   if (structural === "sidechain")

@@ -8,14 +8,8 @@ import { computeCost } from "../cost/pricing.js";
 import { Distiller, normalizeModelName, resolveModelShorthand } from "../pipeline/distiller.js";
 import { ClaudeCliLimitError } from "../pipeline/claudeCli.js";
 import { acquireLock, LockHeldError, releaseLock } from "../pipeline/lock.js";
-import { parseSession } from "../pipeline/parser.js";
-import {
-  classifyTranscript,
-  decideProject,
-  projectNameFor,
-  readTranscriptHead,
-  sniffAgentEntrypoint,
-} from "../pipeline/projects.js";
+import { decideProject } from "../pipeline/projects.js";
+import { buildSources, resolveSource } from "../sources/registry.js";
 import { scrub } from "../pipeline/scrubber.js";
 import { filterToolCalls } from "../pipeline/toolCallFilter.js";
 import { VaultWriter } from "../pipeline/writer.js";
@@ -77,10 +71,10 @@ export function reconcileGate(
     Config,
     "claudeProjectsDir" | "workflowTranscripts" | "agentTranscripts" | "projects"
   >,
-  readHead: (path: string) => string = readTranscriptHead,
 ): { reason: SkipReason; entrypoint?: string } | null {
+  const source = resolveSource(buildSources(cfg), t.path);
   if (cfg.workflowTranscripts !== "include") {
-    const cat = classifyTranscript(t.path, cfg.claudeProjectsDir);
+    const cat = source.category(t.path);
     if (cat !== "session") {
       return {
         reason: cat === "workflow" ? "workflow-transcript" : "sidechain-transcript",
@@ -88,11 +82,11 @@ export function reconcileGate(
     }
   }
   if (cfg.agentTranscripts !== "include") {
-    const entrypoint = sniffAgentEntrypoint(readHead(t.path));
+    const entrypoint = source.agentEntrypoint(t.path);
     if (entrypoint !== null) return { reason: "agent-transcript", entrypoint };
   }
   const decision = decideProject(
-    projectNameFor(t.path, cfg.claudeProjectsDir),
+    source.projectName(t.path),
     cfg.projects ?? {},
   );
   if (decision === "exclude") return { reason: "project-excluded" };
@@ -163,7 +157,7 @@ export function summarizeReconcileTargets(
     // Subscription path: retries cost quota, not dollars — estimate stays 0.
     if (cfg.provider !== "claude-cli" && !missing) {
       try {
-        const parsed = parseSession(t.path, t.hash);
+        const parsed = resolveSource(buildSources(cfg), t.path).parse(t.path, t.hash);
         const classifyIn = Math.ceil(
           scrub(parsed.rawSummary).length / CHARS_PER_TOKEN,
         );
@@ -388,11 +382,8 @@ export async function runReconcile(
       // are cached but we know their stored content is empty, so we want a
       // forced retry. Parse, score, distill, then update the row in place.
       try {
-        const parsed = parseSession(
-          t.path,
-          t.hash,
-          projectNameFor(t.path, cfg.claudeProjectsDir),
-        );
+        const source = resolveSource(buildSources(cfg), t.path);
+        const parsed = source.parse(t.path, t.hash, source.projectName(t.path));
         const outcome = await distillOneSession(parsed, t, {
           cfg,
           db,

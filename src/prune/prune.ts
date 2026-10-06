@@ -13,7 +13,9 @@ import { acquireLock, releaseLock, LOCK_PATH } from "../pipeline/lock.js";
 import { makeSlug } from "../pipeline/slug.js";
 import { CATEGORY_DIR, REJECTED_DIR } from "../pipeline/writer.js";
 import type { PruneCandidateRow, StateDb } from "../state/db.js";
-import { classifyRow, type PruneDecision } from "./classify.js";
+import { buildSources } from "../sources/registry.js";
+import type { SessionSource } from "../sources/types.js";
+import { classifyRowWith, type PruneDecision } from "./classify.js";
 
 // Frontmatter keys prune owns. Deliberately NOT review's `rejected_at`: a note
 // can be both review-rejected and pruned, and stripping a key we did not write
@@ -66,7 +68,11 @@ function noteIsMergeWinner(notePath: string): boolean {
   }
 }
 
-function toItem(row: PruneCandidateRow, cfg: Config): PrunePlanItem {
+function toItem(
+  row: PruneCandidateRow,
+  cfg: Config,
+  sources: SessionSource[],
+): PrunePlanItem {
   const sessionId = deriveSessionId(row.path);
   const slug = makeSlug(row.topic, sessionId);
   const notePath = join(
@@ -83,13 +89,13 @@ function toItem(row: PruneCandidateRow, cfg: Config): PrunePlanItem {
     noteExists,
     topic: row.topic,
     project: row.project,
-    decision: classifyRow(
+    decision: classifyRowWith(
       {
         path: row.path,
         entrypoint: row.entrypoint,
         isMergeWinner: noteExists && noteIsMergeWinner(notePath),
       },
-      cfg.claudeProjectsDir,
+      sources,
     ),
   };
 }
@@ -129,13 +135,14 @@ export function buildPrunePlan(db: StateDb, cfg: Config): PrunePlan {
   let alreadyPruned = 0;
   const byReason: Record<string, number> = {};
   const byKeepReason: Record<string, number> = {};
+  const sources = buildSources(cfg);
 
   for (const row of db.listPruneCandidates()) {
     if (row.pruned_at !== null) {
       alreadyPruned += 1;
       continue;
     }
-    const item = toItem(row, cfg);
+    const item = toItem(row, cfg, sources);
     if (item.decision.action === "prune") {
       prune.push(item);
       byReason[item.decision.reason] = (byReason[item.decision.reason] ?? 0) + 1;
@@ -219,10 +226,11 @@ export function restorePruned(
     const rejectedDir = join(vaultRoot(cfg), REJECTED_DIR);
     let restored = 0;
     let missing = 0;
+    const sources = buildSources(cfg);
 
     for (const row of db.listPruneCandidates()) {
       if (row.pruned_at === null) continue;
-      const item = toItem(row, cfg);
+      const item = toItem(row, cfg, sources);
       const src = join(rejectedDir, `${item.slug}.md`);
       if (existsSync(src)) {
         const stripped = removeFrontmatterKeys(readFileSync(src, "utf8"), [
