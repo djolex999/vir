@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.25.2 — 2026-10-06
+
+- **Ships the 0.25.1 fix for real.** The 0.25.1 package was built a moment before the fix was merged, so it carried 0.25.0 code: `vir sync-claude` still skipped project folders like `pripremi.rs`. 0.25.2 is the same source as 0.25.1, built correctly.
+
 ## 0.25.1 — 2026-10-06
 
 - **`vir sync-claude` finds projects whose folder name isn't already a slug.** A project folder like `pripremi.rs` or `My App` never matched its own project slug (`pripremi-rs`, `my-app`), so its CLAUDE.md was reported as missing and skipped — it never got a VIR block, and a connect-pass rule scoped to it could not be promoted. Folders under `~/projects`, `~/code` and `~/dev` whose kebab-cased name equals the slug are now matched, after every exact match, so projects that already resolved are unaffected.
