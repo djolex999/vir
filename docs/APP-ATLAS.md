@@ -8,7 +8,7 @@
 
 ## Start here
 
-**What the product does.** vir reads the transcripts Claude Code leaves on your disk and turns the useful sessions into short, typed notes in an Obsidian vault. It then feeds that knowledge back into Claude Code two ways: a block it writes into your `CLAUDE.md` files, and an MCP server Claude Code can query mid-session. Web articles and PDFs you clip go through the same pipeline.
+**What the product does.** vir reads the transcripts Claude Code leaves on your disk and turns the useful sessions into short, typed notes in a folder of Markdown (usually an Obsidian vault, but any folder works). It then feeds that knowledge back into Claude Code two ways: a block it writes into your `CLAUDE.md` files, and an MCP server Claude Code can query mid-session. Web articles and PDFs you clip go through the same pipeline.
 
 **Suggested reading order.** The **15-minute tour**: this section, section 1, section 2, the plain-language summary at the top of each flow in section 4, the three tables in section 8, and the top five items in section 9. The **full read** goes from section 1 to 13 in order; treat sections 3, 5 and 6 as lookups. Section 12 is interview preparation.
 
@@ -20,7 +20,7 @@
 
 **TL;DR:** A local, single-user command-line tool and background job that turns AI coding sessions into a searchable knowledge vault and feeds it back to the AI.
 
-vir has one kind of user: a developer who uses Claude Code and keeps an Obsidian vault. There are no accounts and no server. Everything runs on that developer's machine: a command-line tool (`vir`), a scheduled background run (the *daemon*, launchd on macOS), a SQLite database in `~/.vir/vir.db`, and Markdown notes in the vault. The problem it solves is forgetting: every Claude Code session ends with decisions, fixes and gotchas that the next session does not know about. vir distills those sessions into four kinds of note (`pattern`, `gotcha`, `decision`, `tool`; `src/pipeline/types.ts:Category`) and makes them retrievable.
+vir has one kind of user: a developer who uses Claude Code and keeps their notes in a Markdown folder, typically an Obsidian vault. There are no accounts and no server. Everything runs on that developer's machine: a command-line tool (`vir`), a scheduled background run (the *daemon*, launchd on macOS), a SQLite database in `~/.vir/vir.db`, and Markdown notes in the vault. The problem it solves is forgetting: every Claude Code session ends with decisions, fixes and gotchas that the next session does not know about. vir distills those sessions into four kinds of note (`pattern`, `gotcha`, `decision`, `tool`; `src/pipeline/types.ts:Category`) and makes them retrievable.
 
 The product behaves the same for everyone; what varies is configuration. The user picks a *provider* that does the AI work: the Anthropic API (pay per token), Kie.ai (a cheaper reseller of the same models), or `claude-cli`, which runs the Claude Code CLI itself and spends the user's Claude subscription quota instead of dollars (`src/config.ts:ConfigSchema`, `provider`). The user also decides, per project, whether its sessions are distilled at all. A companion Obsidian plugin reads the vault and drives review through the CLI's `--json` mode; that plugin is a separate repository.
 
@@ -40,7 +40,7 @@ flowchart LR
   CLI -- HTTPS / spawn claude -p --> LLM[LLM provider: Anthropic, Kie, claude CLI]
   CLI -- HTTP localhost --> EMB[Embedder: Ollama or local fastembed]
   CLI -- read/write --> DB[(SQLite ~/.vir/vir.db)]
-  CLI -- read/write --> V[(Obsidian vault, Markdown)]
+  CLI -- read/write --> V[(Notes folder / Obsidian vault, Markdown)]
   CLI -- VIR block --> CM[(CLAUDE.md files)]
   MCP -- read-only --> DB
   MCP -- reads --> V
@@ -53,7 +53,7 @@ flowchart LR
 | `vir` CLI | User's machine (Node ≥ 20) | Everything | None |
 | Daemon | launchd (macOS), systemd user timer or cron (Linux) | No automatic distills; manual `vir run` still works | Manual runs |
 | SQLite `~/.vir/vir.db` | Local file, WAL mode | All state: what was processed, vectors, review overlays | None; it is the source of truth |
-| Obsidian vault | Local folder | The product output | Plain files; recoverable by re-rendering (`vir run --rewrite-only`) |
+| Notes folder (Obsidian vault optional) | Local folder | The product output | Plain files; recoverable by re-rendering (`vir run --rewrite-only`) |
 | LLM provider | Anthropic API, Kie.ai API, or local `claude` CLI | No new notes; MCP answers fail | One preflight probe stops the run cleanly; sessions retry next run |
 | Embedder | Ollama on `localhost:11434`, or fastembed installed into `~/.vir/embedder` | Semantic search degrades | TF-IDF keyword search over the vault files; a sweep back-fills vectors later |
 | MCP server | Child process of Claude Code | Agent cannot query the vault | None needed; CLI still works |

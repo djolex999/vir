@@ -5,7 +5,8 @@
 <h1 align="center">vir</h1>
 
 <p align="center">
-  An LLM Wiki for Claude Code, in your Obsidian vault.
+  Karpathy's LLM Wiki, built automatically from your Claude Code sessions.<br>
+  Plain markdown you own: best in Obsidian, fine without it.
 </p>
 
 <p align="center">
@@ -22,7 +23,7 @@ developer-tools, mcp, local-first, cross-platform, llm-wiki
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/v/@djolex999/vir-cli?color=7c6af7&label=npm" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/dw/@djolex999/vir-cli?color=4fd1a0" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee" alt="license"></a>
-  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1073%20passing-22c55e" alt="tests"></a>
+  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1075%20passing-22c55e" alt="tests"></a>
   <a href="#project-status"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey" alt="platforms"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-c084fc" alt="mcp"></a>
   <a href="#"><img src="https://img.shields.io/badge/local--first-yes-f59e0b" alt="local-first"></a>
@@ -56,7 +57,7 @@ vir init
 vir run
 ```
 
-`vir init` is a wizard: provider, models, vault path. `vir run` does one pass
+`vir init` is a wizard: provider, models, notes folder. `vir run` does one pass
 over your sessions and writes notes. When you like the output,
 `vir schedule install` registers a daemon that keeps the vault current.
 
@@ -87,7 +88,7 @@ Claude Code sessions
       ↓
      vir
       ↓
-Obsidian vault
+markdown notes (Obsidian vault optional)
       ↓
   CLAUDE.md
       ↓
@@ -112,12 +113,15 @@ Several open source implementations of this pattern now exist
 [nashsu/llm_wiki](https://github.com/nashsu/llm_wiki) among them). Each takes
 a different shape.
 
-Vir is the Obsidian-native one. It treats Obsidian as the primary frontend,
-not just a storage location: a sidebar plugin
+Vir is the one built from your own coding sessions, and it is Obsidian-native
+when you want it. In Obsidian it is a frontend, not just a storage location: a
+sidebar plugin
 ([vir-obsidian](https://github.com/djolex999/vir-obsidian)),
 dataview-compatible frontmatter, wikilinked notes that show up in the graph.
 It reads AI coding session transcripts retroactively, so months of existing
-history become a queryable knowledge base in one run.
+history become a queryable knowledge base in one run. Without Obsidian it is a
+folder of markdown, and `vir query` and the MCP server work with no editor at
+all.
 
 [Karpathy's post →](https://x.com/karpathy/status/2039805659525644595)
 
@@ -141,7 +145,7 @@ worse results, not better."_ Fair. Vir addresses it in layers:
 - **Opt-in `CLAUDE.md` sync.** Nothing vir generates touches your prompt
   context automatically. `vir sync-claude` shows a diff and waits for your
   confirmation. You decide what reaches Claude.
-- **Plain markdown output.** Every note is a file in your Obsidian vault. Read
+- **Plain markdown output.** Every note is a file in your notes folder. Read
   it, edit it, delete it. Nothing is hidden in a database you can't inspect.
 - **Lint and dedupe.** `vir lint` flags contradictions and stale notes;
   `vir dedupe` merges near-duplicate notes that have drifted apart.
@@ -206,8 +210,8 @@ Different tools for different needs:
   capture and vector storage, use claude-mem.
 - **If you're building AI applications that need to remember users**
   long-term, use mem0 (different layer entirely).
-- **If you want an Obsidian-native LLM Wiki** that reads your existing Claude
-  Code sessions, use vir.
+- **If you want an LLM Wiki that reads your existing Claude Code sessions**,
+  Obsidian-native or just a folder of markdown, use vir.
 
 ## Numbers from a real run
 
@@ -224,7 +228,8 @@ Output from my first run across 226 Claude Code sessions:
 
 Other LLM Wiki implementations would produce similar results with the same
 input. The distinguishing question for vir is workflow fit: does
-Obsidian-native plus retroactive match how you actually work?
+retroactive distillation of your own sessions, Obsidian-native when you want
+it, match how you actually work?
 
 Example query against the distilled vault:
 
@@ -255,12 +260,27 @@ sources 4 · via embedding · searched 126
 - macOS or Linux (systemd or cron)
 - Node.js 20+
 - Claude Code (sessions at `~/.claude/projects/`)
-- Obsidian vault
+- A folder for notes. An Obsidian vault works great but is optional; see
+  [Without Obsidian](#without-obsidian).
 - A distill provider — any one of:
   - Anthropic API key (predictable per-session cost, no effect on your Claude Code limits)
   - Your Claude Code subscription (`provider: "claude-cli"` — free and keyless; distills consume your Claude Code usage limits)
   - Kie.ai API key (~72% cheaper, third-party proxy — used for testing and calibration runs, not recommended for your real vault)
 - Optional: Ollama + `nomic-embed-text` for semantic search
+
+
+## Without Obsidian
+
+vir writes plain markdown with YAML frontmatter. Obsidian is the nicest way to
+browse it, but nothing depends on it:
+
+- **Any editor works.** Notes are ordinary `.md` files under `<notes folder>/vir/`.
+  `[[wikilinks]]` read fine as text, and VS Code with Foam or Markdown Memo
+  resolves them as links.
+- **No editor needed for retrieval.** `vir query "<question>"` and the MCP server
+  (`vir mcp install`) search the folder directly.
+- **Point `vir init` at any folder.** If no Obsidian vault exists, it suggests
+  `~/notes` and creates it.
 
 ## Cost
 
@@ -456,7 +476,7 @@ Located at `~/.vir/config.json`.
 
 | Field               | Default                     | Description                                                |
 | ------------------- | --------------------------- | ---------------------------------------------------------- |
-| `vaultPath`         | (required)                  | Absolute path to Obsidian vault                            |
+| `vaultPath`         | (required)                  | Absolute path to your notes folder (Obsidian vault optional) |
 | `outputDir`         | `vir`                       | Subdir inside vault                                        |
 | `claudeProjectsDir` | `~/.claude/projects`        | Claude Code sessions                                       |
 | `cadenceHours`      | `3`                         | Daemon run frequency (hours)                               |
