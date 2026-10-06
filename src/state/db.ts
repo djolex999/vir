@@ -408,6 +408,12 @@ export class StateDb {
         embedding TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_pdfs_hash ON pdfs(hash);
+      CREATE TABLE IF NOT EXISTS lesson_embeddings (
+        content_hash TEXT NOT NULL,
+        model TEXT NOT NULL,
+        vector TEXT NOT NULL,
+        PRIMARY KEY (content_hash, model)
+      );
     `);
     this.migrate();
   }
@@ -1839,6 +1845,42 @@ export class StateDb {
         )
         .run(JSON.stringify(embedding), provenance.model, provenance.dim, id).changes > 0
     );
+  }
+
+  // Connect-pass lesson vectors, cached by normalized-text hash so an
+  // unchanged lesson is embedded once per model.
+  storeLessonEmbedding(hash: string, model: string, vector: number[]): void {
+    this.db
+      .prepare(
+        "INSERT OR REPLACE INTO lesson_embeddings (content_hash, model, vector) VALUES (?, ?, ?)",
+      )
+      .run(hash, model, JSON.stringify(vector));
+  }
+
+  getLessonEmbeddings(hashes: string[], model: string): Map<string, number[]> {
+    const out = new Map<string, number[]>();
+    for (let i = 0; i < hashes.length; i += 500) {
+      const chunk = hashes.slice(i, i + 500);
+      if (chunk.length === 0) continue;
+      const rows = this.db
+        .prepare(
+          `SELECT content_hash, vector FROM lesson_embeddings
+           WHERE model = ? AND content_hash IN (${chunk.map(() => "?").join(",")})`,
+        )
+        .all(model, ...chunk) as Array<{ content_hash: string; vector: string }>;
+      for (const r of rows) {
+        try {
+          const parsed = JSON.parse(r.vector) as unknown;
+          if (!Array.isArray(parsed)) continue;
+          const vec = parsed.map((x) => Number(x));
+          if (vec.some((n) => !Number.isFinite(n))) continue;
+          out.set(r.content_hash, vec);
+        } catch {
+          continue;
+        }
+      }
+    }
+    return out;
   }
 
   close(): void {
