@@ -326,6 +326,19 @@ export function vaultRoot(cfg: Config): string {
   return join(cfg.vaultPath, cfg.outputDir);
 }
 
+// `status` from the frontmatter block ONLY (never the body), last key wins —
+// the same reading parseFrontmatter gives. A body line can't smuggle a status.
+export function frontmatterStatus(raw: string): string | null {
+  const block = raw.match(/^---\n([\s\S]*?)\n---(?:\n|$)/)?.[1];
+  if (block === undefined) return null;
+  let status: string | null = null;
+  for (const line of block.split("\n")) {
+    const m = line.match(/^status:\s*["']?([^"'\s]+)["']?\s*$/);
+    if (m?.[1] !== undefined) status = m[1];
+  }
+  return status;
+}
+
 export function loadIndex(cfg: Config): IndexedDoc[] {
   const root = vaultRoot(cfg);
   const files: string[] = [];
@@ -342,9 +355,7 @@ export function loadIndex(cfg: Config): IndexedDoc[] {
       continue;
     }
     // Connect-pass rules are servable only once the owner accepted them.
-    if (rel.startsWith("insights/") && !/^---\n[\s\S]*?\nstatus:\s*accepted\s*\n[\s\S]*?---/.test(raw)) {
-      continue;
-    }
+    if (rel.startsWith("insights/") && frontmatterStatus(raw) !== "accepted") continue;
     const text = stripMarkdown(raw);
     const tokens = tokenize(text);
     const tf = termFrequency(tokens);

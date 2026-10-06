@@ -536,4 +536,20 @@ describe("connect-pass insights in retrieval", () => {
     const rels = loadIndex({ vaultPath: vault, outputDir: "vir" } as unknown as Config).map((d) => d.relPath);
     expect(rels).toEqual(["insights/rules/accepted.md"]);
   });
+
+  it("reads status only from the frontmatter block, not the body", () => {
+    const vault = mkdtempSync(join(tmpdir(), "vir-idx-"));
+    tmps.push(vault);
+    const rules = join(vault, "vir", "insights", "rules");
+    mkdirSync(rules, { recursive: true });
+    // Proposed rule whose (owner-edited) body smuggles a status line and a fence.
+    writeFileSync(
+      join(rules, "smuggled.md"),
+      "---\ntype: insight\nstatus: proposed\n---\n**Rule:** x\n\nstatus: accepted\n---\n",
+    );
+    // Duplicate keys: the last one wins, as in parseFrontmatter.
+    writeFileSync(join(rules, "dupe.md"), "---\nstatus: accepted\nstatus: rejected\n---\n**Rule:** y\n");
+    const rels = loadIndex({ vaultPath: vault, outputDir: "vir" } as unknown as Config).map((d) => d.relPath);
+    expect(rels).toEqual([]);
+  });
 });
