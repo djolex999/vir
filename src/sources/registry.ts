@@ -8,6 +8,7 @@ import {
   type ProjectGroup,
 } from "../pipeline/projects.js";
 import { createClaudeCodeSource } from "./claudeCode.js";
+import { createCodexSource } from "./codex/source.js";
 import type { SessionSource, SourceSession } from "./types.js";
 
 export type SourceConfig = Pick<Config, "claudeProjectsDir" | "codexSessionsDir">;
@@ -16,6 +17,9 @@ export function buildSources(cfg: SourceConfig): SessionSource[] {
   const sources: SessionSource[] = [];
   if (cfg.claudeProjectsDir) {
     sources.push(createClaudeCodeSource(cfg.claudeProjectsDir));
+  }
+  if (cfg.codexSessionsDir) {
+    sources.push(createCodexSource(cfg.codexSessionsDir));
   }
   return sources;
 }
