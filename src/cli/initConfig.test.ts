@@ -108,6 +108,7 @@ const EXISTING: Config = {
   claudeProjectsDir: "/claude",
   cadenceHours: 4,
   provider: "kie",
+  connectMaxCandidates: 10,
   anthropicApiKey: "sk-ant-existing-key",
   kieApiKey: "kie-existing-key",
   kieTopUpTier: "high",

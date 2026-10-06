@@ -41,6 +41,7 @@ function sampleConfig(): Config {
     claudeProjectsDir: join(tmpHome, ".claude", "projects"),
     cadenceHours: 3,
     provider: "anthropic",
+    connectMaxCandidates: 10,
     anthropicApiKey: "sk-ant-test",
     kieTopUpTier: "standard",
     filterThreshold: 0.4,

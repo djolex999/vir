@@ -84,6 +84,7 @@ describe("Distiller distill prompt seam", () => {
       claudeProjectsDir: "/tmp/p",
       cadenceHours: 3,
       provider: "kie",
+      connectMaxCandidates: 10,
       kieApiKey: "k",
       kieTopUpTier: "standard",
       filterThreshold: 0.4,
