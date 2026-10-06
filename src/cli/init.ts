@@ -19,15 +19,19 @@ import {
 import { setupNotifications } from "./notificationsSetup.js";
 import {
   categorizeTranscriptHead,
-  classifyTranscript,
   estimateSessionCost,
-  groupByProject,
   readTranscriptHead,
 } from "../pipeline/projects.js";
+import {
+  buildSources,
+  groupSessions,
+  resolveSource,
+  scanAll,
+} from "../sources/registry.js";
 import { promptProjectDecisions } from "./projectSelect.js";
-import { scanSessions } from "../pipeline/scanner.js";
 import { normalizeModelName } from "../pipeline/distiller.js";
 import { buildInitConfig } from "./initConfig.js";
+import { defaultNotesDir } from "./notesDir.js";
 import { installToClaudeCode } from "../mcp/install.js";
 import * as ui from "../ui/display.js";
 
@@ -42,15 +46,13 @@ export async function cmdInit(): Promise<void> {
   let vaultPath = "";
   for (;;) {
     vaultPath = await input({
-      message: "Obsidian vault path",
-      default:
-        existing?.vaultPath ??
-        join(homedir(), "Documents", "Obsidian", "MyVault"),
+      message: "Notes folder (any folder of markdown — an Obsidian vault works too)",
+      default: existing?.vaultPath ?? defaultNotesDir(homedir(), existsSync),
     });
     const expanded = expandHome(vaultPath);
     if (existsSync(expanded)) break;
     const create = await confirm({
-      message: `Vault path does not exist (${expanded}). Create it?`,
+      message: `Folder does not exist (${expanded}). Create it?`,
       default: true,
     });
     if (create) {
@@ -66,7 +68,7 @@ export async function cmdInit(): Promise<void> {
   }
 
   const outputDir = await input({
-    message: "Output subdir inside vault",
+    message: "Output subfolder inside the notes folder",
     default: existing?.outputDir ?? "vir",
   });
 
@@ -96,16 +98,14 @@ export async function cmdInit(): Promise<void> {
   let articlesDir: string | undefined = existing?.articlesDir;
   const wantsArticles = await confirm({
     message:
-      "Do you save web articles to a folder (e.g. Obsidian Web Clipper)?",
+      "Do you save web articles as markdown to a folder (e.g. a web clipper)?",
     default: existing?.articlesDir !== undefined,
   });
   if (wantsArticles) {
     for (;;) {
       articlesDir = await input({
         message: "Articles (raw/) directory",
-        default:
-          existing?.articlesDir ??
-          join(homedir(), "Documents", "Obsidian", "raw"),
+        default: existing?.articlesDir ?? join(expandHome(vaultPath), "raw"),
       });
       const expanded = expandHome(articlesDir);
       if (existsSync(expanded)) break;
@@ -306,13 +306,14 @@ export async function cmdInit(): Promise<void> {
   let agentTranscriptsAnswer: "exclude" | "include" | undefined;
   try {
     const projectsDirX = expandHome(claudeProjectsDir);
-    const allFound = scanSessions(projectsDirX);
+    const sources = buildSources({ claudeProjectsDir: projectsDirX });
+    const allFound = scanAll(sources);
     // Triage counts + the agent-transcript question. Only top-level
     // transcripts count (nested workflow/sidechain have their own filter),
     // and agent transcripts are excluded from the per-project multi-select
     // numbers so the costs shown reflect what would actually distill.
     const topLevel = allFound.filter(
-      (s) => classifyTranscript(s.path, projectsDirX) === "session",
+      (s) => resolveSource(sources, s.path).category(s.path) === "session",
     );
     const counts = { interactive: 0, agent: 0, stub: 0 };
     const agentPaths = new Set<string>();
@@ -345,7 +346,7 @@ export async function cmdInit(): Promise<void> {
       agentTranscriptsAnswer !== "include"
         ? topLevel.filter((s) => !agentPaths.has(s.path))
         : topLevel;
-    const groups = [...groupByProject(found, projectsDirX).values()];
+    const groups = [...groupSessions(found, sources).values()];
     if (groups.length > 0) {
       const classifyId = normalizeModelName(classifyModel, provider);
       const distillId = normalizeModelName(distillModel, provider);

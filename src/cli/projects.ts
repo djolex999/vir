@@ -1,14 +1,10 @@
 import type { Config } from "../config.js";
 import {
-  classifyTranscript,
   estimateSessionCost,
-  groupByProject,
-  readTranscriptHead,
-  sniffAgentEntrypoint,
   type ProjectGroup,
 } from "../pipeline/projects.js";
 import { normalizeModelName } from "../pipeline/distiller.js";
-import { scanSessions } from "../pipeline/scanner.js";
+import { buildSources, groupSessions, resolveSource, scanAll } from "../sources/registry.js";
 import { StateDb } from "../state/db.js";
 
 export interface SessionMetaRow {
@@ -108,7 +104,8 @@ export function buildProjectsReport(
 // dir, read DB status, apply config decisions. Opens its own StateDb unless
 // one is passed in.
 export function gatherProjectsReport(cfg: Config): ProjectReportRow[] {
-  const found = scanSessions(cfg.claudeProjectsDir);
+  const sources = buildSources(cfg);
+  const found = scanAll(sources);
   // Partition out nested agent-internal transcripts (unless the knob says
   // include) so they annotate the table instead of counting as sessions.
   let inScope = found;
@@ -121,7 +118,7 @@ export function gatherProjectsReport(cfg: Config): ProjectReportRow[] {
   if (cfg.workflowTranscripts !== "include") {
     inScope = [];
     for (const s of found) {
-      const cat = classifyTranscript(s.path, cfg.claudeProjectsDir);
+      const cat = resolveSource(sources, s.path).category(s.path);
       if (cat === "session") inScope.push(s);
       else {
         filteredOut.push(s);
@@ -133,7 +130,7 @@ export function gatherProjectsReport(cfg: Config): ProjectReportRow[] {
   if (cfg.agentTranscripts !== "include") {
     const stillHuman: typeof found = [];
     for (const s of inScope) {
-      if (sniffAgentEntrypoint(readTranscriptHead(s.path)) !== null) {
+      if (resolveSource(sources, s.path).agentEntrypoint(s.path) !== null) {
         filteredOut.push(s);
         catByPath.set(s.path, "agent");
       } else {
@@ -142,14 +139,14 @@ export function gatherProjectsReport(cfg: Config): ProjectReportRow[] {
     }
     inScope = stillHuman;
   }
-  for (const g of groupByProject(filteredOut, cfg.claudeProjectsDir).values()) {
+  for (const g of groupSessions(filteredOut, sources).values()) {
     const counts = { workflow: 0, sidechain: 0, agent: 0 };
     for (const s of g.sessions) {
       counts[catByPath.get(s.path) ?? "sidechain"] += 1;
     }
     nested.set(g.name, counts);
   }
-  const groups = [...groupByProject(inScope, cfg.claudeProjectsDir).values()];
+  const groups = [...groupSessions(inScope, sources).values()];
   // A project whose transcripts are ALL nested would vanish from the table —
   // keep it visible with an empty session group.
   for (const name of nested.keys()) {

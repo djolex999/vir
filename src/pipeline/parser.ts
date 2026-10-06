@@ -165,7 +165,7 @@ function safeStringify(input: unknown): string {
 
 // A tool_result's content is either a plain string or an array of content
 // blocks (text/image/…). Flatten to text; represent non-text blocks compactly.
-function extractToolResultContent(content: unknown): string {
+export function extractToolResultContent(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   const parts: string[] = [];
@@ -178,7 +178,7 @@ function extractToolResultContent(content: unknown): string {
   return parts.join("\n");
 }
 
-function buildRawSummary(opts: {
+export function buildRawSummary(opts: {
   userText: string;
   assistantText: string;
   toolCallCount: number;

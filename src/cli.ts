@@ -12,14 +12,12 @@ import { applyPlan, planUpdates, type PlanItem } from "./claude/updater.js";
 import { pruneCommand } from "./cli/pruneAction.js";
 import { setupNotifications } from "./cli/notificationsSetup.js";
 import { runPipeline } from "./pipeline/run.js";
-import { projectNameFor } from "./pipeline/projects.js";
 import {
   persistProjectDecisions,
   promptProjectDecisions,
 } from "./cli/projectSelect.js";
 import { gatherProjectsReport } from "./cli/projects.js";
-import { scanSessions } from "./pipeline/scanner.js";
-import { parseSession } from "./pipeline/parser.js";
+import { buildSources, resolveSource, scanAll } from "./sources/registry.js";
 import { scoreSession } from "./pipeline/filter.js";
 import { scrub } from "./pipeline/scrubber.js";
 import { filterToolCalls } from "./pipeline/toolCallFilter.js";
@@ -79,7 +77,7 @@ const pkg = JSON.parse(
 const program = new Command();
 program
   .name("vir")
-  .description("Distill Claude Code sessions into an Obsidian vault")
+  .description("Distill your Claude Code sessions into a markdown knowledge base you own")
   .version(pkg.version);
 
 program
@@ -423,21 +421,27 @@ program
       process.exitCode = 1;
       return;
     }
-    const found = scanSessions(cfg.claudeProjectsDir).find(
+    const sources = buildSources(cfg);
+    const found = scanAll(sources).find(
       (s) => basename(s.path, ".jsonl") === sessionId,
     );
     if (!found) {
-      console.error(chalk.red(`session not found under ${cfg.claudeProjectsDir}: ${sessionId}`));
+      console.error(
+        chalk.red(
+          `session not found under ${sources.map((s) => s.root).join(", ")}: ${sessionId}`,
+        ),
+      );
       process.exitCode = 1;
       return;
     }
 
     // Same pipeline as production up to (but NOT including) writer.write / db.record.
     // classify always runs on Haiku (matches production); only distill varies.
-    const parsed = parseSession(
+    const source = resolveSource(sources, found.path);
+    const parsed = source.parse(
       found.path,
       found.hash,
-      projectNameFor(found.path, cfg.claudeProjectsDir),
+      source.projectName(found.path),
     );
     const score = scoreSession(parsed, cfg.filterThreshold);
     const scrubbedSummary = scrub(parsed.rawSummary);

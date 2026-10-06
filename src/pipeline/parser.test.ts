@@ -260,3 +260,16 @@ describe("parseSession branches", () => {
     expect(parseSession(path, "h").branches).toEqual(["claude/audit-9882c1"]);
   });
 });
+
+describe("shared helpers for other session sources", () => {
+  it("exports buildRawSummary with the classify-stage layout", async () => {
+    const { buildRawSummary } = await import("./parser.js");
+    const s = buildRawSummary({ userText: "u", assistantText: "a", toolCallCount: 2, filesTouched: ["src/x.ts"] });
+    expect(s).toBe("# User messages\nu\n\n# Assistant messages\na\n\n# Tool calls: 2\n\n# Files touched (1):\nsrc/x.ts");
+  });
+
+  it("exports extractToolResultContent, rendering non-text parts as [type]", async () => {
+    const { extractToolResultContent } = await import("./parser.js");
+    expect(extractToolResultContent([{ type: "text", text: "hi" }, { type: "input_image" }])).toBe("hi\n[input_image]");
+  });
+});

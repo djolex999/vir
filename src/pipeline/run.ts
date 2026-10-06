@@ -20,26 +20,20 @@ import {
   preflightFailureNotice,
   recordPreflightFailure,
 } from "../diagnostics/preflightFailure.js";
-import { parseSession } from "./parser.js";
-import { scanSessions } from "./scanner.js";
+import {
+  buildSources,
+  groupSessions,
+  resolveSource,
+  scanAll,
+} from "../sources/registry.js";
 import { scanArticles } from "./articleReader.js";
 import { distillArticle } from "./articleDistiller.js";
 import { parsePdf, scanPdfs } from "./pdfReader.js";
 import { distillPdf } from "./pdfDistiller.js";
-import {
-  classifyTranscript,
-  decideProject,
-  groupByProject,
-  estimateSessionCost,
-} from "./projects.js";
+import { decideProject, estimateSessionCost } from "./projects.js";
 import { ClaudeCliLimitError } from "./claudeCli.js";
 import { resolvePricing } from "../cost/pricing.js";
-import {
-  readTranscriptHead,
-  sniffAgentEntrypoint,
-  type ProjectDecision,
-  type RunProjectFlags,
-} from "./projects.js";
+import type { ProjectDecision, RunProjectFlags } from "./projects.js";
 import type { SessionRow, SkipReason } from "../state/db.js";
 
 // A row that holds a successfully distilled note. Neither filter may
@@ -422,9 +416,10 @@ export async function runPipeline(
   const scanSpinner = interactive
     ? ui.spinner("scanning ~/.claude/projects").start()
     : null;
+  const sources = buildSources(cfg);
   let discovered;
   try {
-    discovered = scanSessions(cfg.claudeProjectsDir);
+    discovered = scanAll(sources);
   } catch (err) {
     if (scanSpinner) scanSpinner.fail(ui.errorColor("scan failed"));
     fileLog(`scanner failed: ${(err as Error).message}`);
@@ -450,7 +445,7 @@ export async function runPipeline(
   if (cfg.workflowTranscripts !== "include") {
     sessionsInScope = [];
     for (const s of discovered) {
-      const cat = classifyTranscript(s.path, cfg.claudeProjectsDir);
+      const cat = resolveSource(sources, s.path).category(s.path);
       if (cat === "session") {
         sessionsInScope.push(s);
         continue;
@@ -491,7 +486,7 @@ export async function runPipeline(
   if (cfg.agentTranscripts !== "include") {
     const stillHuman: typeof sessionsInScope = [];
     for (const s of sessionsInScope) {
-      const entrypoint = sniffAgentEntrypoint(readTranscriptHead(s.path));
+      const entrypoint = resolveSource(sources, s.path).agentEntrypoint(s.path);
       if (entrypoint === null) {
         stillHuman.push(s);
         continue;
@@ -531,7 +526,7 @@ export async function runPipeline(
     only: opts.onlyProjects,
     excludeProject: opts.excludeProjects,
   };
-  const projectGroups = groupByProject(sessionsInScope, cfg.claudeProjectsDir);
+  const projectGroups = groupSessions(sessionsInScope, sources);
   const projectOf = new Map<string, string>();
   for (const group of projectGroups.values()) {
     for (const s of group.sessions) projectOf.set(s.path, group.name);
@@ -703,7 +698,11 @@ export async function runPipeline(
       if (!opts.full && db.isProcessed(found.path, found.hash)) continue;
       let parsed: ParsedSession;
       try {
-        parsed = parseSession(found.path, found.hash, projectOf.get(found.path));
+        parsed = resolveSource(sources, found.path).parse(
+          found.path,
+          found.hash,
+          projectOf.get(found.path),
+        );
       } catch {
         continue;
       }
@@ -930,7 +929,11 @@ export async function runPipeline(
         continue;
       }
 
-      const parsed = parseSession(found.path, found.hash, projectOf.get(found.path));
+      const parsed = resolveSource(sources, found.path).parse(
+          found.path,
+          found.hash,
+          projectOf.get(found.path),
+        );
 
       // Parser backstop for the transcript-category filter: a sidechain by
       // CONTENT (isSidechain in the JSONL) that structural detection missed

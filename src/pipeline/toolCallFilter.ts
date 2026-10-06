@@ -11,7 +11,19 @@
 export type FilterMode = "aggressive" | "moderate" | "off";
 
 // Tools whose results are routinely huge and rarely worth keeping in full.
-const LARGE_OUTPUT_TOOLS = new Set(["Bash", "Read", "Grep", "Glob"]);
+// Claude Code names first; Codex equivalents after (exec_command/exec/shell/js/
+// write_stdin all stream process or REPL output).
+const LARGE_OUTPUT_TOOLS = new Set([
+  "Bash",
+  "Read",
+  "Grep",
+  "Glob",
+  "exec_command",
+  "exec",
+  "shell",
+  "js",
+  "write_stdin",
+]);
 
 const AGGRESSIVE_LINE_THRESHOLD = 20;
 const MODERATE_LINE_THRESHOLD = 50;
@@ -167,6 +179,18 @@ function boundToolUseInput(
       break;
     case "NotebookEdit":
       maybeTruncate(obj, "new_source", content, name);
+      break;
+    // Codex: patch bodies and exec scripts arrive as raw text under `input`,
+    // REPL code under `code`, stdin writes under `chars`.
+    case "apply_patch":
+    case "exec":
+      maybeTruncate(obj, "input", content, name);
+      break;
+    case "js":
+      maybeTruncate(obj, "code", content, name);
+      break;
+    case "write_stdin":
+      maybeTruncate(obj, "chars", content, name);
       break;
     default:
       return json;
