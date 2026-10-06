@@ -1,7 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.26.0 — 2026-10-07
 
+**vir reads Codex sessions too, and can distill them on your ChatGPT plan with no API key.**
+
+- **Codex sessions.** Set `codexSessionsDir` (or re-run `vir init`, which now asks which coding agents you use) and vir reads `~/.codex/sessions/` alongside Claude Code. Harness context Codex stores as user messages (environment, AGENTS.md, IDE and file wrappers, in-app browser state, agent-history replays) is stripped; only your request survives. Subagent and review threads are skipped like Claude Code sidechains, `codex exec` runs are skipped like SDK agents, and desktop chats outside a repo group as one `codex-scratch` project. A project used from both agents is one project. New Codex projects start undecided, so nothing is spent until you include them. Archived Codex threads are not read.
+- **`provider: "codex-cli"` (experimental).** Distills through `codex exec` on your ChatGPT login: keyless, quota instead of dollars, with the same per-run cap and halt-on-limit as `claude-cli`. Calls run read-only and ephemeral, with Codex's shell, web search, apps, plugins and subagents switched off. Codex picks the model unless you pin one. `vir doctor` checks `codex login status`.
+- **`vir mcp install --target codex`** prints the `~/.codex/config.toml` block (or the `codex mcp add vir -- vir mcp` one-liner); vir never edits Codex's config itself.
+- **Security: `claude-cli` distill calls run with no tools.** `claude -p` loaded your tools, MCP servers and permission allowlist, while the prompt carries transcript text vir doesn't control. Calls now pass `--tools ""` and `--strict-mcp-config`: no built-in tools, no MCP servers, no claude.ai connectors.
+- **Prompts.** Codex sessions are described as "Codex session" in the classify and distill prompts; Claude Code prompts are unchanged byte for byte.
+- **Doctor and projects.** One sessions check per configured agent; `vir projects` shows a sources column once a second agent is configured; the "prunes at ~30 days" warning only appears when a pending session can actually be pruned.
 - `vir connect` says "1 candidate", not "1 candidates".
 - README: a short demo of the connect → review → sync-claude flow.
 
