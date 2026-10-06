@@ -6,7 +6,7 @@ import type { Config } from "../config.js";
 import { LockHeldError } from "../pipeline/lock.js";
 import type { EmbeddingProvider } from "../search/provider.js";
 import { StateDb } from "../state/db.js";
-import { runConnect, type ConnectDeps } from "./run.js";
+import { runConnect, VERIFY_MAX_TOKENS, type ConnectDeps } from "./run.js";
 
 let dir: string;
 let vault: string;
@@ -87,6 +87,19 @@ describe("runConnect", () => {
     expect(s.estCostUsd).toBeCloseTo(0.01);
     expect(ruleFiles()).toEqual([]);
     expect(db.listInsights()).toEqual([]);
+  });
+
+  it("estimates cost with the same output cap the real call uses", async () => {
+    const seen: number[] = [];
+    await runConnect(cfg, db, { dryRun: true }, deps([], { estimateCostUsd: (_i, out) => { seen.push(out); return 0; } }));
+    expect(seen).toEqual([VERIFY_MAX_TOKENS]);
+  });
+
+  it("dry run writes nothing, not even the embedding cache", async () => {
+    await runConnect(cfg, db, { dryRun: true }, deps([]));
+    const rows = (db as unknown as { db: { prepare: (s: string) => { get: () => { n: number } } } }).db
+      .prepare("SELECT COUNT(*) AS n FROM lesson_embeddings").get();
+    expect(rows.n).toBe(0);
   });
 
   it("proposes one cited rule from a recurring lesson", async () => {

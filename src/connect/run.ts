@@ -14,7 +14,9 @@ import { rankCandidates, recurrence } from "./qualify.js";
 import type { InsightEvidence, InsightRow, Lesson } from "./types.js";
 import { buildVerifyPrompt, parseVerdict, validateVerdict, type ValidatedRule } from "./verify.js";
 
-const VERIFY_OUTPUT_TOKENS = 600;
+// The verify call's output cap; the dry-run estimate uses the same number, so
+// "up to $X" is a real upper bound.
+export const VERIFY_MAX_TOKENS = 1200;
 
 export interface ConnectDeps {
   provider: EmbeddingProvider | null;
@@ -102,7 +104,7 @@ export async function runConnect(
     if (!opts.dryRun) await backfillInsightEmbeddings(db, provider);
     const lessons = collectLessons(root);
     summary.lessons = lessons.length;
-    const vectors = await embedLessons(lessons, db, provider);
+    const vectors = await embedLessons(lessons, db, provider, { store: !opts.dryRun });
     const { connectMinSim, connectCoreSim } = thresholdsFor(provider.modelName);
     const clusters = clusterLessons(lessons, vectors, connectMinSim, connectCoreSim);
     summary.clusters = clusters.length;
@@ -143,14 +145,14 @@ export async function runConnect(
     if (opts.dryRun) {
       let total: number | null = 0;
       for (const c of batch) {
-        const cost = deps.estimateCostUsd(Math.ceil(buildVerifyPrompt(c.members).length / 4), VERIFY_OUTPUT_TOKENS);
+        const cost = deps.estimateCostUsd(Math.ceil(buildVerifyPrompt(c.members).length / 4), VERIFY_MAX_TOKENS);
         total = cost === null || total === null ? null : total + cost;
       }
       summary.estCostUsd = total;
       return summary;
     }
 
-    const rejectedVectors = db.getInsightVectors("rejected");
+    const rejectedVectors = db.getInsightVectors("rejected", provider.modelName);
     for (const c of batch) {
       summary.llmCalls += 1;
       let text: string;

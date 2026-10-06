@@ -78,6 +78,21 @@ describe("insights table", () => {
   });
 });
 
+describe("rejected-rule vectors", () => {
+  it("only returns vectors from the requested model", () => {
+    const base = {
+      insightType: "recurring-rule" as const, status: "rejected" as const, promotion: "none" as const, scope: "global",
+      rule: "R", why: "W", memberSessionIds: [], memberHashes: [], sources: [], evidence: [], sessions: 3, projects: [],
+      firstSeen: "a", lastSeen: "b", evidenceChanged: false, pending: null, model: "m", createdAt: "c", updatedAt: "u",
+    };
+    db.upsertInsight({ ...base, id: "n", slug: "n" });
+    db.upsertInsight({ ...base, id: "b", slug: "b" });
+    db.setInsightEmbedding("n", [1, 0], { model: "nomic-embed-text", dim: 2 });
+    db.setInsightEmbedding("b", [0, 1], { model: "bge-small-en-v1.5", dim: 2 });
+    expect([...db.getInsightVectors("rejected", "bge-small-en-v1.5").keys()]).toEqual(["b"]);
+  });
+});
+
 describe("insight embedding targets", () => {
   const base = {
     insightType: "recurring-rule" as const, promotion: "none" as const, scope: "global", rule: "R", why: "W",

@@ -38,6 +38,8 @@ export function renderInsight(row: InsightRow): string {
   );
   return [
     ...fm,
+    "<!-- Only the **Rule:** and **Why:** lines are kept when you edit this file; the rest is regenerated. -->",
+    "",
     `**Rule:** ${row.rule}`,
     "",
     `**Why:** ${row.why}`,
