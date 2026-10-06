@@ -148,6 +148,14 @@ describe("callClaudeCli", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]!.cmd).toBe("claude");
     expect(calls[0]!.args).toContain("--no-session-persistence");
+    // The prompt carries untrusted transcript text: the spawned agent must have
+    // no built-in tools (empty --tools allowlist) and no MCP servers (strict
+    // mode with no --mcp-config drops user, plugin and claude.ai connectors).
+    const t = calls[0]!.args.indexOf("--tools");
+    expect(t).toBeGreaterThanOrEqual(0);
+    expect(calls[0]!.args[t + 1]).toBe("");
+    expect(calls[0]!.args).toContain("--strict-mcp-config");
+    expect(calls[0]!.args).not.toContain("--mcp-config");
     // Neutral cwd is a correctness requirement (a project cwd would load that
     // project's CLAUDE.md into the distill context) and is NOT injectable.
     expect(calls[0]!.opts.cwd).toBe(join(homedir(), ".vir"));

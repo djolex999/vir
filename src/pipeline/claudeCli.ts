@@ -61,6 +61,14 @@ export class ClaudeCliError extends Error {
 // transcripts into ~/.claude/projects — no self-scanning, no disk bloat,
 // regardless of the user's agentTranscripts setting. Signature takes ONLY the
 // model: there is deliberately no options path that could omit a flag.
+//
+// The prompt carries untrusted transcript text, and `claude -p` otherwise loads
+// the user's tools, MCP servers and permission allowlist: a live probe got 277
+// tools (Bash ran an allowlisted command; Gmail, Drive, Linear connected).
+// `--tools ""` empties the built-in set; `--strict-mcp-config` with no
+// --mcp-config drops every MCP server, claude.ai connectors included. Each
+// alone left the other half open. Both are empty allowlists, so tools a future
+// CLI adds stay off; an older CLI that lacks a flag errors out (fails closed).
 export function buildClaudeCliArgs(model: string): string[] {
   return [
     "-p",
@@ -69,6 +77,9 @@ export function buildClaudeCliArgs(model: string): string[] {
     "--output-format",
     "json",
     "--no-session-persistence",
+    "--tools",
+    "",
+    "--strict-mcp-config",
   ];
 }
 
