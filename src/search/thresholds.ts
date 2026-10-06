@@ -9,10 +9,21 @@ export interface ModelThresholds {
   minEmbeddingScore: number;
   // Cosine floor below which an embedding neighbor is noise, not a Related link.
   relatedMinSim: number;
+  // Connect pass: lesson pairs at or above connectMinSim are linked; members
+  // below connectCoreSim to their cluster centroid are dropped.
+  connectMinSim: number;
+  connectCoreSim: number;
 }
 
 export const MODEL_THRESHOLDS: Record<string, ModelThresholds> = {
-  "nomic-embed-text": { minEmbeddingScore: 0.3, relatedMinSim: 0.6 },
+  // Connect thresholds are PROVISIONAL until the connect-pass calibration
+  // (tasks/connect-pass-plan.md Task 3) measures lesson-level distributions.
+  "nomic-embed-text": {
+    minEmbeddingScore: 0.3,
+    relatedMinSim: 0.6,
+    connectMinSim: 0.8,
+    connectCoreSim: 0.78,
+  },
   // Calibrated 2026-07-31 by quantile-matching nomic's floors on a real
   // 389-note vault (20 queries; 75,466 doc-doc pairs). The two models'
   // DOC-DOC cosine distributions are nearly identical (p50 0.744 vs 0.741,
@@ -22,7 +33,12 @@ export const MODEL_THRESHOLDS: Record<string, ModelThresholds> = {
   // the same margin below its own minimum (0.456) → 0.35. Remaining unknown:
   // where garbage/out-of-domain queries score under bge — measuring that
   // distribution against the vault would pin the floor exactly.
-  "bge-small-en-v1.5": { minEmbeddingScore: 0.35, relatedMinSim: 0.6 },
+  "bge-small-en-v1.5": {
+    minEmbeddingScore: 0.35,
+    relatedMinSim: 0.6,
+    connectMinSim: 0.8,
+    connectCoreSim: 0.78,
+  },
 };
 
 const FALLBACK = MODEL_THRESHOLDS["nomic-embed-text"]!;
