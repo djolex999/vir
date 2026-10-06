@@ -118,7 +118,12 @@ function checkConfig(): { result: CheckResult; cfg: Config | null } {
   const cfg: Config = {
     ...parsed.data,
     vaultPath: expandHome(parsed.data.vaultPath),
-    claudeProjectsDir: expandHome(parsed.data.claudeProjectsDir),
+    ...(parsed.data.claudeProjectsDir
+      ? { claudeProjectsDir: expandHome(parsed.data.claudeProjectsDir) }
+      : {}),
+    ...(parsed.data.codexSessionsDir
+      ? { codexSessionsDir: expandHome(parsed.data.codexSessionsDir) }
+      : {}),
   };
   return {
     result: ok("config", `${collapseHome(CONFIG_PATH)} (valid)`),
@@ -268,8 +273,9 @@ function countJsonl(dir: string): number {
   return n;
 }
 
-function checkSessions(cfg: Config): CheckResult {
+function checkSessions(cfg: Config): CheckResult | null {
   const dir = cfg.claudeProjectsDir;
+  if (dir === undefined) return null;
   if (!existsSync(dir)) {
     return fail("Claude Code sessions", `${collapseHome(dir)} — directory not found`);
   }
@@ -881,7 +887,8 @@ export async function runDoctor(): Promise<void> {
     if (preflight) record(preflight);
     record(checkVaultPath(cfg));
     record(checkOutputDir(cfg));
-    record(checkSessions(cfg));
+    const sessions = checkSessions(cfg);
+    if (sessions) record(sessions);
     record(checkPendingProjects(cfg));
     record(checkAgentTranscripts());
   } else {

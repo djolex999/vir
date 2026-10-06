@@ -19,7 +19,10 @@ export const ConfigSchema = z
     // Vault subdirectory (inside outputDir) for `vir compose` topic pages.
     // Existing configs without this field get "topics" via the default.
     topicsDir: z.string().min(1).default("topics"),
-    claudeProjectsDir: z.string().min(1),
+    // Session sources: at least one is required (superRefine below). Absent =
+    // that agent's ingestion is disabled, like articlesDir.
+    claudeProjectsDir: z.string().min(1).optional(),
+    codexSessionsDir: z.string().min(1).optional(),
     cadenceHours: z.number().positive().default(3),
     // "claude-cli" shells out to the user's Claude Code CLI (subscription
     // path, zero credential, consumes Claude Code usage limits). It is an
@@ -165,6 +168,14 @@ export const ConfigSchema = z
       .optional(),
   })
   .superRefine((val, ctx) => {
+    if (!val.claudeProjectsDir && !val.codexSessionsDir) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["claudeProjectsDir"],
+        message:
+          "configure at least one session source (claudeProjectsDir or codexSessionsDir)",
+      });
+    }
     if (val.provider === "anthropic" && !val.anthropicApiKey) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -242,7 +253,12 @@ export function loadConfig(): Config {
   return {
     ...parsed,
     vaultPath: expandHome(parsed.vaultPath),
-    claudeProjectsDir: expandHome(parsed.claudeProjectsDir),
+    ...(parsed.claudeProjectsDir
+      ? { claudeProjectsDir: expandHome(parsed.claudeProjectsDir) }
+      : {}),
+    ...(parsed.codexSessionsDir
+      ? { codexSessionsDir: expandHome(parsed.codexSessionsDir) }
+      : {}),
     ...(parsed.articlesDir
       ? { articlesDir: expandHome(parsed.articlesDir) }
       : {}),

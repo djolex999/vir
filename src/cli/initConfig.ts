@@ -3,7 +3,8 @@ import type { Config } from "../config.js";
 export interface InitAnswers {
   vaultPath: string;
   outputDir: string;
-  claudeProjectsDir: string;
+  claudeProjectsDir?: string | undefined;
+  codexSessionsDir?: string | undefined;
   cadenceHours: number;
   provider: "anthropic" | "kie" | "claude-cli";
   anthropicApiKey: string | undefined;
@@ -29,10 +30,15 @@ export function buildInitConfig(
   existing: Config | null,
   a: InitAnswers,
 ): Record<string, unknown> {
+  // Source dirs: conditional spreads so a source the user doesn't use never
+  // lands as an undefined key; an unanswered one keeps its existing value.
+  const claudeProjectsDir = a.claudeProjectsDir ?? existing?.claudeProjectsDir;
+  const codexSessionsDir = a.codexSessionsDir ?? existing?.codexSessionsDir;
   return {
     vaultPath: a.vaultPath,
     outputDir: a.outputDir,
-    claudeProjectsDir: a.claudeProjectsDir,
+    ...(claudeProjectsDir ? { claudeProjectsDir } : {}),
+    ...(codexSessionsDir ? { codexSessionsDir } : {}),
     cadenceHours: a.cadenceHours,
     provider: a.provider,
     // The wizard only asks for the ACTIVE provider's key — the other one must

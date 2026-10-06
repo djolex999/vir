@@ -10,7 +10,7 @@ import {
 import { createClaudeCodeSource } from "./claudeCode.js";
 import type { SessionSource, SourceSession } from "./types.js";
 
-export type SourceConfig = Pick<Config, "claudeProjectsDir">;
+export type SourceConfig = Pick<Config, "claudeProjectsDir" | "codexSessionsDir">;
 
 export function buildSources(cfg: SourceConfig): SessionSource[] {
   const sources: SessionSource[] = [];

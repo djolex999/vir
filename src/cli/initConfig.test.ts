@@ -20,6 +20,7 @@ const SURVIVAL_SAMPLE: Record<string, unknown> = {
   outputDir: "surviva-out",
   topicsDir: "surviva-topics",
   claudeProjectsDir: "/survival/claude",
+  codexSessionsDir: "/survival/codex",
   cadenceHours: 7,
   provider: "kie",
   anthropicApiKey: "sk-ant-survival",
@@ -76,6 +77,7 @@ describe("buildInitConfig — every schema key survives re-init (enumerated)", (
         vaultPath: existing.vaultPath,
         outputDir: existing.outputDir,
         claudeProjectsDir: existing.claudeProjectsDir,
+        codexSessionsDir: existing.codexSessionsDir,
         cadenceHours: existing.cadenceHours,
         provider: existing.provider,
         anthropicApiKey: undefined,
@@ -232,5 +234,25 @@ describe("buildInitConfig preserves wizard-silent keys", () => {
     expect(parsed.success).toBe(true);
     if (!parsed.success) return;
     expect(parsed.data.notifications).toBe(false);
+  });
+});
+
+describe("buildInitConfig — session source dirs", () => {
+  it("a Codex-only answer set passes the schema with no claudeProjectsDir key", () => {
+    const built = buildInitConfig(
+      null,
+      answers({ claudeProjectsDir: undefined, codexSessionsDir: "/h/.codex/sessions" }),
+    );
+    expect(ConfigSchema.safeParse(built).success).toBe(true);
+    expect("claudeProjectsDir" in built).toBe(false);
+    expect(built.codexSessionsDir).toBe("/h/.codex/sessions");
+  });
+
+  it("re-init keeps an existing codexSessionsDir when the answer is undefined", () => {
+    const built = buildInitConfig(
+      { ...EXISTING, codexSessionsDir: "/h/.codex/sessions" } as Config,
+      answers({ codexSessionsDir: undefined }),
+    );
+    expect(built.codexSessionsDir).toBe("/h/.codex/sessions");
   });
 });

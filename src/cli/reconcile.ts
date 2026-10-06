@@ -70,7 +70,11 @@ export function reconcileGate(
   t: Pick<SessionRow, "path">,
   cfg: Pick<
     Config,
-    "claudeProjectsDir" | "workflowTranscripts" | "agentTranscripts" | "projects"
+    | "claudeProjectsDir"
+    | "codexSessionsDir"
+    | "workflowTranscripts"
+    | "agentTranscripts"
+    | "projects"
   >,
   sources: SessionSource[] = buildSources(cfg),
 ): { reason: SkipReason; entrypoint?: string } | null {

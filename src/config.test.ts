@@ -6,6 +6,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -243,5 +244,34 @@ describe("maskSecret — the ONE redaction helper for secret config values", () 
   it("empty input stays empty", async () => {
     const { maskSecret } = await import("./config.js");
     expect(maskSecret("")).toBe("");
+  });
+});
+
+describe("session sources: optional claudeProjectsDir, codexSessionsDir", () => {
+  function writeRaw(obj: Record<string, unknown>): void {
+    cfg.ensureVirDir();
+    writeFileSync(cfg.CONFIG_PATH, JSON.stringify(obj), { mode: 0o600 });
+  }
+
+  it("a Claude-only config loads with no codexSessionsDir key", () => {
+    writeRaw({ vaultPath: "/v", claudeProjectsDir: "/p", provider: "claude-cli" });
+    const loaded = cfg.loadConfig();
+    expect(loaded.claudeProjectsDir).toBe("/p");
+    expect("codexSessionsDir" in loaded).toBe(false);
+  });
+
+  it("a Codex-only config loads with ~ expanded and no claudeProjectsDir key", () => {
+    writeRaw({ vaultPath: "/v", codexSessionsDir: "~/.codex/sessions", provider: "claude-cli" });
+    const loaded = cfg.loadConfig();
+    expect(loaded.codexSessionsDir).toBe(join(tmpHome, ".codex", "sessions"));
+    expect("claudeProjectsDir" in loaded).toBe(false);
+  });
+
+  it("a config with no session source fails with a clear message", () => {
+    const r = cfg.ConfigSchema.safeParse({ vaultPath: "/v", provider: "claude-cli" });
+    expect(r.success).toBe(false);
+    expect(JSON.stringify(r.error?.issues)).toContain(
+      "configure at least one session source (claudeProjectsDir or codexSessionsDir)",
+    );
   });
 });
