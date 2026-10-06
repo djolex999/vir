@@ -6,7 +6,7 @@ description: The pipeline from transcript to note — filtering, classification,
 ## The loop
 
 ```
-Claude Code sessions → vir → Obsidian vault → CLAUDE.md → better sessions → …
+Claude Code sessions → vir → your notes (markdown) → CLAUDE.md → better sessions → …
 ```
 
 Sessions become notes. `vir sync-claude` feeds the best notes back into your project's CLAUDE.md, with a diff and your confirmation. The next session starts knowing what the last one learned. A daemon keeps the loop turning.

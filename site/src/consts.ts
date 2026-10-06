@@ -77,9 +77,9 @@ export const LOOP_NODES: LoopNode[] = [
   },
   {
     id: "vault",
-    label: "Obsidian vault",
+    label: "Your notes",
     blurb:
-      "Typed markdown notes — patterns, gotchas, decisions, tools — with frontmatter and wikilinks. They show up in the graph.",
+      "Typed markdown notes — patterns, gotchas, decisions, tools — with frontmatter and wikilinks. Plain files you own; in Obsidian they show up in the graph.",
     command: "vir query \"<question>\"",
   },
   {

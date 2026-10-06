@@ -7,7 +7,7 @@ description: Every key in ~/.vir/config.json.
 
 | Key | Default | What it does |
 | --- | --- | --- |
-| `vaultPath` | *(required)* | Absolute path to the Obsidian vault |
+| `vaultPath` | *(required)* | Absolute path to your notes folder (an Obsidian vault, or any folder) |
 | `outputDir` | `vir` | Folder inside the vault that vir owns |
 | `topicsDir` | `topics` | Subfolder for `vir compose` pages |
 | `claudeProjectsDir` | required (`vir init` sets `~/.claude/projects`) | Where Claude Code keeps transcripts |
@@ -32,6 +32,7 @@ description: Every key in ~/.vir/config.json.
 | `embeddingProvider` | — | `ollama` \| `local` \| `none`. Unset = auto-detect |
 | `retrievalDiversity` | `0.3` | MMR diversity weight, 0–1 |
 | `logQueries` | `true` | Append retrievals to `~/.vir/queries.jsonl` |
+| `connectMaxCandidates` | `10` | Most LLM calls one `vir connect` run may make (one per candidate rule) |
 | `notifications` | `true` | Desktop notifications from the daemon |
 | `pricing` | built-in | Per-provider `{ "<model>": { "inputPer1M", "outputPer1M" } }` overrides |
 

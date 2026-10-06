@@ -3,6 +3,99 @@ title: Changelog
 description: Every vir release, newest first. Mirrors CHANGELOG.md in the repo.
 ---
 
+## 0.25.1 — 2026-10-06
+
+- **`vir sync-claude` finds projects whose folder name isn't already a slug.** A project folder like `pripremi.rs` or `My App` never matched its own project slug (`pripremi-rs`, `my-app`), so its CLAUDE.md was reported as missing and skipped — it never got a VIR block, and a connect-pass rule scoped to it could not be promoted. Folders under `~/projects`, `~/code` and `~/dev` whose kebab-cased name equals the slug are now matched, after every exact match, so projects that already resolved are unaffected.
+
+## 0.25.0 — 2026-10-06
+
+**vir notices lessons you keep re-learning and proposes them as rules — cited, reviewed, and added to CLAUDE.md only with your yes. Plus a skill so any coding agent can use your notes.**
+
+- **`vir connect`: recurring lessons become proposed rules.** It finds a lesson you've recorded in at least 3 sessions spanning at least 7 days (clustering individual "What Was Learned" items by embedding), and asks the model to state it as one rule with a verbatim quote from each cited note. Invented quotes are discarded. Rules are written to `insights/rules/` as *proposed* and stay out of `vir query`/MCP until you accept them with `vir review --insights`. Accepted rules reach CLAUDE.md only via `vir sync-claude`, one y/n per rule, never under `--force`, `--dry-run` or a non-interactive shell. Rejections are remembered by session, so they survive note rewrites. `vir connect --dry-run` is free; a real run makes at most `connectMaxCandidates` (default 10) LLM calls and asks first. Requires an embedding provider. Thresholds are calibrated on a real 1,292-lesson vault (`docs/connect-pass-eval-2026-10.md`): precise over plentiful, so expect few proposals until your vault has real repeats. `vir status` shows proposed/accepted/awaiting counts. MCP `vir_query` gains `type: "insight"`.
+- **Use vir from any agent.** New Agent Skills skill (`npx skills add djolex999/vir`) teaches Claude Code, Codex, Cursor and other skill-aware agents to check your vir notes before they work. It uses the MCP server when registered (with `synthesize: false`, so no LLM cost), else `vir query --json`, else the notes folder directly. It is read-only and never runs paid commands unless asked. A test pins every command, flag and MCP tool it names to the real CLI.
+
+## 0.24.3 — 2026-10-06
+
+**Obsidian is optional. vir writes a folder of markdown, and Obsidian is one good way to read it.**
+
+- **`vir init` asks for a notes folder, not an Obsidian vault.** If the usual vault (`~/Documents/Obsidian/MyVault`) exists it is still the default; otherwise vir suggests `~/notes` and offers to create it. Notes land in `<folder>/vir/` as before. Existing configs are unchanged.
+- **The articles folder defaults to `raw/` inside your notes folder** instead of a hard-coded Obsidian path, and the prompt no longer assumes Obsidian Web Clipper.
+- **README: new "Without Obsidian" section.** Notes are plain markdown with YAML frontmatter; `vir query` and the MCP server need no editor, and VS Code (Foam / Markdown Memo) resolves the `[[wikilinks]]`.
+- **Internal:** transcript discovery, filtering and parsing now go through a session-source layer (Claude Code is the first source), groundwork for supporting more coding agents. No behavior change: `vir run --dry-run`, `vir projects` and `vir doctor` output is identical before and after.
+
+## 0.24.2 — 2026-10-05
+
+**`vir reconcile` follows the same rules as `vir run`, and cost prompts show
+real numbers.**
+
+- **Reconcile no longer retries what `vir run` skips.** Rows that errored before the transcript and project filters existed (subagent and workflow transcripts, SDK-agent transcripts, sessions from excluded or undecided projects) were still retried, at full cost. Reconcile now applies the same filters and records those rows with their skip reason; they come back if you change the config.
+- **Reconcile tells you when a transcript is gone.** Claude Code deletes old transcripts; those rows can't be retried and are now listed as "transcript gone" instead of "recoverable". On claude-cli the retry cost reads "quota" instead of "$0".
+- **A failed reconcile retry counts toward the 3-attempt limit,** like a failed `vir run`, so a session that keeps failing is parked instead of retried on every pass (`--force` still retries it).
+- **The `vir run` cost prompt shows a real estimate** ("up to $X", "subscription quota", or "unknown" for an unpriced model) instead of a fixed "$1–5".
+- **`$EDITOR` with arguments works in `vir review`** (e.g. `code --wait`).
+- **`vir run --full` also re-processes articles and PDFs.**
+- **Very large transcripts are trimmed to fit the model's context** (the start and the end are kept, and the trim is logged), instead of failing every attempt.
+- **Linux home paths are scrubbed** like macOS ones before anything is stored.
+
+## 0.24.1 — 2026-10-05
+
+**Four small fixes: an outage no longer crashes the run, and cost and config
+handling get stricter.**
+
+- **A provider outage no longer crashes `vir run`.** When the preflight probe failed (provider down, expired login), vir reported the outage and then Node killed the process with an extra stack trace in `daemon.log`. It now exits normally with the outage reported once.
+- **`vir sync-claude` exits 1 when a `CLAUDE.md` could not be updated**, instead of printing ✗ and exiting 0.
+- **`config.json` is never readable by others, even briefly.** It holds your API keys; it is now written to an owner-only temp file and renamed into place, instead of being written with the default permissions and tightened afterwards.
+- **Spend on a model with no known price is reported as unknown, not $0.** With a model vir has no price for on your provider (for example `claude-sonnet-5` on Kie), calls were logged as free and `vir cost` under-reported. They are now counted as "unpriced" calls next to the total, cost prompts say "unknown", and `vir doctor` warns about configured models without a price. Add a price under `pricing` in `config.json` to have them counted.
+
+## 0.24.0 — 2026-10-05
+
+**Cost, safety and consistency fixes across the CLI, plus two refactors.**
+Nothing here changes what a normal `vir run` produces; it changes what vir
+spends, what it can race with, and how much of the code is checked.
+
+- **`vir_query` can skip the paid answer.** Pass `synthesize: false` to get only the matching notes. The tool description now tells the agent that synthesis is billed. Default unchanged.
+- **New notes are embedded once, from the same text as every other note.** The vector computed while writing a new note used to be dropped (its database row did not exist yet) and the end-of-run sweep embedded the note again from the body only. The write-time vector is now stored, and the sweep and `vir embed` read the note file so every vector is built from the same text. Existing vectors are untouched until a rewrite or `vir embed --force`.
+- **`provider: claude-cli` works under the daemon's minimal PATH.** vir now finds `claude` on PATH or in the usual install locations (next to the Node running vir, `~/.claude/local`, `~/.local/bin`, Homebrew, `/usr/local`), so scheduled runs no longer fail when `claude` lives outside launchd's PATH.
+- **No more racing the daemon.** Terminal `vir review`, `dedupe`, `audit` (judging), `compose` and `summarize` now take the pipeline lock and exit with a clear message while another vir process holds it. Dry runs are unaffected.
+- **Paid checks ask first.** `vir dedupe` (up to 30 calls) and the `vir lint` contradiction check (up to 20) now confirm before spending; `--yes` skips the prompt. Without a terminal and without `--yes`, the paid step is skipped with a note.
+- **`CLAUDE.md` is written atomically.** `sync-claude` writes a temp file and renames it into place, so a crash can no longer truncate your file, and a symlinked `CLAUDE.md` stays a symlink.
+- **Rejecting never overwrites an earlier rejected copy** of the same note in `.rejected/`; vir says so instead.
+- **Under the hood:** tests and `eval/` are type-checked in CI (`npm run typecheck:all`); `vir run` and `vir reconcile` share one session-distill core; the large commands moved out of `cli.ts` into their own modules.
+
+## 0.23.3 — 2026-10-05
+
+**A skipped re-run no longer hides a note you already had.** When a session
+with a distilled note came back through `vir run` (a resumed transcript, or
+`--full`) and that pass was skipped by the heuristic filter or by low classify
+confidence, the note was marked skipped. Its file stayed in the vault, but it
+dropped out of `vir query`, the MCP server, `sync-claude` and rewrites, and
+never came back on its own. `vir reconcile` could do the same.
+
+- **The existing note now stays served.** The new transcript is recorded as seen, so a low-confidence session is not re-classified (and billed) on every run. A note hidden by a failed re-distill is served again.
+- **Notes already hidden this way are restored automatically** the first time 0.23.3 opens the database. Only rows that this bug can produce are touched.
+
+## 0.23.2 — 2026-10-05
+
+**Two vir processes can no longer both hold the pipeline lock.** The lock
+file (`~/.vir/vir.lock`) was checked and then written in two steps, so a
+daemon run and a manual `vir run` starting at the same moment could both take
+it and distill the same sessions twice.
+
+- **The lock is created atomically.** Exactly one process creates it; the others report that another vir process is running, as before.
+- **Clearing a crashed run's leftover lock is guarded too.** Only one process at a time may remove a stale lock (via a short-lived `~/.vir/vir.lock.reclaim`), so a fresh lock is never deleted by mistake. Tested with 8 processes racing on a fresh and on a stale lock: exactly one winner every time.
+- **A stale lock that cannot be removed** (for example, a permissions problem) now fails with a clear error instead of being silently overwritten.
+
+## 0.23.1 — 2026-10-05
+
+**A claude-cli quota halt no longer loses articles and PDFs.** When `vir run`
+hit the subscription limit, the session loop stopped, but the article and PDF
+phases still ran into the same wall and recorded every new item as processed
+with an error. Those items were never tried again.
+
+- **A quota halt now stops the whole run.** Project summaries, articles and PDFs are skipped after a halt, and a limit first hit inside the article or PDF phase halts there. Nothing is recorded, so the skipped items are simply new on the next run.
+- **Items lost this way in earlier versions are retried automatically on the next run.** An errored article or PDF no longer counts as processed, so no manual step is needed.
+- **Failing items stop retrying after 3 attempts,** the same bound sessions have. A changed file starts the count over. Articles and PDFs gain an `attempts` column (additive migration).
+
 ## 0.23.0 — 2026-09-29
 
 **`vir review --json`: review from the Obsidian plugin.** The terminal review

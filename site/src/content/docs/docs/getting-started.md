@@ -3,14 +3,14 @@ title: Getting started
 description: Install vir, point it at your vault, and turn months of Claude Code history into notes in one run.
 ---
 
-vir reads the transcripts Claude Code already keeps on your disk and writes typed markdown notes into an Obsidian vault. This page gets you from nothing to a populated vault.
+vir reads the transcripts Claude Code already keeps on your disk and writes typed markdown notes into a folder you own. This page gets you from nothing to a populated vault.
 
 ## Prerequisites
 
 - macOS or Linux. Windows is not supported yet.
 - Node.js 20 or newer.
 - Claude Code, with sessions under `~/.claude/projects/`.
-- An Obsidian vault. Any folder works — the output is plain markdown — but Obsidian is where the graph and the plugin live.
+- A folder for the notes. `vir init` suggests your Obsidian vault if it finds one, otherwise `~/notes`. The output is plain markdown either way; Obsidian is where the graph and the plugin live.
 - One distill provider (you choose during `vir init`):
   - **Anthropic API key** — predictable per-session cost, no effect on your Claude Code limits.
   - **Your Claude Code subscription** (`claude-cli`) — free and keyless; distills consume your Claude Code usage quota.

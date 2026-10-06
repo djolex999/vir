@@ -4,7 +4,7 @@ description: Everything about vir — installing it, what it writes, how retriev
 tableOfContents: false
 ---
 
-vir reads the Claude Code transcripts already on your disk, filters out what isn't yours, and writes typed markdown notes into an Obsidian vault. It's a CLI, an MCP server, and an Obsidian plugin. Nothing is hosted.
+vir reads the Claude Code transcripts already on your disk, filters out what isn't yours, and writes typed markdown notes into a folder you own — an Obsidian vault works great, but any folder does. It's a CLI, an MCP server, an Obsidian plugin, and a skill any coding agent can install. Nothing is hosted.
 
 New here? **[Getting started](/docs/getting-started/)** takes about five minutes.
 
@@ -22,6 +22,8 @@ New here? **[Getting started](/docs/getting-started/)** takes about five minutes
 | --- | --- |
 | **[Retrieval and MCP](/docs/retrieval/)** | `vir query`, embedding providers, and letting Claude Code consult the vault mid-session |
 | **[Keeping it current](/docs/keeping-it-current/)** | The daemon, `sync-claude`, review, lint, dedupe, and syntheses |
+| **[Recurring rules](/docs/recurring-rules/)** | `vir connect`: lessons you keep re-learning, proposed as cited rules that reach CLAUDE.md only with your yes |
+| **[Any agent](/docs/any-agent/)** | The skill that lets Claude Code, Codex, Cursor and others check your notes before they work |
 | **[Commands](/docs/commands/)** | Every subcommand, with what it costs |
 
 ## Configure it

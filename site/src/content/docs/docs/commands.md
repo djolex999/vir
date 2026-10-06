@@ -40,6 +40,9 @@ description: Every vir subcommand with what it costs.
 | `vir lint --legacy-related` | free | Pre-0.12.0 notes whose Related holds content a rewrite drops. `--fix` |
 | `vir dedupe` | cheap | Interactive duplicate detection and merge |
 | `vir prune` | free | Dry run: agent-derived notes to demote. `--apply`, `--restore` |
+| `vir connect --dry-run` | free | Lessons you keep re-learning: clusters, candidates, estimated cost. No calls |
+| `vir connect` | cheap | Propose those lessons as cited rules (≤ `connectMaxCandidates` calls, asks first). `--yes`, `--reconsider <slug>` |
+| `vir review --insights` | free | Accept, edit or reject proposed rules; accept or keep new evidence on accepted ones |
 
 ## Retrieve
 
@@ -59,7 +62,7 @@ description: Every vir subcommand with what it costs.
 
 | Command | Cost | |
 | --- | --- | --- |
-| `vir sync-claude [project]` | free | Diff, confirm, write between VIR markers. `--dry-run`, `--force`, `--global` |
+| `vir sync-claude [project]` | free | Diff, confirm, write between VIR markers; accepted rules get their own y/n each. `--dry-run`, `--force`, `--global` |
 | `vir schedule install` / `uninstall` | free | Daemon. `--run-now` |
 | `vir status` | free | Knowledge base breakdown + daemon state |
 | `vir doctor` | cheap | 13–20 install/config checks. `--json` |

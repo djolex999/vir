@@ -586,13 +586,16 @@ Shipped:
 
 - [x] Linux support (systemd timer + cron fallback), experimental
 - [x] Active learning: `vir review`, verified notes boosted in retrieval
-- [x] Web article ingestion (Obsidian Web Clipper folder → same vault)
+- [x] Web article ingestion (a clipped-markdown folder → same vault)
 - [x] PDF and paper ingestion
 - [x] Obsidian plugin: [vir-obsidian](https://github.com/djolex999/vir-obsidian), sidebar queries against the vault
 - [x] Topic synthesis: `vir compose` builds topic pages from related notes
 - [x] Transcript filtering: workflow, sidechain, and SDK-agent transcripts detected and skipped by default
 - [x] Project triage: `vir projects`, per-project include/exclude with pending-cost estimates
 - [x] Duplicate detection and merge: `vir dedupe`
+- [x] Obsidian optional: any folder of markdown works (0.24.3)
+- [x] Any agent can read your notes: `npx skills add djolex999/vir` (0.25.0)
+- [x] Recurring lessons become reviewed rules: `vir connect` (0.25.0)
 
 Not built:
 
@@ -600,8 +603,10 @@ Not built:
 - [ ] GUI installer for non-developers
 - [ ] More input sources: code repos, images
 - [ ] Export to anchor-plugin skill format
-- [ ] Other coding agents. Cursor and Codex CLI write transcripts too, and
-      the parser is the only Claude-specific stage. Possible, not scheduled.
+- [ ] Distill Codex sessions too. The groundwork shipped in 0.24.3: transcript
+      discovery and parsing now sit behind a session-source layer, with Claude
+      Code as the first source. Cursor would follow.
+- [ ] Connect pass v2: flag decisions that contradict each other or went stale
 
 ## Contributing
 
