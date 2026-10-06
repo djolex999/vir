@@ -931,10 +931,10 @@ export async function runPipeline(
       }
 
       const parsed = resolveSource(sources, found.path).parse(
-          found.path,
-          found.hash,
-          projectOf.get(found.path),
-        );
+        found.path,
+        found.hash,
+        projectOf.get(found.path),
+      );
 
       // Parser backstop for the transcript-category filter: a sidechain by
       // CONTENT (isSidechain in the JSONL) that structural detection missed
