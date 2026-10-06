@@ -100,6 +100,20 @@ describe("runConnect", () => {
     expect(readFileSync(join(vault, "vir", "insights", "rules", `${row?.slug}.md`), "utf8")).toContain("**Rule:** Use proxy.ts in Next 16");
   });
 
+  it("flags evidence that came from a merged duplicate", async () => {
+    mkdirSync(join(vault, "vir", "archived"), { recursive: true });
+    writeFileSync(
+      join(vault, "vir", "archived", "c-old.md"),
+      "---\ncategory: gotcha\nproject: \"growthq\"\nsession_id: s0\ndate: 2026-05-20\n---\n## What Was Learned\n\n**proxy.ts before the merge**\n",
+    );
+    const c = join(vault, "vir", "gotchas", "c.md");
+    writeFileSync(c, readFileSync(c, "utf8") + "\n## Archived Duplicates\n- [[c-old]]\n");
+    await runConnect(cfg, db, { dryRun: false }, deps([]));
+    const ev = db.listInsights()[0]?.evidence ?? [];
+    expect(ev.find((e) => e.sessionId === "s0")).toMatchObject({ citeSlug: "c", merged: true });
+    expect(ev.find((e) => e.sessionId === "s1")?.merged).toBeFalsy();
+  });
+
   it("re-running over unchanged notes makes no paid call", async () => {
     await runConnect(cfg, db, { dryRun: false }, deps([]));
     const calls: string[] = [];

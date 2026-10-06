@@ -91,7 +91,7 @@ export function planRules(db: StateDb, options: PlanOptions = {}): RuleCandidate
 
 export function renderRuleHunk(c: RuleCandidate): string {
   const sources = c.insight.evidence
-    .map((e) => `[[${e.citeSlug}]] (${e.project || "-"}, ${e.date.slice(0, 10)})`)
+    .map((e) => `[[${e.citeSlug}]] (${e.project || "-"}, ${e.date.slice(0, 10)}${e.merged ? ", merged" : ""})`)
     .join(", ");
   return [`+ - rule: ${ruleText(c.insight.rule)}`, `  why: ${ruleText(c.insight.why)}`, `  sources: ${sources}`].join("\n");
 }

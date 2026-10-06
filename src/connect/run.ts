@@ -58,6 +58,7 @@ function evidenceOf(v: ValidatedRule): InsightEvidence[] {
     project: e.lesson.project,
     date: e.lesson.noteDate,
     quote: e.quote,
+    ...(e.lesson.archivedVia !== null ? { merged: true } : {}),
   }));
 }
 

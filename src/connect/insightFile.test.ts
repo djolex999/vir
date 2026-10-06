@@ -28,6 +28,13 @@ describe("insight files", () => {
     expect(renderInsight(sampleInsight({ status: "accepted" }))).toContain("verified: true");
   });
 
+  it("marks merged evidence in the file", () => {
+    const md = renderInsight(sampleInsight({
+      evidence: [{ sessionId: "s2", citeSlug: "note-a", project: "growthq", date: "2026-06-02", quote: "q", merged: true }],
+    }));
+    expect(md).toContain('- [[note-a]] (growthq, 2026-06-02, merged): "q"');
+  });
+
   it("round-trips rule and why through an edit", () => {
     const md = renderInsight(sampleInsight());
     expect(parseRuleEdit(md)).toEqual({ rule: "Use proxy.ts in Next 16", why: "middleware.ts is deprecated and warns." });

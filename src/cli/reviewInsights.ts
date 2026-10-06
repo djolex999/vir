@@ -137,7 +137,7 @@ export async function runReviewInsights(cfg: Config, db: StateDb, io: InsightRev
     io.show(`Rule: ${ruleText(row.rule)}`);
     io.show(`Why: ${ruleText(row.why)}`);
     for (const e of changed ? (row.pending ?? []) : row.evidence) {
-      io.show(`  [[${e.citeSlug}]] (${e.project || "-"}, ${e.date.slice(0, 10)}): ${JSON.stringify(e.quote)}`);
+      io.show(`  [[${e.citeSlug}]] (${e.project || "-"}, ${e.date.slice(0, 10)}${e.merged ? ", merged" : ""}): ${JSON.stringify(e.quote)}`);
     }
     const choices = changed ? ["accept-additions", "keep", "reject", "skip"] : ["accept", "edit", "reject", "skip"];
     const answer = await io.ask(changed ? "Add the new evidence?" : "Is this rule true?", choices);
