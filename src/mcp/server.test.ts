@@ -50,14 +50,25 @@ pages: 11
 body about self-attention`;
 
 describe("QUERY_TYPES", () => {
-  it("includes pdf alongside session, article, topic, and all", () => {
+  it("includes pdf and insight alongside session, article, topic, and all", () => {
     expect([...QUERY_TYPES]).toEqual([
       "session",
       "article",
       "topic",
       "pdf",
+      "insight",
       "all",
     ]);
+  });
+});
+
+describe("hitMeta — insights", () => {
+  it("reads an accepted rule as type insight, titled by its rule", () => {
+    const meta = hitMeta({
+      title: "insights/rules/use-proxy-ts-3f9a1c2e",
+      content: "---\ntype: insight\nstatus: accepted\nscope: global\n---\n**Rule:** Use proxy.ts in Next 16\n\n**Why:** w\n",
+    } as Parameters<typeof hitMeta>[0]);
+    expect(meta).toEqual({ topic: "Use proxy.ts in Next 16", category: "insight", project: "", type: "insight" });
   });
 });
 

@@ -199,6 +199,8 @@ async function searchByEmbedding(
     ...db.getArticleEmbeddings(),
     ...db.getTopicEmbeddings(root, cfg.topicsDir),
     ...db.getPdfEmbeddings(),
+    // Accepted connect-pass rules only — the DB query is the serving gate.
+    ...db.getInsightEmbeddings(root),
   ];
   // Vectors from another model are geometric nonsense against this query —
   // refuse to compare them. Excluded rows are counted, never silently dropped;
@@ -337,6 +339,10 @@ export function loadIndex(cfg: Config): IndexedDoc[] {
     try {
       raw = readFileSync(full, "utf8");
     } catch {
+      continue;
+    }
+    // Connect-pass rules are servable only once the owner accepted them.
+    if (rel.startsWith("insights/") && !/^---\n[\s\S]*?\nstatus:\s*accepted\s*\n[\s\S]*?---/.test(raw)) {
       continue;
     }
     const text = stripMarkdown(raw);

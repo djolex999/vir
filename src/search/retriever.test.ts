@@ -170,6 +170,7 @@ describe("search — topic embeddings are first-class in the pool", () => {
       getArticleEmbeddings: () => [],
       getTopicEmbeddings: () => [topicRow],
       getPdfEmbeddings: () => [],
+      getInsightEmbeddings: () => [],
     } as unknown as StateDb;
     const cfg = {
       vaultPath: vault,
@@ -210,6 +211,7 @@ describe("search — topic embeddings are first-class in the pool", () => {
       getArticleEmbeddings: () => [],
       getTopicEmbeddings: () => [],
       getPdfEmbeddings: () => [pdfRow],
+      getInsightEmbeddings: () => [],
     } as unknown as StateDb;
     const cfg = {
       vaultPath: vault,
@@ -281,6 +283,7 @@ describe("searchWithOutcome — embed failure degrades to TF-IDF, loudly", () =>
       getArticleEmbeddings: () => [],
       getTopicEmbeddings: () => [],
       getPdfEmbeddings: () => [],
+      getInsightEmbeddings: () => [],
     } as unknown as StateDb;
     const cfg = {
       vaultPath: vault,
@@ -331,6 +334,7 @@ describe("searchWithOutcome — candidates + provider provenance for the query l
       getArticleEmbeddings: () => [],
       getTopicEmbeddings: () => [],
       getPdfEmbeddings: () => [],
+      getInsightEmbeddings: () => [],
     } as unknown as StateDb;
     const cfg = {
       vaultPath: vault,
@@ -485,5 +489,51 @@ describe("TF-IDF idf smoothing", () => {
     expect(docs).toHaveLength(1);
     expect(hits).toHaveLength(1);
     expect(hits[0]?.relPath).toBe("decisions/only-note.md");
+  });
+});
+
+describe("connect-pass insights in retrieval", () => {
+  const tmps: string[] = [];
+  afterEach(() => {
+    vi.clearAllMocks();
+    for (const p of tmps) rmSync(p, { recursive: true, force: true });
+    tmps.length = 0;
+  });
+
+  it("surfaces an accepted rule via the EMBEDDING pool", async () => {
+    const vault = mkdtempSync(join(tmpdir(), "vir-vault-"));
+    const home = mkdtempSync(join(tmpdir(), "vir-insight-"));
+    tmps.push(vault, home);
+    const path = join(home, "use-proxy-ts-3f9a1c2e.md");
+    writeFileSync(path, "---\ntype: insight\nstatus: accepted\nverified: true\n---\n**Rule:** Use proxy.ts in Next 16\n");
+    const row: EmbeddingRow = {
+      sessionId: "id-1", topic: "Use proxy.ts in Next 16", category: "insight", project: "",
+      filePath: path, embedding: [1, 0, 0], embeddingModel: "nomic-embed-text", embeddingDim: 768,
+    };
+    const db = {
+      getEmbeddings: () => [],
+      getArticleEmbeddings: () => [],
+      getTopicEmbeddings: () => [],
+      getPdfEmbeddings: () => [],
+      getInsightEmbeddings: () => [row],
+    } as unknown as StateDb;
+    const cfg = { vaultPath: vault, outputDir: "vir", topicsDir: "topics", retrievalDiversity: 0.3 } as unknown as Config;
+    const hits = await search(cfg, db, "next 16 middleware", 5);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.method).toBe("embedding");
+    expect(hits[0]?.filePath).toBe(path);
+  });
+
+  it("keeps proposed and rejected rules out of the TF-IDF index", () => {
+    const vault = mkdtempSync(join(tmpdir(), "vir-idx-"));
+    tmps.push(vault);
+    const rules = join(vault, "vir", "insights", "rules");
+    mkdirSync(rules, { recursive: true });
+    const rule = (status: string) => `---\ntype: insight\nstatus: ${status}\n---\n**Rule:** widget rule\n`;
+    writeFileSync(join(rules, "proposed.md"), rule("proposed"));
+    writeFileSync(join(rules, "rejected.md"), rule("rejected"));
+    writeFileSync(join(rules, "accepted.md"), rule("accepted"));
+    const rels = loadIndex({ vaultPath: vault, outputDir: "vir" } as unknown as Config).map((d) => d.relPath);
+    expect(rels).toEqual(["insights/rules/accepted.md"]);
   });
 });

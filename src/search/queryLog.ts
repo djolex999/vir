@@ -36,7 +36,7 @@ export interface QueryLogRecord {
   ts: string;
   source: "cli" | "mcp";
   query: string;
-  type: "session" | "article" | "topic" | "pdf" | "all";
+  type: "session" | "article" | "topic" | "pdf" | "insight" | "all";
   method: "embedding" | "tfidf";
   degraded: boolean;
   degradedReason: string | null;

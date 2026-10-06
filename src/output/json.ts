@@ -16,7 +16,8 @@ export type VirQueryCategory =
   | "tool"
   | "article"
   | "topic"
-  | "pdf";
+  | "pdf"
+  | "insight";
 
 export interface VirQueryResult {
   path: string; // vault-relative path to the .md file
@@ -112,6 +113,7 @@ function categoryOf(
 ): VirQueryCategory {
   if (fm.type === "article") return "article";
   if (fm.type === "topic") return "topic";
+  if (fm.type === "insight") return "insight";
   // PDF sub-taxonomy (paper/reference/notes/other) collapses to the single
   // "pdf" wire bucket, exactly like articles collapse to "article".
   if (fm.type === "pdf") return "pdf";
