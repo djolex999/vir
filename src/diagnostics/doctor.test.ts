@@ -274,6 +274,15 @@ describe("pendingProjectsCheck — undecided is a decision with a deadline", () 
     expect(r.status).toBe("warn");
     expect(r.detail).toContain("2");
   });
+
+  // Codex never prunes: no deadline to warn about when only its sessions pend.
+  it("drops the prune clause when no pending source prunes", () => {
+    const r = pendingProjectsCheck(2, 1, null, NOW2, null);
+    expect(r.status).toBe("warn");
+    expect(r.detail).not.toMatch(/prunes|lost/);
+    expect(r.detail).toMatch(/vir projects/);
+    expect(pendingProjectsCheck(2, 1, null, NOW2, 30).detail).toBe(pendingProjectsCheck(2, 1, null, NOW2).detail);
+  });
 });
 
 describe("agentTranscriptsCheck — informational, never a warning", () => {

@@ -54,6 +54,7 @@ import {
   type NotifierPermission,
 } from "../ui/macNotifier.js";
 import { isSubscriptionProvider, resolveBin } from "../pipeline/subscription.js";
+import { buildSources, resolveSource } from "../sources/registry.js";
 
 interface CheckResult {
   status: ui.CheckStatus;
@@ -322,6 +323,9 @@ export function pendingProjectsCheck(
   pendingProjects: number,
   oldestPendingMtimeIso: string | null,
   now: number,
+  // Shortest retention among the sources holding pending sessions; null when
+  // none of them prunes (Codex), so there is no deadline to warn about.
+  retentionDays: number | null = 30,
 ): CheckResult {
   if (pendingSessions === 0) {
     return ok("project decisions", "all projects decided");
@@ -337,7 +341,10 @@ export function pendingProjectsCheck(
   }
   return warn(
     "project decisions",
-    `${pendingSessions} session(s) in ${pendingProjects} undecided project(s)${age} — Claude Code prunes transcripts at ~30 days, so undecided means lost; run vir projects`,
+    `${pendingSessions} session(s) in ${pendingProjects} undecided project(s)${age} — ` +
+      (retentionDays === null
+        ? "run vir projects"
+        : `Claude Code prunes transcripts at ~${retentionDays} days, so undecided means lost; run vir projects`),
   );
 }
 
@@ -375,9 +382,13 @@ function checkPendingProjects(cfg: Config): CheckResult {
     const rows = gatherProjectsReport(cfg);
     const pendingRows = rows.filter((r) => r.pending > 0);
     const pendingSessions = pendingRows.reduce((s, r) => s + r.pending, 0);
+    const sources = buildSources(cfg);
     let oldest: string | null = null;
+    let retention: number | null = null;
     for (const r of pendingRows) {
       for (const p of r.pendingPaths) {
+        const days = resolveSource(sources, p).retentionDays;
+        if (days !== null && (retention === null || days < retention)) retention = days;
         try {
           const iso = statSync(p).mtime.toISOString();
           if (oldest === null || iso < oldest) oldest = iso;
@@ -391,6 +402,7 @@ function checkPendingProjects(cfg: Config): CheckResult {
       pendingRows.length,
       oldest,
       Date.now(),
+      retention,
     );
   } catch (err) {
     return warn("project decisions", truncate((err as Error).message));

@@ -41,6 +41,9 @@ export interface ParsedSession {
   // Claude Code deletes transcripts after ~30 days. Nothing reads it yet — a
   // future check can flag notes whose branch never merged.
   branches: string[];
+  // The agent that wrote the transcript, as the prompts name it. Absent =
+  // "Claude Code", so Claude prompts stay byte-identical to the evaluated text.
+  agentLabel?: string;
 }
 
 export type Category = "pattern" | "gotcha" | "decision" | "tool";

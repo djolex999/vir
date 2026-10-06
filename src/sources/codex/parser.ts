@@ -139,5 +139,6 @@ export function parseCodexSession(path: string, hash: string, projectSlug?: stri
     isSidechain,
     entrypoint,
     branches,
+    agentLabel: "Codex",
   };
 }

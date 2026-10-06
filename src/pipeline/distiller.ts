@@ -430,7 +430,7 @@ export function buildDistillPrompt(
   // is for a retrieving session, which wants state and specifics first. The
   // "not replying" line exists because a longer prompt once made Haiku echo
   // the session's closing chat message instead of writing a note.
-  return `Extract durable knowledge from this Claude Code session.
+  return `Extract durable knowledge from this ${session.agentLabel ?? "Claude Code"} session.
 
 Output a markdown page with these sections (no preamble, start with '## Summary'):
 - ## Summary (2-3 sentences)
@@ -539,7 +539,7 @@ export class Distiller {
     session: ParsedSession,
     scrubbedSummary: string,
   ): Promise<Classification> {
-    const prompt = `Given this Claude Code session summary, output JSON only:
+    const prompt = `Given this ${session.agentLabel ?? "Claude Code"} session summary, output JSON only:
 { "category": "pattern" | "gotcha" | "decision" | "tool",
   "topic": string (2-5 words, kebab-friendly: name the SINGLE most durable or
     surprising lesson, NOT a summary of everything the session touched),

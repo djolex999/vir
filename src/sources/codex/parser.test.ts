@@ -74,3 +74,11 @@ describe("parseCodexSession", () => {
     expect(parseCodexSession(path, "h").sessionId).toBe("rollout-z");
   });
 });
+
+describe("parseCodexSession agent label", () => {
+  it("labels Codex sessions for the prompts", () => {
+    const path = join(dir, "rollout-l.jsonl");
+    writeFileSync(path, '{"type":"session_meta","payload":{"id":"l","cwd":"/x","source":"cli"}}');
+    expect(parseCodexSession(path, "h").agentLabel).toBe("Codex");
+  });
+});
