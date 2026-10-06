@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **`vir connect`: recurring lessons become proposed rules.** It finds a lesson you've recorded in at least 3 sessions spanning at least 7 days (clustering individual "What Was Learned" items by embedding), and asks the model to state it as one rule with a verbatim quote from each cited note. Invented quotes are discarded. Rules are written to `insights/rules/` as *proposed* and stay out of `vir query`/MCP until you accept them with `vir review --insights`. Accepted rules reach CLAUDE.md only via `vir sync-claude`, one y/n per rule, never under `--force`, `--dry-run` or a non-interactive shell. Rejections are remembered by session, so they survive note rewrites. `vir connect --dry-run` is free; a real run makes at most `connectMaxCandidates` (default 10) LLM calls and asks first. Requires an embedding provider. `vir status` shows proposed/accepted/awaiting counts. MCP `vir_query` gains `type: "insight"`.
 - **Use vir from any agent.** New Agent Skills skill (`npx skills add djolex999/vir`) teaches Claude Code, Codex, Cursor and other skill-aware agents to check your vir notes before they work. It uses the MCP server when registered (with `synthesize: false`, so no LLM cost), else `vir query --json`, else the notes folder directly. It is read-only and never runs paid commands unless asked. A test pins every command, flag and MCP tool it names to the real CLI.
 
 ## 0.24.3 — 2026-10-06
