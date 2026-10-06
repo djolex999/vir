@@ -22,6 +22,7 @@ import {
 } from "../diagnostics/preflightFailure.js";
 import {
   buildSources,
+  scanLabel,
   groupSessions,
   resolveSource,
   scanAll,
@@ -415,10 +416,8 @@ export async function runPipeline(
   );
   const newPerProject = new Map<string, number>();
 
-  const scanSpinner = interactive
-    ? ui.spinner("scanning ~/.claude/projects").start()
-    : null;
   const sources = buildSources(cfg);
+  const scanSpinner = interactive ? ui.spinner(scanLabel(sources)).start() : null;
   let discovered;
   try {
     discovered = scanAll(sources);
@@ -540,7 +539,8 @@ export async function runPipeline(
     decideProject(projectOf.get(path) ?? "", projectDecisions, projectFlags);
 
   // Undecided projects holding NEW sessions are a spend decision with a
-  // deadline (Claude Code prunes transcripts at ~30 days). Interactive
+  // deadline for Claude Code sessions (pruned at ~30 days; Codex keeps its
+  // rollouts). Interactive
   // callers inject onUndecidedProjects and get asked once; the daemon path
   // records pending rows and notifies instead — it must never prompt.
   const classifyModelId = normalizeModelName(cfg.models.classify, cfg.provider);

@@ -1,7 +1,7 @@
 import type { CheckStatus } from "../ui/display.js";
 
 // A failure is "recent" while Claude Code still holds the transcript (it prunes
-// at ~30 days). Inside this window a failed session can still be recovered, so
+// at ~30 days; Codex never prunes, so its failures stay recoverable). Inside this window a failed session can still be recovered, so
 // it is worth interrupting for; outside it, the answer may already be "too
 // late" and the row is informational.
 const RECENT_FAILURE_DAYS = 7;

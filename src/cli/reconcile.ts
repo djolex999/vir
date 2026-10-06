@@ -119,7 +119,8 @@ export interface ReconcileTargetSummary {
   sessionId: string;
   hadCostRecord: boolean;
   estimatedCost: number;
-  // The transcript is gone (Claude Code deletes old ones): it cannot be
+  // The transcript is gone (Claude Code deletes old ones; a Codex thread may
+  // have been archived or deleted): it cannot be
   // retried, only an earlier note restored, so it costs nothing.
   missing: boolean;
 }

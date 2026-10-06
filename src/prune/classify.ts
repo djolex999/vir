@@ -27,7 +27,8 @@ export interface PruneRow {
 }
 
 // Decide one row. Pure and zero-I/O: 396 of 411 distilled transcripts are
-// already deleted from disk (Claude Code prunes at ~30 days), so any rule that
+// already deleted from disk (Claude Code prunes at ~30 days; Codex keeps its
+// rollouts), so any rule that
 // needs to READ the transcript can decide almost nothing. Everything here comes
 // from the stored path and the stored entrypoint.
 export function classifyRow(row: PruneRow, projectsDir: string): PruneDecision {

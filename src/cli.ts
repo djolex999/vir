@@ -81,7 +81,7 @@ const pkg = JSON.parse(
 const program = new Command();
 program
   .name("vir")
-  .description("Distill your Claude Code sessions into a markdown knowledge base you own")
+  .description("Distill your coding-agent sessions (Claude Code, Codex) into a markdown knowledge base you own")
   .version(pkg.version);
 
 program

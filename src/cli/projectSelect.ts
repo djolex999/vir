@@ -24,7 +24,7 @@ export function buildProjectChoices(
     40,
   );
   // Default is over-capture: everything not explicitly excluded starts
-  // CHECKED. Transcripts prune at ~30 days, so an accidental enter that
+  // CHECKED. Claude Code transcripts prune at ~30 days, so an accidental enter that
   // includes too much costs cents; one that excludes too much loses the
   // sessions forever.
   return projects.map((p) => ({

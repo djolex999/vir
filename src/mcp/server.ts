@@ -1,6 +1,6 @@
 /**
  * vir MCP server — exposes the distilled knowledge vault to MCP clients
- * (Claude Code) as queryable tools over stdio.
+ * (Claude Code, Codex) as queryable tools over stdio.
  *
  * Register with Claude Code by adding to ~/.claude/claude_desktop_config.json:
  *
@@ -219,7 +219,7 @@ function noteIsVerified(vaultRoot: string, dir: string, fileBase: string): boole
 
 export const VIR_QUERY_DESCRIPTION =
   "Search the knowledge vault for patterns, gotchas, decisions, and " +
-  "tool insights from past Claude Code sessions, concepts, techniques, " +
+  "tool insights from past coding-agent sessions (Claude Code, Codex), concepts, techniques, " +
   "references, and opinions distilled from web articles, and notes " +
   "distilled from PDFs/papers. " +
   "Use this before working on a task to consult prior learnings. " +
@@ -299,7 +299,7 @@ export async function runMcpServer(cfg: Config): Promise<void> {
           .enum(QUERY_TYPES)
           .optional()
           .describe(
-            "Restrict to 'session' notes (Claude Code), 'article' notes " +
+            "Restrict to 'session' notes (coding-agent sessions), 'article' notes " +
               "(web articles), 'topic' pages (synthesized via `vir compose`), " +
               "'pdf' notes (distilled papers/PDFs), or 'all' (default).",
           ),
@@ -448,7 +448,7 @@ export async function runMcpServer(cfg: Config): Promise<void> {
     "vir_recent_notes",
     {
       description:
-        "Get the most recently distilled knowledge from Claude Code " +
+        "Get the most recently distilled knowledge from coding-agent " +
         "sessions. Use this to see what the user has been working on lately.",
       inputSchema: {
         limit: z

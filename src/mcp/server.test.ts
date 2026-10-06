@@ -157,3 +157,10 @@ describe("vir_query synthesis is opt-out and labelled as billed", () => {
     expect(VIR_QUERY_DESCRIPTION).toContain("synthesize: false");
   });
 });
+
+describe("tool descriptions are agent-neutral", () => {
+  it("vir_query names both supported agents", () => {
+    expect(VIR_QUERY_DESCRIPTION).toContain("past coding-agent sessions (Claude Code, Codex)");
+    expect(VIR_QUERY_DESCRIPTION).not.toContain("past Claude Code sessions");
+  });
+});

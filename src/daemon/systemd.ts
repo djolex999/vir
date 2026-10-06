@@ -85,7 +85,7 @@ export function renderService(opts: {
   cliPath: string;
 }): string {
   return `[Unit]
-Description=Vir Claude Code session distillation
+Description=Vir coding-agent session distillation
 
 [Service]
 Type=oneshot

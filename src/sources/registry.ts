@@ -47,6 +47,10 @@ export function resolveSource(
   return sources.find((s) => s.owns(path)) ?? FALLBACK_SOURCE;
 }
 
+export function scanLabel(sources: SessionSource[]): string {
+  return `scanning ${sources.map((s) => s.label).join(" + ")}`;
+}
+
 export function scanAll(sources: SessionSource[]): SourceSession[] {
   return sources.flatMap((s) => s.scan());
 }
