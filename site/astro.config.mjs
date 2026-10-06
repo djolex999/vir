@@ -9,7 +9,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "vir docs",
-      description: "An LLM Wiki for Claude Code, in your Obsidian vault.",
+      description: "Karpathy's LLM Wiki, built from your Claude Code sessions. Plain markdown you own.",
       logo: { src: "./src/assets/logo.svg", alt: "vir" },
       favicon: "/favicon.svg",
       social: [
@@ -43,6 +43,8 @@ export default defineConfig({
         { label: "Inputs", slug: "docs/inputs" },
         { label: "Retrieval and MCP", slug: "docs/retrieval" },
         { label: "Keeping it current", slug: "docs/keeping-it-current" },
+        { label: "Recurring rules", slug: "docs/recurring-rules" },
+        { label: "Any agent", slug: "docs/any-agent" },
         { label: "Providers and cost", slug: "docs/providers-and-cost" },
         { label: "Configuration", slug: "docs/configuration" },
         { label: "Commands", slug: "docs/commands" },

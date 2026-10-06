@@ -62,7 +62,7 @@ Restart Claude Code. The vault is now available mid-session through six read-onl
 
 | Tool | What it does |
 | --- | --- |
-| `vir_query` | Search + synthesize. `type` filter: `session` \| `article` \| `topic` \| `pdf` \| `all`; `category`, `project`, `top_k` (default 5, max 10). `verified_only: true` restricts to reviewed notes. `synthesize: false` returns the matching notes without the LLM call. |
+| `vir_query` | Search + synthesize. `type` filter: `session` \| `article` \| `topic` \| `pdf` \| `insight` \| `all`; `category`, `project`, `top_k` (default 5, max 10). `verified_only: true` restricts to reviewed notes. `synthesize: false` returns the matching notes without the LLM call. |
 | `vir_status` | Note counts, confidence, categories, per-project breakdown, date range, gaps |
 | `vir_recent_notes` | Latest session notes (`limit`, default 10, max 20) |
 | `vir_recent_articles` | Latest article notes |
@@ -72,6 +72,8 @@ Restart Claude Code. The vault is now available mid-session through six read-onl
 The server never changes the vault. `vir_query` is the one tool that spends tokens: it synthesizes its answer with `models.distill`, the same small call as `vir query`, and appends to the query log. Its tool description tells the agent the call is billed, and `synthesize: false` skips it. Everything else reads files or caches; the expensive syntheses (`vir compose`, `vir summarize`) stay behind the CLI.
 
 `vir mcp status` checks registration; `vir mcp uninstall` removes it.
+
+`type: insight` returns only [recurring rules](/docs/recurring-rules/) you accepted; proposed and rejected ones are never served, here or in `vir query`. To let agents other than Claude Code use the vault, see [Any agent](/docs/any-agent/).
 
 ## Retrieval logging
 

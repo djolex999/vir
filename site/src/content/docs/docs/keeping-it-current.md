@@ -33,7 +33,9 @@ vir sync-claude --global     # only ~/.claude/CLAUDE.md
 
 vir writes only between `<!-- VIR:START -->` and `<!-- VIR:END -->` markers. The rest of the file is preserved byte-for-byte; if there's no block yet, one is appended. Nothing is written without you seeing the diff, unless you pass `--force`.
 
-Project paths resolve flexibly: `~/projects/<slug>`, `~/projects/<slug>-*`, `~/code/<slug>`, `~/dev/<slug>`.
+Project paths resolve flexibly: `~/projects/<slug>`, `~/projects/<slug>-*`, `~/code/<slug>`, `~/dev/<slug>`, and, since 0.25.1, a folder in any of those whose name slugs to the project (`pripremi.rs` → `pripremi-rs`).
+
+**Rules.** Accepted [recurring rules](/docs/recurring-rules/) go into the same block under `## Rules (from vir)`, but never in bulk: each one is shown as its own hunk with its source notes and needs its own `y`. `n` declines it for good; `s` asks again next time. Under `--force`, `--dry-run`, or without a terminal, rules are listed as awaiting approval and never added.
 
 ## Review
 
