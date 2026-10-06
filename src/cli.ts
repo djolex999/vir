@@ -56,6 +56,7 @@ import { VaultWriter } from "./pipeline/writer.js";
 import { withPipelineLock } from "./cli/guards.js";
 import { cmdConnect } from "./cli/connect.js";
 import { runSyncClaude } from "./cli/syncClaude.js";
+import { insightCounts, renderInsightsLine } from "./cli/insightsStatus.js";
 import { cmdReviewInsights } from "./cli/reviewInsights.js";
 import { runDoctor, runDoctorJson } from "./diagnostics/doctor.js";
 import { embedCommand } from "./cli/embed.js";
@@ -920,6 +921,7 @@ program
       }
       const db = new StateDb();
       const knowledge = db.getStats();
+      const insightsLine = renderInsightsLine(insightCounts(db.listInsights()));
       const pendingEmbedding =
         db.listEmbeddingTargets().length +
         db.listTopicEmbeddingTargets().length +
@@ -937,6 +939,7 @@ program
           ),
         );
       }
+      if (insightsLine !== null) ui.line(ui.dim(`  ${insightsLine}`));
       ui.blank();
       renderDaemon(ds, cfg.cadenceHours);
     }),
