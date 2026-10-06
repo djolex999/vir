@@ -15,3 +15,39 @@ export interface Lesson {
   contentHash: string; // sha256(text), first 16 hex
   archivedVia: string | null; // winner slug when read from archived/
 }
+
+export type InsightStatus = "proposed" | "accepted" | "rejected";
+export type Promotion = "none" | "promoted" | "declined";
+
+export interface InsightEvidence {
+  citeSlug: string;
+  project: string;
+  date: string;
+  quote: string;
+}
+
+// One proposed/accepted/rejected rule. The DB row is the source of truth; the
+// markdown file mirrors it.
+export interface InsightRow {
+  id: string;
+  slug: string;
+  insightType: "recurring-rule";
+  status: InsightStatus;
+  promotion: Promotion;
+  scope: string;
+  rule: string;
+  why: string;
+  memberSessionIds: string[];
+  memberHashes: string[];
+  sources: string[]; // cite slugs
+  evidence: InsightEvidence[];
+  sessions: number;
+  projects: string[];
+  firstSeen: string;
+  lastSeen: string;
+  evidenceChanged: boolean;
+  pending: InsightEvidence[] | null;
+  model: string;
+  createdAt: string;
+  updatedAt: string;
+}

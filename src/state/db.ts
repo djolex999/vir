@@ -5,6 +5,7 @@ import { LEGACY_STATE_PATH, STATE_PATH } from "../config.js";
 import type { Category } from "../pipeline/types.js";
 import { makeSlug } from "../pipeline/slug.js";
 import { contentHash, type AuditVerdict } from "../audit/types.js";
+import type { InsightRow } from "../connect/types.js";
 
 export interface SessionRow {
   path: string;
@@ -408,6 +409,32 @@ export class StateDb {
         embedding TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_pdfs_hash ON pdfs(hash);
+      CREATE TABLE IF NOT EXISTS insights (
+        id TEXT PRIMARY KEY,
+        slug TEXT NOT NULL UNIQUE,
+        insight_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        promotion TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        rule TEXT NOT NULL,
+        why TEXT NOT NULL,
+        member_session_ids TEXT NOT NULL,
+        member_hashes TEXT NOT NULL,
+        sources TEXT NOT NULL,
+        evidence TEXT NOT NULL,
+        sessions INTEGER NOT NULL,
+        projects TEXT NOT NULL,
+        first_seen TEXT NOT NULL,
+        last_seen TEXT NOT NULL,
+        evidence_changed INTEGER NOT NULL DEFAULT 0,
+        pending TEXT,
+        model TEXT NOT NULL,
+        embedding TEXT,
+        embedding_model TEXT,
+        embedding_dim INTEGER,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS lesson_embeddings (
         content_hash TEXT NOT NULL,
         model TEXT NOT NULL,
@@ -1845,6 +1872,150 @@ export class StateDb {
         )
         .run(JSON.stringify(embedding), provenance.model, provenance.dim, id).changes > 0
     );
+  }
+
+  // ── Connect pass: insights ──────────────────────────────────────────────
+  // Guarded like hasTopicsTable: the read-only MCP path skips CREATE TABLE.
+  private hasInsightsTable(): boolean {
+    try {
+      return (
+        this.db
+          .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='insights'")
+          .get() !== undefined
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private static insightFromRow(r: Record<string, unknown>): InsightRow {
+    const json = <T>(v: unknown, fallback: T): T => {
+      if (typeof v !== "string") return fallback;
+      try {
+        return JSON.parse(v) as T;
+      } catch {
+        return fallback;
+      }
+    };
+    return {
+      id: String(r.id),
+      slug: String(r.slug),
+      insightType: "recurring-rule",
+      status: r.status as InsightRow["status"],
+      promotion: r.promotion as InsightRow["promotion"],
+      scope: String(r.scope),
+      rule: String(r.rule),
+      why: String(r.why),
+      memberSessionIds: json<string[]>(r.member_session_ids, []),
+      memberHashes: json<string[]>(r.member_hashes, []),
+      sources: json<string[]>(r.sources, []),
+      evidence: json<InsightRow["evidence"]>(r.evidence, []),
+      sessions: Number(r.sessions),
+      projects: json<string[]>(r.projects, []),
+      firstSeen: String(r.first_seen),
+      lastSeen: String(r.last_seen),
+      evidenceChanged: Number(r.evidence_changed) === 1,
+      pending: r.pending === null ? null : json<InsightRow["pending"]>(r.pending, null),
+      model: String(r.model),
+      createdAt: String(r.created_at),
+      updatedAt: String(r.updated_at),
+    };
+  }
+
+  listInsights(): InsightRow[] {
+    if (!this.hasInsightsTable()) return [];
+    return (this.db.prepare("SELECT * FROM insights ORDER BY created_at, id").all() as Array<Record<string, unknown>>)
+      .map((r) => StateDb.insightFromRow(r));
+  }
+
+  getInsightBySlug(slug: string): InsightRow | null {
+    if (!this.hasInsightsTable()) return null;
+    const r = this.db.prepare("SELECT * FROM insights WHERE slug = ?").get(slug) as Record<string, unknown> | undefined;
+    return r === undefined ? null : StateDb.insightFromRow(r);
+  }
+
+  upsertInsight(row: InsightRow): void {
+    this.db
+      .prepare(
+        `INSERT INTO insights (id, slug, insight_type, status, promotion, scope, rule, why,
+           member_session_ids, member_hashes, sources, evidence, sessions, projects,
+           first_seen, last_seen, evidence_changed, pending, model, created_at, updated_at)
+         VALUES (@id, @slug, @insight_type, @status, @promotion, @scope, @rule, @why,
+           @member_session_ids, @member_hashes, @sources, @evidence, @sessions, @projects,
+           @first_seen, @last_seen, @evidence_changed, @pending, @model, @created_at, @updated_at)
+         ON CONFLICT(id) DO UPDATE SET
+           slug = excluded.slug, status = excluded.status, promotion = excluded.promotion,
+           scope = excluded.scope, rule = excluded.rule, why = excluded.why,
+           member_session_ids = excluded.member_session_ids, member_hashes = excluded.member_hashes,
+           sources = excluded.sources, evidence = excluded.evidence, sessions = excluded.sessions,
+           projects = excluded.projects, first_seen = excluded.first_seen, last_seen = excluded.last_seen,
+           evidence_changed = excluded.evidence_changed, pending = excluded.pending,
+           model = excluded.model, updated_at = excluded.updated_at`,
+      )
+      .run({
+        id: row.id,
+        slug: row.slug,
+        insight_type: row.insightType,
+        status: row.status,
+        promotion: row.promotion,
+        scope: row.scope,
+        rule: row.rule,
+        why: row.why,
+        member_session_ids: JSON.stringify(row.memberSessionIds),
+        member_hashes: JSON.stringify(row.memberHashes),
+        sources: JSON.stringify(row.sources),
+        evidence: JSON.stringify(row.evidence),
+        sessions: row.sessions,
+        projects: JSON.stringify(row.projects),
+        first_seen: row.firstSeen,
+        last_seen: row.lastSeen,
+        evidence_changed: row.evidenceChanged ? 1 : 0,
+        pending: row.pending === null ? null : JSON.stringify(row.pending),
+        model: row.model,
+        created_at: row.createdAt,
+        updated_at: row.updatedAt,
+      });
+  }
+
+  setInsightEmbedding(id: string, vector: number[], prov: EmbeddingProvenance): void {
+    this.db
+      .prepare("UPDATE insights SET embedding = ?, embedding_model = ?, embedding_dim = ? WHERE id = ?")
+      .run(JSON.stringify(vector), prov.model, prov.dim, id);
+  }
+
+  // Accepted rules join the retriever's embedding pool. Proposed and rejected
+  // rules never do — this WHERE clause is the serving gate.
+  getInsightEmbeddings(vaultRoot: string): EmbeddingRow[] {
+    if (!this.hasInsightsTable()) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT id, slug, rule, embedding, embedding_model, embedding_dim FROM insights
+         WHERE status = 'accepted' AND embedding IS NOT NULL`,
+      )
+      .all() as Array<{ id: string; slug: string; rule: string; embedding: string; embedding_model: string | null; embedding_dim: number | null }>;
+    const out: EmbeddingRow[] = [];
+    for (const r of rows) {
+      let vec: number[];
+      try {
+        const parsed = JSON.parse(r.embedding) as unknown;
+        if (!Array.isArray(parsed)) continue;
+        vec = parsed.map((x) => Number(x));
+        if (vec.some((n) => !Number.isFinite(n))) continue;
+      } catch {
+        continue;
+      }
+      out.push({
+        sessionId: r.id,
+        topic: r.rule,
+        category: "insight",
+        project: "",
+        filePath: join(vaultRoot, "insights", "rules", `${r.slug}.md`),
+        embedding: vec,
+        embeddingModel: r.embedding_model ?? "",
+        embeddingDim: r.embedding_dim ?? vec.length,
+      });
+    }
+    return out;
   }
 
   // Connect-pass lesson vectors, cached by normalized-text hash so an
