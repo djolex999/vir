@@ -38,6 +38,7 @@ import { runAction } from "./cli/runAction.js";
 import { runReconcile } from "./cli/reconcile.js";
 import {
   installToClaudeCode,
+  installToCodex,
   isClaudeAvailable,
   isInstalled,
   uninstallFromClaudeCode,
@@ -1065,12 +1066,13 @@ program
 
 const mcpCmd = program
   .command("mcp")
-  .description("MCP server + Claude Code registration")
+  .description("MCP server + Claude Code / Codex registration")
   .addHelpText(
     "after",
     `
 Quick start:
   vir mcp install      register with Claude Code (recommended)
+  vir mcp install --target codex   print the Codex config snippet
   vir mcp status       check registration
   vir mcp run          run the stdio server directly (vir mcp = vir mcp run)
 
@@ -1096,10 +1098,18 @@ mcpCmd
 
 mcpCmd
   .command("install")
-  .description("Register Vir with Claude Code")
-  .option("--scope <scope>", "user or project", "user")
+  .description("Register Vir with Claude Code, or print the Codex config (--target codex)")
+  .option("--scope <scope>", "user or project (Claude Code only)", "user")
+  .option("--target <agent>", "claude or codex", "claude")
   .action(
-    runAction(async (opts: { scope: string }) => {
+    runAction(async (opts: { scope: string; target: string }) => {
+      if (opts.target === "codex") {
+        installToCodex();
+        return;
+      }
+      if (opts.target !== "claude") {
+        throw new Error(`unknown --target '${opts.target}' — use 'claude' or 'codex'`);
+      }
       await installToClaudeCode(opts.scope as "user" | "project");
     }),
   );

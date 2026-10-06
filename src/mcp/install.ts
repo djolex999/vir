@@ -102,3 +102,23 @@ export async function isInstalled(): Promise<boolean> {
   // Match the `vir` entry on a word boundary so "virtual-x" wouldn't match.
   return /^\s*vir\b/m.test(res.stdout ?? "");
 }
+
+// Codex: print, never write. vir doesn't edit another agent's config; this is
+// the exact block `codex mcp add vir -- vir mcp` writes (verified on
+// codex-cli 0.160.1).
+export function codexInstallSnippet(): string {
+  return [
+    "Add this to ~/.codex/config.toml:",
+    "",
+    "[mcp_servers.vir]",
+    'command = "vir"',
+    'args = ["mcp"]',
+    "",
+    "or run: codex mcp add vir -- vir mcp",
+    "Then restart Codex; vir_query and the other vir tools become available.",
+  ].join("\n");
+}
+
+export function installToCodex(print: (s: string) => void = console.log): void {
+  print(codexInstallSnippet());
+}
