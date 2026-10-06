@@ -16,13 +16,19 @@ export interface ModelThresholds {
 }
 
 export const MODEL_THRESHOLDS: Record<string, ModelThresholds> = {
-  // Connect thresholds are PROVISIONAL until the connect-pass calibration
-  // (tasks/connect-pass-plan.md Task 3) measures lesson-level distributions.
+  // Connect thresholds calibrated 2026-10-06 on the owner's 1,292-lesson
+  // vault (nomic): 60 cross-session pairs stratified by cosine band, labeled
+  // same-lesson (Fable pass, owner-approved). Pair precision by band:
+  // 0.55-0.65 0/15 · 0.65-0.75 0/15 · 0.75-0.85 2/15 · >0.85 15/15 — so
+  // connectMinSim 0.85 (spec: precision >= 0.9). Purity at 0.85: 5/5 clusters
+  // were one lesson, identical for core 0.80/0.85/0.88, so connectCoreSim
+  // sits at 0.85 (the guard is a backstop here, not a filter).
+  // docs/connect-pass-eval-2026-10.md has the full record.
   "nomic-embed-text": {
     minEmbeddingScore: 0.3,
     relatedMinSim: 0.6,
-    connectMinSim: 0.8,
-    connectCoreSim: 0.78,
+    connectMinSim: 0.85,
+    connectCoreSim: 0.85,
   },
   // Calibrated 2026-07-31 by quantile-matching nomic's floors on a real
   // 389-note vault (20 queries; 75,466 doc-doc pairs). The two models'
@@ -36,8 +42,10 @@ export const MODEL_THRESHOLDS: Record<string, ModelThresholds> = {
   "bge-small-en-v1.5": {
     minEmbeddingScore: 0.35,
     relatedMinSim: 0.6,
-    connectMinSim: 0.8,
-    connectCoreSim: 0.78,
+    // Not calibrated separately: bge's doc-doc distribution matches nomic's
+    // (see above), so the connect thresholds carry over like relatedMinSim.
+    connectMinSim: 0.85,
+    connectCoreSim: 0.85,
   },
 };
 
