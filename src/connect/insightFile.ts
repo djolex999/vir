@@ -1,6 +1,7 @@
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { kebab } from "../pipeline/slug.js";
+import { ruleText } from "./text.js";
 import type { InsightRow } from "./types.js";
 
 export const INSIGHTS_RULES_DIR = "insights/rules";
@@ -51,9 +52,9 @@ export function renderInsight(row: InsightRow): string {
 // The owner edits only the **Rule:** and **Why:** lines; everything else is
 // re-rendered from the DB on the next state write.
 export function parseRuleEdit(raw: string): { rule: string; why: string } | null {
-  const rule = raw.match(/^\*\*Rule:\*\*[ \t]*(.+)$/m)?.[1]?.trim();
-  if (rule === undefined || rule.length === 0) return null;
-  const why = raw.match(/^\*\*Why:\*\*[ \t]*(.+)$/m)?.[1]?.trim() ?? "";
+  const rule = ruleText(raw.match(/^\*\*Rule:\*\*[ \t]*(.+)$/m)?.[1] ?? "");
+  if (rule.length === 0) return null;
+  const why = ruleText(raw.match(/^\*\*Why:\*\*[ \t]*(.+)$/m)?.[1] ?? "");
   return { rule, why };
 }
 

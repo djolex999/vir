@@ -5,6 +5,7 @@ import type { Config } from "../config.js";
 import { collectLessons } from "../connect/extract.js";
 import { INSIGHTS_RULES_DIR, parseRuleEdit, writeInsightFile } from "../connect/insightFile.js";
 import { MIN_SESSIONS } from "../connect/qualify.js";
+import { ruleText } from "../connect/text.js";
 import type { InsightRow } from "../connect/types.js";
 import { embedNoteWithProvider, resolveActiveProviderCached } from "../search/provider.js";
 import { vaultRoot } from "../search/retriever.js";
@@ -133,8 +134,8 @@ export async function runReviewInsights(cfg: Config, db: StateDb, io: InsightRev
     const changed = row.status === "accepted";
     io.show(`[${i + 1}/${queue.length}] ${changed ? "accepted rule, new evidence" : "proposed rule"} · ${row.scope} · ${row.sessions} sessions`);
     if (changed && isStale(row, live)) io.show("stale: fewer than 3 of its source sessions still have notes");
-    io.show(`Rule: ${row.rule}`);
-    io.show(`Why: ${row.why}`);
+    io.show(`Rule: ${ruleText(row.rule)}`);
+    io.show(`Why: ${ruleText(row.why)}`);
     for (const e of changed ? (row.pending ?? []) : row.evidence) {
       io.show(`  [[${e.citeSlug}]] (${e.project || "-"}, ${e.date.slice(0, 10)}): ${JSON.stringify(e.quote)}`);
     }

@@ -12,6 +12,7 @@ import {
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "../config.js";
+import { ruleText } from "../connect/text.js";
 import type { InsightRow } from "../connect/types.js";
 import type { DistilledRow, StateDb } from "../state/db.js";
 import { kebab } from "../pipeline/writer.js";
@@ -86,16 +87,6 @@ export function planRules(db: StateDb, options: PlanOptions = {}): RuleCandidate
     if (target !== null) out.push({ target, insight });
   }
   return out;
-}
-
-// Rule text is model-written and owner-editable, and CLAUDE.md is read as
-// instructions: it must stay ONE inert line — no newlines (no injected
-// headings), no HTML-comment syntax (no fake VIR markers or rule ids).
-export function ruleText(rule: string): string {
-  return rule
-    .replace(/<!--|-->/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 export function renderRuleHunk(c: RuleCandidate): string {

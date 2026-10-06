@@ -1,5 +1,6 @@
 import { normalizeLesson } from "./extract.js";
 import { qualifies, recurrence } from "./qualify.js";
+import { ruleText } from "./text.js";
 import type { Lesson } from "./types.js";
 
 export interface LlmVerdict {
@@ -76,8 +77,8 @@ const norm = (s: string): string => normalizeLesson(s).toLowerCase();
 // Everything the model claims is checked against the cluster: ids must exist,
 // quotes must be real substrings, and the surviving members must still recur.
 export function validateVerdict(members: Lesson[], v: LlmVerdict): ValidatedRule | null {
-  const rule = v.rule.trim();
-  const why = v.why.trim();
+  const rule = ruleText(v.rule);
+  const why = ruleText(v.why);
   if (rule.length === 0) return null;
   const byId = new Map(members.map((m, i) => [`L${i + 1}`, m]));
   const claimed = new Set(v.same_lesson.filter((id) => byId.has(id)));

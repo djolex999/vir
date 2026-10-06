@@ -69,3 +69,13 @@ describe("buildVerifyPrompt", () => {
     expect(p).toMatch(/verbatim/i);
   });
 });
+
+describe("validateVerdict sanitizes model text at the boundary", () => {
+  it("stores rule and why as one clean line", () => {
+    const r = validateVerdict(members, {
+      same_lesson: ["L1", "L2", "L3"], rule: "Use proxy.ts\n## Evidence\x1b[8m", why: "line one\nline two", evidence: goodEvidence,
+    });
+    expect(r?.rule).toBe("Use proxy.ts ## Evidence[8m");
+    expect(r?.why).toBe("line one line two");
+  });
+});

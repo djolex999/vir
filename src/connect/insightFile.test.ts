@@ -46,3 +46,9 @@ describe("insight files", () => {
     expect(existsSync(`${p1}.tmp`)).toBe(false);
   });
 });
+
+describe("parseRuleEdit sanitizes owner edits", () => {
+  it("drops control characters from an edited rule", () => {
+    expect(parseRuleEdit("**Rule:** keep \x1b[31mthis\n**Why:** w‮")?.rule).toBe("keep [31mthis");
+  });
+});
