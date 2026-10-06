@@ -21,3 +21,6 @@ docs-*.jpeg
 # retrieval eval harness: code lives in eval/, data never does
 eval/dist/
 eval/data/
+
+# Local-only Codex fixture (your real prompts): npm run fixture:codex
+src/sources/codex/fixtures/

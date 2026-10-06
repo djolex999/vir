@@ -37,6 +37,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "fixture:codex": "npm run build --silent && node scripts/codex-fixture.mjs",
     "build:notifier": "native/notifier/build.sh",
     "prepublishOnly": "npm run build && npm test",
     "dev": "tsc --watch",
