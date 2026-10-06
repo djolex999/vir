@@ -88,11 +88,21 @@ export function planRules(db: StateDb, options: PlanOptions = {}): RuleCandidate
   return out;
 }
 
+// Rule text is model-written and owner-editable, and CLAUDE.md is read as
+// instructions: it must stay ONE inert line — no newlines (no injected
+// headings), no HTML-comment syntax (no fake VIR markers or rule ids).
+export function ruleText(rule: string): string {
+  return rule
+    .replace(/<!--|-->/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function renderRuleHunk(c: RuleCandidate): string {
   const sources = c.insight.evidence
     .map((e) => `[[${e.citeSlug}]] (${e.project || "-"}, ${e.date.slice(0, 10)})`)
     .join(", ");
-  return [`+ - rule: ${c.insight.rule}`, `  why: ${c.insight.why}`, `  sources: ${sources}`].join("\n");
+  return [`+ - rule: ${ruleText(c.insight.rule)}`, `  why: ${ruleText(c.insight.why)}`, `  sources: ${sources}`].join("\n");
 }
 
 export function planUpdates(
@@ -256,7 +266,7 @@ export function renderBlock(entries: Entry[], rules: RuleEntry[] = []): string {
   if (rules.length > 0) {
     lines.push("## Rules (from vir)");
     lines.push("");
-    for (const r of rules) lines.push(`- rule: ${r.rule} <!-- vir-rule:${r.id} -->`);
+    for (const r of rules) lines.push(`- rule: ${ruleText(r.rule)} <!-- vir-rule:${r.id} -->`);
     lines.push("");
   }
   lines.push(VIR_END);
