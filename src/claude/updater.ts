@@ -464,6 +464,8 @@ export function globalClaudePath(): string {
 //   2. ~/projects/<slug>-*/CLAUDE.md   (suffixed dirs, e.g. "<slug>-web")
 //   3. ~/code/<slug>/CLAUDE.md
 //   4. ~/dev/<slug>/CLAUDE.md
+//   5. a folder under ~/projects, ~/code or ~/dev whose kebab-cased name is
+//      the slug ("pripremi.rs" → "pripremi-rs")
 // If none exist, falls back to the canonical (#1) location so the plan
 // reports exists=false there. The returned path flows into PlanItem.target,
 // which the dry-run output prints as each plan's heading — so the matched
@@ -489,6 +491,22 @@ export function projectClaudePath(projectSlug: string): string {
 
   candidates.push(join(home, "code", projectSlug, "CLAUDE.md"));
   candidates.push(join(home, "dev", projectSlug, "CLAUDE.md"));
+
+  // Project slugs are kebab-cased, so a folder named "pripremi.rs" or "My App"
+  // never matched its own slug ("pripremi-rs", "my-app") and its CLAUDE.md was
+  // silently skipped. Last resort, after every exact candidate: any folder
+  // under the same roots whose kebab-cased name equals the slug.
+  for (const root of ["projects", "code", "dev"]) {
+    try {
+      for (const name of readdirSync(join(home, root)).sort()) {
+        if (name !== projectSlug && kebab(name) === projectSlug) {
+          candidates.push(join(home, root, name, "CLAUDE.md"));
+        }
+      }
+    } catch {
+      // root missing — nothing to match there
+    }
+  }
 
   for (const c of candidates) {
     if (existsSync(c)) return c;

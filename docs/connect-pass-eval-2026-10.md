@@ -34,4 +34,8 @@ Spec rule (pair precision ≥ 0.9) → **`connectMinSim` = 0.85**.
 
 | Date | Run | Candidates | Proposed | Accepted | Rejected | kept/total |
 |---|---|---|---|---|---|---|
-| | | | | | | |
+| 2026-10-06 | 0.25.0, 1 LLM call (claude-cli quota) | 1 | 1 | 1 | 0 | 3/3 |
+
+**2026-10-06 run.** The one candidate (C5) became: *"After changing the Paddle account-level tax-inclusive toggle, archive and recreate all existing prices — the toggle never retroactively updates prices already created."* Scope `project:pripremi-rs`, 3 sessions (2026-05-06 → 2026-05-13), all three quotes verbatim. Accepted by the owner in `vir review --insights`. After accepting, `vir query "paddle tax inclusive prices"` returns the rule first (0.815, `insight`), ahead of the original gotcha note (0.557).
+
+**Found during the run.** Promotion was blocked by a pre-existing `sync-claude` bug: the project folder is `pripremi.rs`, its slug is `pripremi-rs`, and `projectClaudePath` only matched exact folder names, so that project's CLAUDE.md had never received a VIR block. Fixed in 0.25.1. A cosmetic issue too: a merged (archived) source cites its live winner, so the same `[[slug]]` can appear twice in the evidence list. Marking merged sources is a follow-up.
