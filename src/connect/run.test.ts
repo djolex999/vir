@@ -168,6 +168,16 @@ describe("runConnect", () => {
     expect(s).toMatchObject({ unverified: 1, proposed: 0 });
   });
 
+  it("writes no rule when the embedding provider dies mid-run", async () => {
+    const p = provider();
+    let n = 0;
+    const real = p.embedDoc;
+    p.embedDoc = async (t: string) => { n += 1; if (n > 2) throw new Error("down"); return real(t); };
+    await expect(runConnect(cfg, db, { dryRun: false }, deps([], { provider: p }))).rejects.toThrow("nothing written");
+    expect(ruleFiles()).toEqual([]);
+    expect(db.listInsights()).toEqual([]);
+  });
+
   it("holds the vault lock for the whole run", async () => {
     const first = runConnect(cfg, db, { dryRun: true }, deps([]));
     await expect(runConnect(cfg, db, { dryRun: true }, deps([]))).rejects.toBeInstanceOf(LockHeldError);

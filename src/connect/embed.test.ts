@@ -49,10 +49,18 @@ describe("embedLessons", () => {
     expect(provider.calls).toBe(2);
   });
 
-  it("leaves a lesson out when its embed fails, without throwing", async () => {
+  it("stops the run when the provider fails mid-way, keeping what was cached", async () => {
     const provider = fakeProvider();
-    provider.embedDoc = async () => { throw new Error("down"); };
-    const out = await embedLessons([lesson("a", "h9")], db, provider);
-    expect(out.size).toBe(0);
+    let n = 0;
+    const real = provider.embedDoc;
+    provider.embedDoc = async (t: string) => {
+      n += 1;
+      if (n > 1) throw new Error("connection refused");
+      return real(t);
+    };
+    await expect(embedLessons([lesson("a", "h1"), lesson("b", "h2")], db, provider)).rejects.toThrow(
+      "embedding provider failed after 1 lesson(s) — nothing written: connection refused",
+    );
+    expect(db.getLessonEmbeddings(["h1"], "fake-model").size).toBe(1);
   });
 });
