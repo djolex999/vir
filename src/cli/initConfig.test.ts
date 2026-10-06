@@ -256,3 +256,13 @@ describe("buildInitConfig — session source dirs", () => {
     expect(built.codexSessionsDir).toBe("/h/.codex/sessions");
   });
 });
+
+describe("buildInitConfig — codex-cli", () => {
+  it("lets Codex pick the model and turns hybrid routing off", () => {
+    const built = buildInitConfig(
+      null,
+      answers({ provider: "codex-cli", classifyModel: "default", distillModel: "default" }),
+    ) as { models: Record<string, unknown> };
+    expect(built.models).toEqual({ classify: "default", distill: "default" });
+  });
+});

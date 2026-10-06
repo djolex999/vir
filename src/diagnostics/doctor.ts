@@ -9,6 +9,7 @@
 import Database from "better-sqlite3";
 import { accessSync, constants, existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
+import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -52,6 +53,7 @@ import {
   notifierPermission,
   type NotifierPermission,
 } from "../ui/macNotifier.js";
+import { isSubscriptionProvider, resolveBin } from "../pipeline/subscription.js";
 
 interface CheckResult {
   status: ui.CheckStatus;
@@ -132,6 +134,32 @@ function checkConfig(): { result: CheckResult; cfg: Config | null } {
 }
 
 // ── 2. api key / provider auth ──────────────────────────────────────────────
+// codex-cli: `codex login status` instead of a ping — a codex exec call costs
+// ~19k tokens of harness preamble, too much for a health check.
+function codexLoginStatus(): { code: number | null; stdout: string } | null {
+  const r = spawnSync(resolveBin("codex"), ["login", "status"], {
+    encoding: "utf8",
+    timeout: 15_000,
+  });
+  if (r.error) return null;
+  return { code: r.status, stdout: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+}
+
+export function codexLoginCheck(
+  r: { code: number | null; stdout: string } | null,
+): CheckResult {
+  if (r === null) {
+    return fail("provider auth", "codex CLI not found — install @openai/codex or switch provider");
+  }
+  if (r.code === 0 && /^Logged in/m.test(r.stdout)) {
+    return ok(
+      "provider auth",
+      "codex-cli · logged in (experimental — distills consume your Codex limits)",
+    );
+  }
+  return fail("provider auth", "codex-cli · not logged in — run `codex login`");
+}
+
 async function checkApiKey(cfg: Config): Promise<CheckResult> {
   const provider = cfg.provider;
   if (provider === "claude-cli") {
@@ -162,6 +190,7 @@ async function checkApiKey(cfg: Config): Promise<CheckResult> {
       return fail("provider auth", `claude-cli · ${truncate((err as Error).message)}`);
     }
   }
+  if (provider === "codex-cli") return codexLoginCheck(codexLoginStatus());
   if (provider === "anthropic") {
     const key = cfg.anthropicApiKey ?? "";
     if (!key.startsWith("sk-ant-")) {
@@ -198,7 +227,7 @@ async function checkApiKey(cfg: Config): Promise<CheckResult> {
 // point at the config escape hatch. Subscription (claude-cli) has no prices.
 export function pricedModelsCheck(cfg: Config): CheckResult | null {
   const provider = cfg.provider;
-  if (provider === "claude-cli") return null;
+  if (isSubscriptionProvider(provider)) return null;
   const configured = [
     cfg.models.classify,
     cfg.models.distill,

@@ -275,3 +275,11 @@ describe("session sources: optional claudeProjectsDir, codexSessionsDir", () => 
     );
   });
 });
+
+describe("provider codex-cli (ChatGPT subscription, no credential)", () => {
+  it("parses with no api key", () => {
+    expect(
+      cfg.ConfigSchema.safeParse({ vaultPath: "/v", codexSessionsDir: "/c", provider: "codex-cli" }).success,
+    ).toBe(true);
+  });
+});

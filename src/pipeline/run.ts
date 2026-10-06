@@ -31,7 +31,7 @@ import { distillArticle } from "./articleDistiller.js";
 import { parsePdf, scanPdfs } from "./pdfReader.js";
 import { distillPdf } from "./pdfDistiller.js";
 import { decideProject, estimateSessionCost } from "./projects.js";
-import { ClaudeCliLimitError } from "./claudeCli.js";
+import { SubscriptionLimitError } from "./subscription.js";
 import { resolvePricing } from "../cost/pricing.js";
 import type { ProjectDecision, RunProjectFlags } from "./projects.js";
 import type { SessionRow, SkipReason } from "../state/db.js";
@@ -60,6 +60,7 @@ import { kebab, VaultWriter } from "./writer.js";
 import { sweepEmbeddings } from "./embeddingSweep.js";
 import { backfillInsightEmbeddings } from "../connect/embed.js";
 import { resolveEmbeddingProvider } from "../search/provider.js";
+import { isSubscriptionProvider } from "./subscription.js";
 
 export interface RunOptions {
   full?: boolean;
@@ -153,7 +154,7 @@ export function estimatePerDocDistillCost(
   distillModel: string,
 ): number {
   // Subscription path: zero dollars, unmetered quota.
-  if (cfg.provider === "claude-cli") return 0;
+  if (isSubscriptionProvider(cfg.provider)) return 0;
   const CPT = 3;
   return (
     computeCost(
@@ -609,7 +610,7 @@ export async function runPipeline(
   // Dollars only when the provider bills dollars and both models are priced.
   const billing = cfg.provider;
   const priced =
-    billing !== "claude-cli" &&
+    !isSubscriptionProvider(billing) &&
     [classifyModelId, distillModelId].every(
       (m) => resolvePricing(billing, m, cfg.pricing, cfg.kieTopUpTier) !== null,
     );
@@ -657,7 +658,8 @@ export async function runPipeline(
 
   // Nudge session-only installs toward hybrid routing. interactive is already
   // false under --quiet/--daemon, so this never prints on the daemon path.
-  if (interactive && !cfg.models.distillFast) {
+  // codex-cli has no Haiku: Codex picks its own model.
+  if (interactive && !cfg.models.distillFast && cfg.provider !== "codex-cli") {
     ui.line(
       ui.dim(
         "  Tip: set models.distillFast to route routine sessions to Haiku (~50% cheaper).",
@@ -720,7 +722,7 @@ export async function runPipeline(
       );
       // Subscription path: dollars are zero; the dry-run still shows tokens.
       const cost =
-        cfg.provider === "claude-cli"
+        isSubscriptionProvider(cfg.provider)
           ? 0
           : computeCost(
               cfg.provider,
@@ -866,10 +868,10 @@ export async function runPipeline(
 
   // Batch cap for the subscription path only — stated up front, enforced at
   // the paid-call boundary, remainder reported (and picked up next cycle).
-  const cliCapActive = cfg.provider === "claude-cli";
+  const cliCapActive = isSubscriptionProvider(cfg.provider);
   let distillsStarted = 0;
   if (cliCapActive && preflightNew > CLAUDE_CLI_SESSION_CAP) {
-    const capMsg = `claude-cli: capping at ${CLAUDE_CLI_SESSION_CAP} sessions this run (${preflightNew} eligible — subscription quota has no meter; the rest run next cycle)`;
+    const capMsg = `${cfg.provider}: capping at ${CLAUDE_CLI_SESSION_CAP} sessions this run (${preflightNew} eligible — subscription quota has no meter; the rest run next cycle)`;
     if (interactive) ui.line(ui.dim(`  ${capMsg}`));
     fileLog(capMsg);
   }
@@ -1041,7 +1043,7 @@ export async function runPipeline(
       // error rows, burn no attempt counters — the wall persists for hours
       // and every remaining session would hit it identically. Unprocessed
       // sessions re-enter on the next run.
-      if (err instanceof ClaudeCliLimitError) {
+      if (err instanceof SubscriptionLimitError) {
         summary.limitHalted = err.message;
         if (interactive) {
           ui.row(ui.errorColor(ui.CROSS), ui.text(err.message));
@@ -1417,7 +1419,7 @@ async function runArticlePhase(
       // Same rule as the session loop: a subscription limit is one
       // environmental fact. Halt, and record nothing, so the wall burns no
       // attempts and the article is simply new again next run.
-      if (err instanceof ClaudeCliLimitError) {
+      if (err instanceof SubscriptionLimitError) {
         summary.limitHalted = err.message;
         if (interactive) ui.row(ui.errorColor(ui.CROSS), ui.text(err.message));
         fileLog(`article phase halted: ${err.message}`);
@@ -1524,7 +1526,7 @@ async function runPdfPhase(
       }
       await new Promise((r) => setTimeout(r, 2000));
     } catch (err) {
-      if (err instanceof ClaudeCliLimitError) {
+      if (err instanceof SubscriptionLimitError) {
         summary.limitHalted = err.message;
         if (interactive) ui.row(ui.errorColor(ui.CROSS), ui.text(err.message));
         fileLog(`pdf phase halted: ${err.message}`);

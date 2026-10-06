@@ -6,7 +6,7 @@ export interface InitAnswers {
   claudeProjectsDir?: string | undefined;
   codexSessionsDir?: string | undefined;
   cadenceHours: number;
-  provider: "anthropic" | "kie" | "claude-cli";
+  provider: Config["provider"];
   anthropicApiKey: string | undefined;
   kieApiKey: string | undefined;
   filterThreshold: number;
@@ -75,11 +75,16 @@ export function buildInitConfig(
       // New installs get hybrid routing out of the box: route routine sessions
       // to Haiku, keep the chosen distill model for decision/large ones.
       // claude-cli shares the anthropic id set (full ids pin via --model).
-      distillFast:
-        existing?.models?.distillFast ??
-        (a.provider === "kie"
-          ? "claude-haiku-4-5"
-          : "claude-haiku-4-5-20251001"),
+      // codex-cli has no cheap/smart pair yet: Codex picks the model, hybrid off.
+      ...(a.provider === "codex-cli"
+        ? {}
+        : {
+            distillFast:
+              existing?.models?.distillFast ??
+              (a.provider === "kie"
+                ? "claude-haiku-4-5"
+                : "claude-haiku-4-5-20251001"),
+          }),
       ...(existing?.models?.distillThreshold != null
         ? { distillThreshold: existing.models.distillThreshold }
         : {}),

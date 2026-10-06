@@ -193,8 +193,12 @@ export async function cmdInit(): Promise<void> {
         name: "Kie.ai       (~72% cheaper API, third-party proxy — you trade reliability for cost)",
         value: "kie" as const,
       },
+      {
+        name: "Codex        (experimental — ChatGPT subscription via `codex exec`, keyless; consumes your Codex limits)",
+        value: "codex-cli" as const,
+      },
     ],
-  })) as "anthropic" | "kie" | "claude-cli";
+  })) as Config["provider"];
 
   // Secret prompt discipline: mask while typing, echo only a masked
   // confirmation (maskSecret), and NEVER render the existing key as the
@@ -231,7 +235,7 @@ export async function cmdInit(): Promise<void> {
       (v) => (v.length > 10 ? true : "enter a valid Kie.ai API key"),
     );
   }
-  // claude-cli: no credential of any kind — it uses the `claude` login.
+  // claude-cli / codex-cli: no credential of any kind — they use the CLI's login.
 
   // ── model pickers (provider-aware) ──────────────────────────────────────
   // claude-cli accepts the same full Anthropic model ids (and pins them per
@@ -252,10 +256,15 @@ export async function cmdInit(): Promise<void> {
           },
           { name: "claude-sonnet-4-6", value: "claude-sonnet-4-6" },
         ];
-  const classifyModel = await select({
-    message: "Classify model (fast pass)",
-    choices: classifyChoices,
-  });
+  // codex-cli: Codex picks the model ("default" omits -m). Model ids differ
+  // per ChatGPT plan, so vir doesn't guess; set models.* by hand to pin one.
+  const classifyModel =
+    provider === "codex-cli"
+      ? "default"
+      : await select({
+          message: "Classify model (fast pass)",
+          choices: classifyChoices,
+        });
 
   const distillChoices =
     provider !== "kie"
@@ -280,10 +289,13 @@ export async function cmdInit(): Promise<void> {
             value: "claude-haiku-4-5",
           },
         ];
-  const distillModel = await select({
-    message: "Distill model (deep extraction)",
-    choices: distillChoices,
-  });
+  const distillModel =
+    provider === "codex-cli"
+      ? "default"
+      : await select({
+          message: "Distill model (deep extraction)",
+          choices: distillChoices,
+        });
 
   const filterThreshold = Number(
     await input({

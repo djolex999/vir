@@ -1,4 +1,5 @@
 import type { CostRecord } from "./log.js";
+import { isSubscriptionProvider } from "../pipeline/subscription.js";
 
 export interface SessionCost {
   session: string;
@@ -31,7 +32,7 @@ export function buildReport(records: CostRecord[]): CostReport {
   }
 
   const unpriced = records.filter((r) => r.estimated_cost_usd === null);
-  const subscriptionCalls = unpriced.filter((r) => r.provider === "claude-cli").length;
+  const subscriptionCalls = unpriced.filter((r) => isSubscriptionProvider(r.provider)).length;
   const unpricedCalls = unpriced.length - subscriptionCalls;
   const priced = records.filter((r) => r.estimated_cost_usd !== null);
 

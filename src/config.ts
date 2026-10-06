@@ -27,8 +27,11 @@ export const ConfigSchema = z
     // "claude-cli" shells out to the user's Claude Code CLI (subscription
     // path, zero credential, consumes Claude Code usage limits). It is an
     // OPTION in this release — anthropic stays the default for new and
-    // existing installs until claude-cli has real mileage.
-    provider: z.enum(["anthropic", "kie", "claude-cli"]).default("anthropic"),
+    // existing installs until claude-cli has real mileage. "codex-cli" is the
+    // same idea over `codex exec` (ChatGPT login) — experimental.
+    provider: z
+      .enum(["anthropic", "kie", "claude-cli", "codex-cli"])
+      .default("anthropic"),
     anthropicApiKey: z.string().optional(),
     kieApiKey: z.string().optional(),
     // Kie top-up tier. High-tier top-ups grant +10% bonus credits, so effective

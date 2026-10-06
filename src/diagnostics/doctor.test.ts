@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   agentTranscriptsCheck,
+  codexLoginCheck,
   backupCheck,
   daemonCheck,
   embeddingProviderCheck,
@@ -384,5 +385,15 @@ describe("pricedModelsCheck", () => {
 
   it("says nothing for claude-cli (quota, no prices)", () => {
     expect(pricedModelsCheck({ ...base, provider: "claude-cli", models: { classify: "x", distill: "y" } } as unknown as Config)).toBeNull();
+  });
+});
+
+describe("codexLoginCheck (provider codex-cli)", () => {
+  it("ok when codex reports a login", () => {
+    expect(codexLoginCheck({ code: 0, stdout: "Logged in using ChatGPT\n" }).status).toBe("ok");
+  });
+  it("fails with the fix when logged out or not installed", () => {
+    expect(codexLoginCheck({ code: 1, stdout: "Not logged in\n" })).toMatchObject({ status: "fail", detail: expect.stringContaining("codex login") });
+    expect(codexLoginCheck(null)).toMatchObject({ status: "fail", detail: expect.stringContaining("not found") });
   });
 });

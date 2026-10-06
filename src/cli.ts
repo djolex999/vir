@@ -66,6 +66,7 @@ import { auditCommand } from "./cli/audit.js";
 import { composeCommand } from "./cli/compose.js";
 import { dedupeCommand } from "./cli/dedupe.js";
 import { cmdInit } from "./cli/init.js";
+import { isSubscriptionProvider } from "./pipeline/subscription.js";
 
 // Read version at runtime from package.json (one dir up from dist/cli.js) so
 // `vir --version` never drifts from the published version. rootDir is ./src,
@@ -245,7 +246,7 @@ async function confirmCostIfNeeded(
   if (newCount <= 20) return true;
   // Upper bound from transcript sizes; sessions the filter drops cost nothing.
   const estimate =
-    cfg.provider === "claude-cli"
+    isSubscriptionProvider(cfg.provider)
       ? "subscription quota (no $)"
       : estimatedUsd === null
         ? "unknown (no price for the configured models)"
@@ -301,7 +302,7 @@ program
       if (report.subscriptionCalls > 0) {
         ui.stat(
           "subscription",
-          `${report.subscriptionCalls} claude-cli calls (quota, no $ — excluded from totals)`,
+          `${report.subscriptionCalls} claude-cli/codex-cli calls (quota, no $ — excluded from totals)`,
         );
       }
       if (report.unpricedCalls > 0) {

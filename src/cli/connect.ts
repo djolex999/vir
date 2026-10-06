@@ -12,6 +12,7 @@ import {
 import { resolveActiveProviderCached } from "../search/provider.js";
 import { StateDb } from "../state/db.js";
 import * as ui from "../ui/display.js";
+import { isSubscriptionProvider } from "../pipeline/subscription.js";
 
 
 export function formatConnectSummary(
@@ -61,7 +62,7 @@ export async function cmdConnect(opts: { dryRun?: boolean; reconsider?: string; 
         ),
       model,
       estimateCostUsd: (inTok, outTok) =>
-        cfg.provider === "claude-cli"
+        isSubscriptionProvider(cfg.provider)
           ? 0
           : resolvePricing(cfg.provider, model, cfg.pricing, cfg.kieTopUpTier) === null
             ? null
@@ -85,7 +86,7 @@ export async function cmdConnect(opts: { dryRun?: boolean; reconsider?: string; 
     }
 
     const preview = await runConnect(cfg, db, { dryRun: true }, deps);
-    const quota = cfg.provider === "claude-cli";
+    const quota = isSubscriptionProvider(cfg.provider);
     for (const l of formatConnectSummary(preview, true, { quota })) ui.line(ui.text(`  ${l}`));
     if (opts.dryRun || preview.candidates === 0) return;
 
