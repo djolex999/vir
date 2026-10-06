@@ -69,18 +69,31 @@ const BAD_MODEL = [
 beforeEach(() => resetCodexRawLogGate());
 
 describe("buildCodexCliArgs", () => {
+  // The prompt carries untrusted transcript text. Probed 2026-10-07: with
+  // default features the agent had a shell, web search and the user's
+  // ChatGPT-connected apps (GitHub writes, deploys). Every capability is off.
+  it("disables every tool-bearing feature and web search", () => {
+    const args = buildCodexCliArgs("default");
+    const disabled = args.flatMap((a, i) => (args[i - 1] === "--disable" ? [a] : []));
+    for (const f of ["apps", "plugins", "remote_plugin", "shell_tool", "unified_exec", "browser_use",
+      "browser_use_external", "computer_use", "in_app_browser", "image_generation", "multi_agent",
+      "code_mode_host", "hooks"]) {
+      expect(disabled).toContain(f);
+    }
+    expect(args.slice(args.indexOf("-c"), args.indexOf("-c") + 2)).toEqual(["-c", 'web_search="disabled"']);
+  });
+
   it("always runs ephemeral, read-only, JSON, prompt on stdin", () => {
     const args = buildCodexCliArgs("default");
-    expect(args).toEqual([
-      "exec", "--ephemeral", "--json", "--skip-git-repo-check",
-      "-s", "read-only", "--ignore-user-config", "-",
-    ]);
+    for (const f of ["--ephemeral", "--json", "--skip-git-repo-check", "--ignore-user-config"]) expect(args).toContain(f);
+    expect(args.slice(args.indexOf("-s"), args.indexOf("-s") + 2)).toEqual(["-s", "read-only"]);
+    expect(args).not.toContain("-m");
+    expect(args.at(-1)).toBe("-");
   });
 
   it("pins a model unless it is 'default'", () => {
     const args = buildCodexCliArgs("gpt-5.5");
     expect(args.slice(args.indexOf("-m"), args.indexOf("-m") + 2)).toEqual(["-m", "gpt-5.5"]);
-    expect(args).toContain("--ephemeral");
     expect(args.at(-1)).toBe("-");
   });
 });
@@ -132,5 +145,20 @@ describe("callCodexCli", () => {
     expect(err).toBeInstanceOf(CodexCliLimitError);
     expect(err).toBeInstanceOf(SubscriptionLimitError);
     expect((err as CodexCliLimitError).resetsAt).toBe("in 3 hours");
+  });
+
+  it("explains an unknown-feature failure as a Codex version mismatch", async () => {
+    const rec = spawnRecorder("", 1);
+    const impl = ((cmd: string, args: string[], opts: { cwd: string }) => {
+      const child = rec.impl(cmd, args, opts) as unknown as EventEmitter & { stderr: EventEmitter; stdin: { end: () => void } };
+      const end = child.stdin.end;
+      child.stdin.end = () => {
+        child.stderr.emit("data", Buffer.from("Error: Unknown feature flag: in_app_local_automation\n"));
+        end();
+      };
+      return child;
+    }) as unknown as SpawnImpl;
+    await expect(callCodexCli({ prompt: "p", model: "default" }, { spawnImpl: impl, codexBin: "c", logRaw: () => {} }))
+      .rejects.toThrow(/Codex version.*codex update/);
   });
 });

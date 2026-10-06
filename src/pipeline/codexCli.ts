@@ -40,10 +40,42 @@ export class CodexCliError extends Error {
   }
 }
 
-// --ephemeral is load-bearing: without it every distill call writes a rollout
-// into ~/.codex/sessions, and vir's own Codex source would ingest it. "default"
-// leaves the model to Codex. Signature takes ONLY the model: no options path
-// can drop a flag.
+// The prompt carries untrusted transcript text, and codex exec is a tool-using
+// agent. Probed 2026-10-07 (0.160.1): with default features it had a shell, web
+// search and the user's ChatGPT-connected apps (GitHub writes, site deploys).
+// With these off it is left with code-mode exec (fails closed: host disabled),
+// apply_patch (blocked by the read-only sandbox) and spawn_agent (fails: an
+// ephemeral thread has no rollout to fork). An unknown flag makes codex exit,
+// so a Codex version vir hasn't checked fails closed instead of running with
+// tools nobody probed.
+export const CODEX_DISABLED_FEATURES = [
+  "apps",
+  "plugins",
+  "remote_plugin",
+  "shell_tool",
+  "unified_exec",
+  "browser_use",
+  "browser_use_external",
+  "computer_use",
+  "in_app_browser",
+  "in_app_local_automation",
+  "image_generation",
+  "multi_agent",
+  "code_mode_host",
+  "goals",
+  "hooks",
+  "tool_suggest",
+  "view_image",
+  "skill_mcp_dependency_install",
+  "skill_search",
+  "sleep_tool",
+  "workspace_dependencies",
+] as const;
+
+// --ephemeral is load-bearing twice: without it every distill call writes a
+// rollout into ~/.codex/sessions (vir's Codex source would ingest it), and
+// spawn_agent could fork a subagent. "default" leaves the model to Codex.
+// Signature takes ONLY the model: no options path can drop a flag.
 export function buildCodexCliArgs(model: string): string[] {
   return [
     "exec",
@@ -53,6 +85,9 @@ export function buildCodexCliArgs(model: string): string[] {
     "-s",
     "read-only",
     "--ignore-user-config",
+    ...CODEX_DISABLED_FEATURES.flatMap((f) => ["--disable", f]),
+    "-c",
+    'web_search="disabled"',
     ...(model === "default" ? [] : ["-m", model]),
     "-",
   ];
@@ -152,6 +187,13 @@ export async function callCodexCli(
     const detail = r.error ?? stderr.trim();
     const limit = parseCodexLimit(detail) ?? parseCodexLimit(stderr);
     if (limit) throw new CodexCliLimitError(limit.resetsAt);
+    const unknown = /Unknown feature flag: (\S+)/.exec(stderr);
+    if (unknown) {
+      throw new CodexCliError(
+        `this Codex version doesn't know the "${unknown[1]}" feature vir switches off (checked on codex-cli 0.160.1). Run \`codex update\` or switch provider.`,
+        code,
+      );
+    }
     if (!rawLogged) {
       rawLogged = true;
       logRaw(`codex-cli unrecognized failure (exit ${code}): ${stdout.trim().slice(0, 2000)}`);
