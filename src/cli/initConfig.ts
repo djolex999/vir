@@ -57,6 +57,8 @@ export function buildInitConfig(
     // Wizard-silent key (0.16.0): without this carry-over a re-init would
     // silently reset a user's logQueries:false back to the zod default.
     logQueries: existing?.logQueries,
+    // Wizard-silent connect-pass knob.
+    connectMaxCandidates: existing?.connectMaxCandidates,
     projects: { ...existing?.projects, ...a.projects },
     notifications: existing?.notifications,
     workflowTranscripts: existing?.workflowTranscripts,

@@ -55,6 +55,7 @@ import { buildReport } from "./cost/report.js";
 import * as ui from "./ui/display.js";
 import { VaultWriter } from "./pipeline/writer.js";
 import { withPipelineLock } from "./cli/guards.js";
+import { cmdConnect } from "./cli/connect.js";
 import { runDoctor, runDoctorJson } from "./diagnostics/doctor.js";
 import { embedCommand } from "./cli/embed.js";
 import { lintCommand } from "./cli/lint.js";
@@ -808,6 +809,14 @@ program
     }
   }),
   );
+
+program
+  .command("connect")
+  .description("Find lessons you keep re-learning and propose them as rules (paid; see --dry-run)")
+  .option("--dry-run", "Show clusters, candidates and cost; no LLM calls, no writes")
+  .option("--reconsider <slug>", "Reset a rejected or declined rule to proposed")
+  .option("--yes", "Skip the cost confirmation prompt")
+  .action(runAction(cmdConnect));
 
 program
   .command("compose <topic>")

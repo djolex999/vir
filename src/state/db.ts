@@ -1983,6 +1983,25 @@ export class StateDb {
       .run(JSON.stringify(vector), prov.model, prov.dim, id);
   }
 
+  // Rule vectors by insight id for one status — the connect pass matches a
+  // reworded re-discovery against REJECTED rules by embedding.
+  getInsightVectors(status: InsightRow["status"]): Map<string, number[]> {
+    const out = new Map<string, number[]>();
+    if (!this.hasInsightsTable()) return out;
+    const rows = this.db
+      .prepare("SELECT id, embedding FROM insights WHERE status = ? AND embedding IS NOT NULL")
+      .all(status) as Array<{ id: string; embedding: string }>;
+    for (const r of rows) {
+      try {
+        const v = (JSON.parse(r.embedding) as unknown[]).map((x) => Number(x));
+        if (v.every((n) => Number.isFinite(n))) out.set(r.id, v);
+      } catch {
+        continue;
+      }
+    }
+    return out;
+  }
+
   // Accepted rules join the retriever's embedding pool. Proposed and rejected
   // rules never do — this WHERE clause is the serving gate.
   getInsightEmbeddings(vaultRoot: string): EmbeddingRow[] {

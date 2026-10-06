@@ -43,16 +43,16 @@ describe("insights table", () => {
     id: "id-1", slug: "rule-id1", insightType: "recurring-rule" as const, status: "proposed" as const,
     promotion: "none" as const, scope: "project:growthq", rule: "R", why: "W",
     memberSessionIds: ["s1", "s2", "s3"], memberHashes: ["h1"], sources: ["a", "b"],
-    evidence: [{ citeSlug: "a", project: "growthq", date: "2026-01-01", quote: "q" }],
+    evidence: [{ sessionId: "s1", citeSlug: "a", project: "growthq", date: "2026-01-01", quote: "q" }],
     sessions: 3, projects: ["growthq"], firstSeen: "2026-01-01", lastSeen: "2026-01-09",
     evidenceChanged: false, pending: null, model: "m", createdAt: "c", updatedAt: "u",
     ...over,
   });
 
   it("round-trips every field", () => {
-    db.upsertInsight(row({ pending: [{ citeSlug: "z", project: "", date: "d", quote: "p" }], evidenceChanged: true }));
+    db.upsertInsight(row({ pending: [{ sessionId: "s4", citeSlug: "z", project: "", date: "d", quote: "p" }], evidenceChanged: true }));
     expect(db.getInsightBySlug("rule-id1")).toEqual(
-      row({ pending: [{ citeSlug: "z", project: "", date: "d", quote: "p" }], evidenceChanged: true }),
+      row({ pending: [{ sessionId: "s4", citeSlug: "z", project: "", date: "d", quote: "p" }], evidenceChanged: true }),
     );
     expect(db.listInsights()).toHaveLength(1);
     expect(db.getInsightBySlug("nope")).toBeNull();

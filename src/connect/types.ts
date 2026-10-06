@@ -20,6 +20,7 @@ export type InsightStatus = "proposed" | "accepted" | "rejected";
 export type Promotion = "none" | "promoted" | "declined";
 
 export interface InsightEvidence {
+  sessionId: string;
   citeSlug: string;
   project: string;
   date: string;

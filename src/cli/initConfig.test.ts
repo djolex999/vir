@@ -38,6 +38,7 @@ const SURVIVAL_SAMPLE: Record<string, unknown> = {
   embeddingProvider: "local",
   retrievalDiversity: 0.9,
   logQueries: false,
+  connectMaxCandidates: 4,
   models: {
     classify: "claude-haiku-4-5",
     distill: "claude-sonnet-4-6",

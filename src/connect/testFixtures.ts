@@ -9,8 +9,8 @@ export function sampleInsight(over: Partial<InsightRow> = {}): InsightRow {
     memberSessionIds: ["s1", "s2", "s3"], memberHashes: ["h1", "h2", "h3"],
     sources: ["note-a", "note-b", "note-c"],
     evidence: [
-      { citeSlug: "note-a", project: "growthq", date: "2026-06-02", quote: "renames middleware" },
-      { citeSlug: "note-b", project: "vir", date: "2026-06-20", quote: "use proxy.ts" },
+      { sessionId: "s1", citeSlug: "note-a", project: "growthq", date: "2026-06-02", quote: "renames middleware" },
+      { sessionId: "s2", citeSlug: "note-b", project: "vir", date: "2026-06-20", quote: "use proxy.ts" },
     ],
     sessions: 3, projects: ["growthq", "vir"], firstSeen: "2026-06-02", lastSeen: "2026-06-20",
     evidenceChanged: false, pending: null, model: "claude-sonnet-5",
