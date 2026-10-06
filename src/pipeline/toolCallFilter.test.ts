@@ -272,3 +272,49 @@ describe("filterToolCalls Skill result stripping", () => {
     expect(res.filtered).toContain("s".repeat(10));
   });
 });
+
+describe("Codex tool names", () => {
+  const big = (n: number) => Array.from({ length: n }, (_, i) => `line ${i}`).join("\n");
+
+  it.each(["exec_command", "exec", "shell", "js", "write_stdin"])(
+    "strips large %s output under moderate",
+    (name) => {
+      const text =
+        renderToolUse(name, JSON.stringify({ cmd: "npm test" })) +
+        "\n" +
+        renderToolResult(name, big(2000), false);
+      const r = filterToolCalls(text, "moderate");
+      expect(r.filtered).toContain('{"cmd":"npm test"}');
+      expect(r.filtered).toContain(`[tool_result: ${name} output, 2000 lines, stripped]`);
+      expect(r.toolCallsStripped).toBe(1);
+    },
+  );
+
+  it("truncates a large apply_patch input under moderate", () => {
+    const patch = "*** Begin Patch\n" + "+x\n".repeat(3000) + "*** End Patch";
+    const r = filterToolCalls(renderToolUse("apply_patch", JSON.stringify({ input: patch })), "moderate");
+    expect(r.filtered).toContain("[truncated");
+    expect(r.filtered).toContain("of input for apply_patch]");
+  });
+
+  it("truncates a large js code body but keeps its title", () => {
+    const code = "x();\n".repeat(2000);
+    const r = filterToolCalls(renderToolUse("js", JSON.stringify({ code, title: "t" })), "moderate");
+    expect(r.filtered).toContain("of code for js]");
+    expect(r.filtered).toContain('"title":"t"');
+  });
+
+  it("truncates a large write_stdin chars payload", () => {
+    const r = filterToolCalls(
+      renderToolUse("write_stdin", JSON.stringify({ session_id: 1, chars: "y".repeat(5000) })),
+      "moderate",
+    );
+    expect(r.filtered).toContain("of chars for write_stdin]");
+    expect(r.filtered).toContain('"session_id":1');
+  });
+
+  it("keeps a small Codex result untouched", () => {
+    const r = filterToolCalls(renderToolResult("exec_command", "ok", false), "moderate");
+    expect(r.filtered).toContain("[tool_result: exec_command]\nok");
+  });
+});
