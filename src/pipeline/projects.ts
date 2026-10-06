@@ -248,7 +248,7 @@ export function decideProject(
 // The project dir is the FIRST segment under projectsDir — workflow and
 // subagent transcripts nest deeper (<encoded>/<session-id>/wf_*.jsonl) and
 // belong to their project, not the inner dir.
-function projectDirOf(path: string, projectsDir: string): string {
+export function projectDirOf(path: string, projectsDir: string): string {
   const rel = relative(projectsDir, path);
   return !rel.startsWith("..") && rel.includes(sep)
     ? (rel.split(sep)[0] ?? basename(dirname(path)))
