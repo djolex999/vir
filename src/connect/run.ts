@@ -6,7 +6,7 @@ import { embedNoteWithProvider, type EmbeddingProvider } from "../search/provide
 import { thresholdsFor } from "../search/thresholds.js";
 import type { StateDb } from "../state/db.js";
 import { clusterLessons } from "./cluster.js";
-import { embedLessons } from "./embed.js";
+import { backfillInsightEmbeddings, embedLessons } from "./embed.js";
 import { collectLessons } from "./extract.js";
 import { matchCandidate } from "./identity.js";
 import { insightSlug, writeInsightFile } from "./insightFile.js";
@@ -98,6 +98,7 @@ export async function runConnect(
 
     const summary = emptySummary();
     const root = vaultRoot(cfg);
+    if (!opts.dryRun) await backfillInsightEmbeddings(db, provider);
     const lessons = collectLessons(root);
     summary.lessons = lessons.length;
     const vectors = await embedLessons(lessons, db, provider);

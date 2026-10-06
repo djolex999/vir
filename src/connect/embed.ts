@@ -33,3 +33,21 @@ export async function embedLessons(
   }
   return out;
 }
+
+// Self-heal for accepted rules: embedded at accept time, but a provider outage
+// then, or a later model switch, would leave them out of embedding search.
+// Best-effort — a failed embed is retried on the next sweep. Returns the count.
+export async function backfillInsightEmbeddings(db: StateDb, provider: EmbeddingProvider): Promise<number> {
+  let n = 0;
+  for (const t of db.listInsightEmbeddingTargets(provider.modelName)) {
+    let vec: number[];
+    try {
+      vec = (await provider.embedDoc(`${t.rule}\n${t.why}`)).embedding;
+    } catch {
+      continue;
+    }
+    db.setInsightEmbedding(t.id, vec, { model: provider.modelName, dim: vec.length });
+    n += 1;
+  }
+  return n;
+}

@@ -77,3 +77,20 @@ describe("insights table", () => {
     });
   });
 });
+
+describe("insight embedding targets", () => {
+  const base = {
+    insightType: "recurring-rule" as const, promotion: "none" as const, scope: "global", rule: "R", why: "W",
+    memberSessionIds: [], memberHashes: [], sources: [], evidence: [], sessions: 3, projects: [],
+    firstSeen: "a", lastSeen: "b", evidenceChanged: false, pending: null, model: "m", createdAt: "c", updatedAt: "u",
+  };
+  it("lists accepted rules with no vector or a vector from another model", () => {
+    db.upsertInsight({ ...base, id: "none", slug: "none", status: "accepted" });
+    db.upsertInsight({ ...base, id: "old", slug: "old", status: "accepted" });
+    db.upsertInsight({ ...base, id: "cur", slug: "cur", status: "accepted" });
+    db.upsertInsight({ ...base, id: "prop", slug: "prop", status: "proposed" });
+    db.setInsightEmbedding("old", [1], { model: "nomic-embed-text", dim: 1 });
+    db.setInsightEmbedding("cur", [1], { model: "bge-small-en-v1.5", dim: 1 });
+    expect(db.listInsightEmbeddingTargets("bge-small-en-v1.5").map((r) => r.id).sort()).toEqual(["none", "old"]);
+  });
+});

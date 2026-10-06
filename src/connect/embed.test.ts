@@ -64,3 +64,16 @@ describe("embedLessons", () => {
     expect(db.getLessonEmbeddings(["h1"], "fake-model").size).toBe(1);
   });
 });
+
+describe("backfillInsightEmbeddings", () => {
+  it("embeds accepted rules that are missing a current-model vector", async () => {
+    const { backfillInsightEmbeddings } = await import("./embed.js");
+    const { sampleInsight } = await import("./testFixtures.js");
+    db.upsertInsight(sampleInsight({ status: "accepted" }));
+    const provider = fakeProvider();
+    const n = await backfillInsightEmbeddings(db, provider);
+    expect(n).toBe(1);
+    expect(db.listInsightEmbeddingTargets("fake-model")).toEqual([]);
+    expect(await backfillInsightEmbeddings(db, provider)).toBe(0);
+  });
+});

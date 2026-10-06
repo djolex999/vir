@@ -1983,6 +1983,19 @@ export class StateDb {
       .run(JSON.stringify(vector), prov.model, prov.dim, id);
   }
 
+  // Accepted rules whose vector is missing or from another model — they'd be
+  // excluded by partitionByEmbeddingModel and vanish from embedding search.
+  listInsightEmbeddingTargets(model: string): Array<{ id: string; rule: string; why: string }> {
+    if (!this.hasInsightsTable()) return [];
+    return this.db
+      .prepare(
+        `SELECT id, rule, why FROM insights
+         WHERE status = 'accepted'
+           AND (embedding IS NULL OR embedding_model IS NULL OR embedding_model != ?)`,
+      )
+      .all(model) as Array<{ id: string; rule: string; why: string }>;
+  }
+
   // Rule vectors by insight id for one status — the connect pass matches a
   // reworded re-discovery against REJECTED rules by embedding.
   getInsightVectors(status: InsightRow["status"]): Map<string, number[]> {
