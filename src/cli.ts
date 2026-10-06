@@ -79,7 +79,7 @@ const pkg = JSON.parse(
 const program = new Command();
 program
   .name("vir")
-  .description("Distill Claude Code sessions into an Obsidian vault")
+  .description("Distill your Claude Code sessions into a markdown knowledge base you own")
   .version(pkg.version);
 
 program

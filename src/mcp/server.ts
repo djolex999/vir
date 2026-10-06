@@ -522,8 +522,8 @@ export async function runMcpServer(cfg: Config): Promise<void> {
     "vir_recent_articles",
     {
       description:
-        "Get the most recently distilled web articles (clipped via Obsidian " +
-        "Web Clipper or saved as markdown). Use this to see what the user has " +
+        "Get the most recently distilled web articles (saved as markdown to " +
+        "the articles folder, e.g. by a web clipper). Use this to see what the user has " +
         "been reading and saving, with source URLs for follow-up.",
       inputSchema: {
         limit: z
