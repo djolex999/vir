@@ -12,6 +12,7 @@ import {
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "../config.js";
+import type { InsightRow } from "../connect/types.js";
 import type { DistilledRow, StateDb } from "../state/db.js";
 import { kebab } from "../pipeline/writer.js";
 
@@ -27,11 +28,25 @@ export interface Entry {
   startedAt: string | null;
 }
 
+// A connect-pass rule the owner promoted into this CLAUDE.md. Kept apart from
+// note Entries so a block with no rules renders byte-identically to before.
+export interface RuleEntry {
+  id: string;
+  rule: string;
+}
+
 export interface DiffResult {
   added: Entry[];
   removed: { slug: string }[];
   upgraded: Array<{ slug: string; oldConf: number; newConf: number }>;
   unchanged: Entry[];
+  rulesAdded: RuleEntry[];
+  rulesRemoved: RuleEntry[];
+}
+
+export interface RuleCandidate {
+  target: string;
+  insight: InsightRow;
 }
 
 export interface PlanItem {
@@ -44,16 +59,66 @@ export interface PlanItem {
   scope: "global" | { project: string };
 }
 
+type PlanOptions = { project?: string; globalOnly?: boolean };
+
+// Which CLAUDE.md a rule's scope lands in, limited to the targets planUpdates
+// builds this run (a project with no distilled notes has no plan).
+function ruleTarget(scope: string, options: PlanOptions, projectSlugs: Set<string>): string | null {
+  if (scope === "global") return options.project ? null : globalClaudePath();
+  if (!scope.startsWith("project:") || options.globalOnly) return null;
+  const slug = scope.slice("project:".length);
+  if (options.project && slug !== options.project) return null;
+  return projectSlugs.has(slug) ? projectClaudePath(slug) : null;
+}
+
+function projectSlugsOf(rows: DistilledRow[]): Set<string> {
+  return new Set(rows.map((r) => kebab(r.project)).filter((s) => s.length > 0));
+}
+
+// Accepted rules not yet promoted or declined, one per target — each becomes
+// its own y/n hunk in sync-claude. Never includes proposed or rejected rules.
+export function planRules(db: StateDb, options: PlanOptions = {}): RuleCandidate[] {
+  const slugs = projectSlugsOf(db.listDistilled());
+  const out: RuleCandidate[] = [];
+  for (const insight of db.listInsights()) {
+    if (insight.status !== "accepted" || insight.promotion !== "none") continue;
+    const target = ruleTarget(insight.scope, options, slugs);
+    if (target !== null) out.push({ target, insight });
+  }
+  return out;
+}
+
+export function renderRuleHunk(c: RuleCandidate): string {
+  const sources = c.insight.evidence
+    .map((e) => `[[${e.citeSlug}]] (${e.project || "-"}, ${e.date.slice(0, 10)})`)
+    .join(", ");
+  return [`+ - rule: ${c.insight.rule}`, `  why: ${c.insight.why}`, `  sources: ${sources}`].join("\n");
+}
+
 export function planUpdates(
   _cfg: Config,
   db: StateDb,
-  options: { project?: string; globalOnly?: boolean } = {},
+  options: PlanOptions = {},
+  // Rules approved interactively THIS run; rendered alongside promoted ones.
+  approvedRuleIds: Set<string> = new Set(),
 ): PlanItem[] {
   const rows = db.listDistilled();
   const plans: PlanItem[] = [];
+  const slugs = projectSlugsOf(rows);
+  const rulesByTarget = new Map<string, RuleEntry[]>();
+  for (const ins of db.listInsights()) {
+    if (ins.status !== "accepted") continue;
+    if (ins.promotion !== "promoted" && !(ins.promotion === "none" && approvedRuleIds.has(ins.id))) continue;
+    const target = ruleTarget(ins.scope, options, slugs);
+    if (target === null) continue;
+    const list = rulesByTarget.get(target) ?? [];
+    list.push({ id: ins.id, rule: ins.rule });
+    rulesByTarget.set(target, list);
+  }
 
   if (!options.project) {
-    plans.push(buildPlan(globalClaudePath(), rows, { scope: "global" }));
+    const target = globalClaudePath();
+    plans.push(buildPlan(target, rows, { scope: "global" }, rulesByTarget.get(target) ?? []));
   }
   if (options.globalOnly) return plans;
 
@@ -72,7 +137,9 @@ export function planUpdates(
 
   for (const [slug, projectRows] of byProject) {
     const target = projectClaudePath(slug);
-    plans.push(buildPlan(target, projectRows, { scope: { project: slug } }));
+    plans.push(
+      buildPlan(target, projectRows, { scope: { project: slug } }, rulesByTarget.get(target) ?? []),
+    );
   }
 
   return plans;
@@ -82,9 +149,10 @@ function buildPlan(
   target: string,
   rows: DistilledRow[],
   meta: { scope: "global" | { project: string } },
+  rules: RuleEntry[] = [],
 ): PlanItem {
   const entries = selectTopEntries(rows);
-  const newBlock = renderBlock(entries);
+  const newBlock = renderBlock(entries, rules);
   const existsAtPath = existsSync(target);
 
   let existingBlock = "";
@@ -100,7 +168,14 @@ function buildPlan(
   }
 
   const oldEntries = parseEntries(existingBlock);
-  const diff = computeDiff(oldEntries, entries);
+  const oldRules = parseRules(existingBlock);
+  const oldIds = new Set(oldRules.map((r) => r.id));
+  const newIds = new Set(rules.map((r) => r.id));
+  const diff: DiffResult = {
+    ...computeDiff(oldEntries, entries),
+    rulesAdded: rules.filter((r) => !oldIds.has(r.id)),
+    rulesRemoved: oldRules.filter((r) => !newIds.has(r.id)),
+  };
 
   return {
     target,
@@ -143,7 +218,7 @@ function selectTopEntries(rows: DistilledRow[]): Entry[] {
   return out;
 }
 
-function renderBlock(entries: Entry[]): string {
+export function renderBlock(entries: Entry[], rules: RuleEntry[] = []): string {
   const today = new Date().toISOString().slice(0, 10);
   const lines: string[] = [];
   lines.push(VIR_START);
@@ -178,8 +253,23 @@ function renderBlock(entries: Entry[]): string {
     }
     lines.push("");
   }
+  if (rules.length > 0) {
+    lines.push("## Rules (from vir)");
+    lines.push("");
+    for (const r of rules) lines.push(`- rule: ${r.rule} <!-- vir-rule:${r.id} -->`);
+    lines.push("");
+  }
   lines.push(VIR_END);
   return lines.join("\n");
+}
+
+function parseRules(block: string): RuleEntry[] {
+  const out: RuleEntry[] = [];
+  for (const line of block.split("\n")) {
+    const m = line.match(/^- rule: (.+) <!-- vir-rule:([A-Za-z0-9-]+) -->$/);
+    if (m?.[1] !== undefined && m[2] !== undefined) out.push({ id: m[2], rule: m[1] });
+  }
+  return out;
 }
 
 function extractBlock(raw: string): string {
@@ -219,7 +309,10 @@ function parseEntries(block: string): Entry[] {
   return out;
 }
 
-function computeDiff(old: Entry[], next: Entry[]): DiffResult {
+function computeDiff(
+  old: Entry[],
+  next: Entry[],
+): Omit<DiffResult, "rulesAdded" | "rulesRemoved"> {
   const oldBySlug = new Map(old.map((e) => [e.slug, e]));
   const newBySlug = new Map(next.map((e) => [e.slug, e]));
   const added: Entry[] = [];
