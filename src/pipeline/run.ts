@@ -58,6 +58,7 @@ import { distillOneSession } from "./distillSession.js";
 import type { ParsedSession } from "./types.js";
 import { kebab, VaultWriter } from "./writer.js";
 import { sweepEmbeddings } from "./embeddingSweep.js";
+import { backfillInsightEmbeddings } from "../connect/embed.js";
 import { resolveEmbeddingProvider } from "../search/provider.js";
 
 export interface RunOptions {
@@ -1239,6 +1240,10 @@ async function runEmbeddingSweep(
       provider,
       writer.embeddingText,
     );
+    if (provider) {
+      const rules = await backfillInsightEmbeddings(db, provider);
+      if (rules > 0) fileLog(`embedding sweep: backfilled ${rules} accepted rule(s)`);
+    }
     if (sweep.ran) {
       if (sweep.embedded > 0 || sweep.errors > 0) {
         fileLog(

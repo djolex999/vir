@@ -3,7 +3,7 @@ import { MODEL_THRESHOLDS, thresholdsFor } from "./thresholds.js";
 
 describe("per-model similarity thresholds", () => {
   it("keeps the nomic-calibrated values for nomic-embed-text", () => {
-    expect(thresholdsFor("nomic-embed-text")).toEqual({
+    expect(thresholdsFor("nomic-embed-text")).toMatchObject({
       minEmbeddingScore: 0.3,
       relatedMinSim: 0.6,
     });
@@ -15,10 +15,19 @@ describe("per-model similarity thresholds", () => {
     // distributions of the two models are nearly identical, so relatedMinSim
     // carries over; bge's query scores run hotter (its query instruction
     // prefix), so the candidate floor rises.
-    expect(thresholdsFor("bge-small-en-v1.5")).toEqual({
+    expect(thresholdsFor("bge-small-en-v1.5")).toMatchObject({
       minEmbeddingScore: 0.35,
       relatedMinSim: 0.6,
     });
+  });
+
+  it("defines connect-pass thresholds for every model", () => {
+    for (const t of Object.values(MODEL_THRESHOLDS)) {
+      expect(t.connectMinSim).toBeGreaterThan(0);
+      expect(t.connectMinSim).toBeLessThanOrEqual(1);
+      expect(t.connectCoreSim).toBeGreaterThan(0);
+      expect(t.connectCoreSim).toBeLessThanOrEqual(1);
+    }
   });
 
   it("falls back to nomic values for an unknown model", () => {

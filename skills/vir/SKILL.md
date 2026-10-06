@@ -82,8 +82,9 @@ This skill only **reads** the notes. It never writes them.
 
 - **Never write, edit, move or delete** anything in the notes folder.
 - **Never run commands that distill, spend money or change state** unless the
-  user explicitly asks: `vir run`, `vir sync-claude`, `vir review`,
-  `vir prune`, `vir dedupe`, `vir compose`, or the `vir_compose` tool.
+  user explicitly asks: `vir run`, `vir connect`, `vir sync-claude`,
+  `vir review`, `vir prune`, `vir dedupe`, `vir compose`, or the
+  `vir_compose` tool.
 - **Never install vir on your own.** If the user wants it, explain: vir is an
   open-source CLI (github.com/djolex999/vir) that reads their local session
   transcripts and needs an LLM provider (Anthropic key, Claude Code

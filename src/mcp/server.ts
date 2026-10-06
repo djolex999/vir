@@ -50,6 +50,7 @@ export const QUERY_TYPES = [
   "article",
   "topic",
   "pdf",
+  "insight",
   "all",
 ] as const;
 
@@ -113,7 +114,7 @@ export function hitMeta(hit: SearchHit): {
   topic: string;
   category: string;
   project: string;
-  type: "session" | "article" | "topic" | "pdf";
+  type: "session" | "article" | "topic" | "pdf" | "insight";
   url?: string;
 } {
   const fm = parseFrontmatter(hit.content);
@@ -140,6 +141,15 @@ export function hitMeta(hit: SearchHit): {
   // Topic pages (`vir compose`) carry `type: topic` and a synthesized title but
   // no category/project — the fixed "topic" taxonomy mirrors buildQueryResults
   // so the `type: topic` query filter actually matches them.
+  // Accepted connect-pass rules: titled by their **Rule:** line.
+  if (fm.type === "insight") {
+    return {
+      topic: hit.content.match(/^\*\*Rule:\*\*[ \t]*(.+)$/m)?.[1]?.trim() ?? base,
+      category: "insight",
+      project: "",
+      type: "insight",
+    };
+  }
   if (fm.type === "topic") {
     return {
       topic: fm.title ?? base,

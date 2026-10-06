@@ -59,6 +59,15 @@ describe("buildQueryResults", () => {
     });
   });
 
+  it("classifies an accepted rule as the 'insight' category", () => {
+    const [r] = buildQueryResults(
+      [hit({ filePath: "/vault/vir/insights/rules/use-proxy-3f9a.md", content: "---\ntype: insight\nstatus: accepted\n---\n**Rule:** Use proxy.ts\n" })],
+      VAULT_ROOT,
+    );
+    expect(r?.category).toBe("insight");
+    expect(r?.path).toBe("insights/rules/use-proxy-3f9a.md");
+  });
+
   it("collapses whitespace and caps preview near 200 chars", () => {
     const long = "word ".repeat(100);
     const [r] = buildQueryResults(

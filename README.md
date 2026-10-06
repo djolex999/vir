@@ -23,7 +23,7 @@ developer-tools, mcp, local-first, cross-platform, llm-wiki
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/v/@djolex999/vir-cli?color=7c6af7&label=npm" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/dw/@djolex999/vir-cli?color=4fd1a0" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee" alt="license"></a>
-  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1099%20passing-22c55e" alt="tests"></a>
+  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1217%20passing-22c55e" alt="tests"></a>
   <a href="#project-status"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey" alt="platforms"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-c084fc" alt="mcp"></a>
   <a href="#"><img src="https://img.shields.io/badge/local--first-yes-f59e0b" alt="local-first"></a>
@@ -155,6 +155,15 @@ worse results, not better."_ Fair. Vir addresses it in layers:
   recoverable, not deleted.
 - **MMR-diverse retrieval.** Queries return notes covering different aspects
   of the topic, not 5 similar duplicates.
+- **Recurring lessons become rules, only with your yes.** `vir connect` looks
+  for a lesson you've written down in at least 3 sessions over at least a
+  week (by embedding each "What Was Learned" item), and has the model state it
+  as one rule, with a verbatim quote from every note it cites; quotes that
+  aren't in the note are thrown out. Proposed rules live in `insights/rules/`,
+  stay out of search until you accept them in `vir review --insights`, and
+  reach CLAUDE.md only through `vir sync-claude`, which asks about each rule
+  separately and never adds one under `--force`. Rejected rules stay rejected
+  even after the source notes are rewritten. Needs an embedding provider.
 - **Topic synthesis** via `vir compose "<topic>"`. Embedding-searches the
   vault for related notes and synthesizes them into a single topic page under
   `topics/`, with each source wikilinked so it backlinks in Obsidian's graph.
@@ -383,6 +392,8 @@ with your distro, init system, and Node version.
 | `vir query "<question>"`    | cheap | Semantic search your vault                |
 | `vir queries`               | free  | Retrieval report: method split, degraded rate, dead-weight notes |
 | `vir compose "<topic>"`     | $$    | Synthesize a topic page from related notes |
+| `vir connect --dry-run`     | free  | Find lessons you keep re-learning; show candidates + cost |
+| `vir connect`               | $     | Propose those lessons as cited rules (≤10 LLM calls) |
 | `vir summarize <project>`   | cheap | Cross-session project synthesis           |
 | `vir summarize --week`      | cheap | Period summary of the week's notes        |
 | `vir lint`                  | cheap | Find orphans, stale notes, contradictions |
@@ -392,6 +403,7 @@ with your distro, init system, and Node version.
 | `vir audit`                 | cheap | Model judges each note; verdicts feed `vir review --audited` |
 | `vir audit --dry-run`       | free  | Notes, batches and est. cost, no model call |
 | `vir review --audited`      | free  | Walk notes vir audit flagged, worst first |
+| `vir review --insights`     | free  | Accept, edit or reject rules proposed by `vir connect` |
 | `vir audit --apply-rejects` | free  | Move fresh reject verdicts to `.rejected/` (reversible) |
 | `vir lint --strays`         | free  | Note files with no live DB row (retitle debris) |
 | `vir lint --strays --fix`   | free  | Move retitle debris to `archived/` (only when a live copy exists) |

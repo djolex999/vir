@@ -108,6 +108,8 @@ export const ConfigSchema = z
     // `vir init` never asks — a new user has no basis to choose; detection +
     // the once-per-run offer handle it.
     embeddingProvider: z.enum(["ollama", "local", "none"]).optional(),
+    // Max LLM calls one `vir connect` run may make (one per candidate rule).
+    connectMaxCandidates: z.number().int().positive().default(10),
     // MMR diversity weight for `vir query` / `vir_query` retrieval. Applied in
     // the embedding path only (TF-IDF is too sparse to benefit).
     retrievalDiversity: z

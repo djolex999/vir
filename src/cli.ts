@@ -8,7 +8,6 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { configExists, loadConfig, type Config } from "./config.js";
-import { applyPlan, planUpdates, type PlanItem } from "./claude/updater.js";
 import { pruneCommand } from "./cli/pruneAction.js";
 import { setupNotifications } from "./cli/notificationsSetup.js";
 import { runPipeline } from "./pipeline/run.js";
@@ -55,6 +54,10 @@ import { buildReport } from "./cost/report.js";
 import * as ui from "./ui/display.js";
 import { VaultWriter } from "./pipeline/writer.js";
 import { withPipelineLock } from "./cli/guards.js";
+import { cmdConnect } from "./cli/connect.js";
+import { runSyncClaude } from "./cli/syncClaude.js";
+import { insightCounts, renderInsightsLine } from "./cli/insightsStatus.js";
+import { cmdReviewInsights } from "./cli/reviewInsights.js";
 import { runDoctor, runDoctorJson } from "./diagnostics/doctor.js";
 import { embedCommand } from "./cli/embed.js";
 import { lintCommand } from "./cli/lint.js";
@@ -529,60 +532,31 @@ program
       const cfg = loadConfig();
       const db = new StateDb();
       try {
-        const plans = planUpdates(cfg, db, {
-          project: projectArg,
-          globalOnly: opts.global === true,
-        });
         ui.header(
           `sync-claude${opts.dryRun ? "  --dry-run" : opts.force ? "  --force" : ""}`,
         );
         ui.blank();
-        if (plans.length === 0) {
-          ui.row(ui.warn(ui.WARN_GLYPH), ui.text("nothing to plan"));
-          return;
-        }
-
-        for (const p of plans) {
-          renderPlan(p);
-          ui.blank();
-        }
-
-        if (opts.dryRun) {
-          ui.line(ui.dim("run without --dry-run to apply"));
-          return;
-        }
-
-        let proceed = opts.force === true;
-        if (!proceed) {
-          const rl = createInterface({ input: stdin, output: stdout });
-          const ans = (await rl.question(ui.dim("apply these changes? (y/n) ")))
-            .trim()
-            .toLowerCase();
-          rl.close();
-          proceed = ans === "y" || ans === "yes";
-        }
-        if (!proceed) {
-          ui.line(ui.dim("aborted"));
-          return;
-        }
-
-        for (const p of plans) {
-          if (!p.exists) {
-            ui.row(ui.warn(ui.WARN_GLYPH), ui.text(`skipped ${collapseHome(p.target)}`));
-            continue;
-          }
-          const result = applyPlan(p);
-          // A file that could not be updated is a failed sync, not a warning.
-          if (!result.ok) process.exitCode = 1;
-          ui.row(
-            result.ok ? ui.success(ui.CHECK) : ui.errorColor(ui.CROSS),
-            ui.text(
-              result.ok || result.reason === undefined
-                ? collapseHome(p.target)
-                : `${collapseHome(p.target)} — ${result.reason}`,
-            ),
-          );
-        }
+        await runSyncClaude(
+          cfg,
+          db,
+          { project: projectArg, globalOnly: opts.global === true, dryRun: opts.dryRun, force: opts.force },
+          {
+            isTTY: stdin.isTTY === true,
+            ask: async (question) => {
+              const rl = createInterface({ input: stdin, output: stdout });
+              try {
+                return await rl.question(ui.dim(question));
+              } finally {
+                rl.close();
+              }
+            },
+            print: (line) => ui.line(ui.text(line)),
+            box: (lines, title) => {
+              ui.box(lines, { title });
+              ui.blank();
+            },
+          },
+        );
       } finally {
         db.close();
       }
@@ -810,6 +784,14 @@ program
   );
 
 program
+  .command("connect")
+  .description("Find lessons you keep re-learning and propose them as rules (paid; see --dry-run)")
+  .option("--dry-run", "Show clusters, candidates and cost; no LLM calls, no writes")
+  .option("--reconsider <slug>", "Reset a rejected or declined rule to proposed")
+  .option("--yes", "Skip the cost confirmation prompt")
+  .action(runAction(cmdConnect));
+
+program
   .command("compose <topic>")
   .description("Synthesize a topic page from related vault notes")
   .option("--limit <n>", "Top N notes to synthesize from (max 50)", "20")
@@ -939,6 +921,7 @@ program
       }
       const db = new StateDb();
       const knowledge = db.getStats();
+      const insightsLine = renderInsightsLine(insightCounts(db.listInsights()));
       const pendingEmbedding =
         db.listEmbeddingTargets().length +
         db.listTopicEmbeddingTargets().length +
@@ -956,6 +939,7 @@ program
           ),
         );
       }
+      if (insightsLine !== null) ui.line(ui.dim(`  ${insightsLine}`));
       ui.blank();
       renderDaemon(ds, cfg.cadenceHours);
     }),
@@ -996,11 +980,22 @@ program
   .option("--limit <n>", "Max notes to review in this session", "50")
   .option("--restore <note>", "Move one rejected note back out of .rejected/")
   .option("--audited", "Walk notes vir audit flagged, worst first")
+  .option("--insights", "Walk rules proposed by vir connect: accept, edit or reject")
   .option("--approve <path>", "Approve one note (needs --json)")
   .option("--reject <path>", "Reject one note into .rejected/ (needs --json)")
   .option("--json", "Non-interactive: print the --audited queue or one action's result as JSON")
   .action(
-    runAction(async (opts: ReviewCliOptions & ReviewJsonOptions & { json?: boolean }) => {
+    runAction(async (opts: ReviewCliOptions & ReviewJsonOptions & { json?: boolean; insights?: boolean }) => {
+      if (opts.insights) {
+        const cfg = loadConfig();
+        const db = new StateDb();
+        try {
+          await withPipelineLock(() => cmdReviewInsights(cfg, db));
+        } finally {
+          db.close();
+        }
+        return;
+      }
       if (opts.json) {
         runReviewJson(opts);
         return;
@@ -1246,33 +1241,6 @@ function renderDaemon(ds: DaemonStatus, cadenceHours: number): void {
     ],
     { title: "daemon", width: 52 },
   );
-}
-
-function renderPlan(p: PlanItem): void {
-  const title = collapseHome(p.target);
-  if (!p.exists) {
-    ui.box([ui.dim("no CLAUDE.md found — would be skipped")], { title });
-    return;
-  }
-  const lines: string[] = [];
-  for (const e of p.diff.added) {
-    lines.push(`${ui.success("+")} ${ui.text(e.slug)}`);
-  }
-  for (const u of p.diff.upgraded) {
-    lines.push(
-      `${ui.info(ui.UP_ARROW)} ${ui.text(u.slug)}  ${ui.dim(`${u.oldConf.toFixed(2)}${ui.ARROW}${u.newConf.toFixed(2)}`)}`,
-    );
-  }
-  for (const r of p.diff.removed) {
-    lines.push(`${ui.warn("-")} ${ui.text(r.slug)}`);
-  }
-  if (p.diff.unchanged.length > 0) {
-    lines.push(
-      `${ui.dim("~")} ${ui.dim(`${p.diff.unchanged.length} entries unchanged`)}`,
-    );
-  }
-  if (lines.length === 0) lines.push(ui.dim("no changes"));
-  ui.box(lines, { title });
 }
 
 function collapseHome(p: string): string {
