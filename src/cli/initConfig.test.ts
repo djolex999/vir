@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ConfigSchema, type Config } from "../config.js";
-import { buildInitConfig, type InitAnswers } from "./initConfig.js";
+import { buildInitConfig, defaultAgents, type InitAnswers } from "./initConfig.js";
 
 // ── Schema-enumerated survival guard ─────────────────────────────────────────
 // buildInitConfig has silently dropped a config key THREE times (bug #5, the
@@ -264,5 +264,25 @@ describe("buildInitConfig — codex-cli", () => {
       answers({ provider: "codex-cli", classifyModel: "default", distillModel: "default" }),
     ) as { models: Record<string, unknown> };
     expect(built.models).toEqual({ classify: "default", distill: "default" });
+  });
+});
+
+describe("buildInitConfig — unchecking an agent", () => {
+  it("null removes a source dir; undefined keeps it", () => {
+    const existing = { ...EXISTING, codexSessionsDir: "/h/.codex/sessions" } as Config;
+    const dropped = buildInitConfig(existing, answers({ claudeProjectsDir: null }));
+    expect("claudeProjectsDir" in dropped).toBe(false);
+    expect(dropped.codexSessionsDir).toBe("/h/.codex/sessions");
+    const kept = buildInitConfig(existing, answers({ claudeProjectsDir: undefined, codexSessionsDir: undefined }));
+    expect(kept.claudeProjectsDir).toBe("/claude");
+  });
+});
+
+describe("defaultAgents", () => {
+  it("pre-checks agents already configured, else those whose default dir exists", () => {
+    const exists = (p: string) => p === "/h/.codex/sessions";
+    expect(defaultAgents(null, "/h", exists)).toEqual(["codex"]);
+    expect(defaultAgents({ claudeProjectsDir: "/c" } as Config, "/h", exists)).toEqual(["claude-code"]);
+    expect(defaultAgents(null, "/h", () => false)).toEqual([]);
   });
 });

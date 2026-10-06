@@ -833,12 +833,19 @@ projectsCmd
         Math.max(...rows.map((r) => r.name.length), 7),
         44,
       );
+      // The sources column appears only once a second agent is configured, so
+      // a Claude-only table is unchanged.
+      const multiSource = new Set(rows.flatMap((r) => r.sources)).size > 1;
+      const srcW = 12;
       ui.line(
         ui.dim(
-          `  ${"project".padEnd(nameW)}  decision   sessions  distilled  pending  excluded  est. pending`,
+          `  ${"project".padEnd(nameW)}  decision   ${multiSource ? "sources".padEnd(srcW) + "  " : ""}sessions  distilled  pending  excluded  est. pending`,
         ),
       );
       for (const r of rows) {
+        const sourceCol = multiSource
+          ? ui.dim(r.sources.map((id) => (id === "claude-code" ? "claude" : id)).join("+").padEnd(srcW)) + "  "
+          : "";
         const decision =
           r.decision === "include"
             ? ui.success("include  ")
@@ -855,7 +862,7 @@ projectsCmd
         const nestedNote =
           nestedParts.length > 0 ? ui.dim(`  (${nestedParts.join(", ")})`) : "";
         ui.line(
-          `  ${ui.text(r.name.padEnd(nameW))}  ${decision}  ${String(r.sessions).padStart(8)}  ${String(r.distilled).padStart(9)}  ${String(r.pending).padStart(7)}  ${String(r.excluded).padStart(8)}  ${r.pending > 0 ? ui.warn(ui.formatUsd(r.estPendingCost).padStart(12)) : ui.dim("—".padStart(12))}${nestedNote}`,
+          `  ${ui.text(r.name.padEnd(nameW))}  ${decision}  ${sourceCol}${String(r.sessions).padStart(8)}  ${String(r.distilled).padStart(9)}  ${String(r.pending).padStart(7)}  ${String(r.excluded).padStart(8)}  ${r.pending > 0 ? ui.warn(ui.formatUsd(r.estPendingCost).padStart(12)) : ui.dim("—".padStart(12))}${nestedNote}`,
         );
       }
       const pending = rows.filter(

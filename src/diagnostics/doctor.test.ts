@@ -1,6 +1,10 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   agentTranscriptsCheck,
+  sessionChecks,
   codexLoginCheck,
   backupCheck,
   daemonCheck,
@@ -404,5 +408,23 @@ describe("codexLoginCheck (provider codex-cli)", () => {
   it("fails with the fix when logged out or not installed", () => {
     expect(codexLoginCheck({ code: 1, stdout: "Not logged in\n" })).toMatchObject({ status: "fail", detail: expect.stringContaining("codex login") });
     expect(codexLoginCheck(null)).toMatchObject({ status: "fail", detail: expect.stringContaining("not found") });
+  });
+});
+
+describe("sessionChecks — one per configured source", () => {
+  it("Codex-only: a Codex check and no Claude check", () => {
+    const root = mkdtempSync(join(tmpdir(), "vir-doc-codex-"));
+    mkdirSync(join(root, "2026", "10"), { recursive: true });
+    writeFileSync(join(root, "2026", "10", "rollout-a.jsonl"), "{}");
+    writeFileSync(join(root, "2026", "10", "rollout-b.jsonl"), "{}");
+    const checks = sessionChecks({ codexSessionsDir: root });
+    expect(checks).toEqual([{ status: "ok", label: "Codex sessions", detail: "2 JSONL files found" }]);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("a configured but missing Codex dir fails", () => {
+    const [c] = sessionChecks({ codexSessionsDir: "/nope/codex" });
+    expect(c).toMatchObject({ status: "fail", label: "Codex sessions" });
+    expect(c?.detail).toContain("directory not found");
   });
 });

@@ -286,7 +286,7 @@ function checkOutputDir(cfg: Config): CheckResult {
   return ok("output directory", `${count} note${count === 1 ? "" : "s"}`);
 }
 
-// ── 5. Claude Code sessions ───────────────────────────────────────────────────
+// ── 5. agent sessions ───────────────────────────────────────────────────
 function countJsonl(dir: string): number {
   let n = 0;
   let entries;
@@ -303,15 +303,20 @@ function countJsonl(dir: string): number {
   return n;
 }
 
-function checkSessions(cfg: Config): CheckResult | null {
-  const dir = cfg.claudeProjectsDir;
-  if (dir === undefined) return null;
-  if (!existsSync(dir)) {
-    return fail("Claude Code sessions", `${collapseHome(dir)} — directory not found`);
-  }
-  const n = countJsonl(dir);
-  if (n === 0) return warn("Claude Code sessions", "no sessions found yet");
-  return ok("Claude Code sessions", `${n} JSONL files found`);
+// One check per configured source; an unconfigured agent gets none.
+export function sessionChecks(
+  cfg: Pick<Config, "claudeProjectsDir" | "codexSessionsDir">,
+): CheckResult[] {
+  const dirs: Array<[string, string | undefined]> = [
+    ["Claude Code sessions", cfg.claudeProjectsDir],
+    ["Codex sessions", cfg.codexSessionsDir],
+  ];
+  return dirs.flatMap(([label, dir]) => {
+    if (dir === undefined) return [];
+    if (!existsSync(dir)) return [fail(label, `${collapseHome(dir)} — directory not found`)];
+    const n = countJsonl(dir);
+    return [n === 0 ? warn(label, "no sessions found yet") : ok(label, `${n} JSONL files found`)];
+  });
 }
 
 // ── 5b. project decisions ─────────────────────────────────────────────────────
@@ -928,8 +933,7 @@ export async function runDoctor(): Promise<void> {
     if (preflight) record(preflight);
     record(checkVaultPath(cfg));
     record(checkOutputDir(cfg));
-    const sessions = checkSessions(cfg);
-    if (sessions) record(sessions);
+    for (const c of sessionChecks(cfg)) record(c);
     record(checkPendingProjects(cfg));
     record(checkAgentTranscripts());
   } else {

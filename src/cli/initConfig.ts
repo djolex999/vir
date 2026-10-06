@@ -1,10 +1,14 @@
+import { join } from "node:path";
 import type { Config } from "../config.js";
+import type { SourceId } from "../sources/types.js";
 
 export interface InitAnswers {
   vaultPath: string;
   outputDir: string;
-  claudeProjectsDir?: string | undefined;
-  codexSessionsDir?: string | undefined;
+  // Source dirs: a string sets it, null = the user unchecked that agent
+  // (removed), undefined = not asked (the existing value carries over).
+  claudeProjectsDir?: string | null | undefined;
+  codexSessionsDir?: string | null | undefined;
   cadenceHours: number;
   provider: Config["provider"];
   anthropicApiKey: string | undefined;
@@ -32,8 +36,10 @@ export function buildInitConfig(
 ): Record<string, unknown> {
   // Source dirs: conditional spreads so a source the user doesn't use never
   // lands as an undefined key; an unanswered one keeps its existing value.
-  const claudeProjectsDir = a.claudeProjectsDir ?? existing?.claudeProjectsDir;
-  const codexSessionsDir = a.codexSessionsDir ?? existing?.codexSessionsDir;
+  const claudeProjectsDir =
+    a.claudeProjectsDir === null ? undefined : (a.claudeProjectsDir ?? existing?.claudeProjectsDir);
+  const codexSessionsDir =
+    a.codexSessionsDir === null ? undefined : (a.codexSessionsDir ?? existing?.codexSessionsDir);
   return {
     vaultPath: a.vaultPath,
     outputDir: a.outputDir,
@@ -90,4 +96,27 @@ export function buildInitConfig(
         : {}),
     },
   };
+}
+
+export const DEFAULT_SOURCE_DIRS = {
+  "claude-code": [".claude", "projects"],
+  codex: [".codex", "sessions"],
+} as const;
+
+// The init wizard's pre-checked agents: those already configured, else those
+// whose default transcript dir exists on this machine.
+export function defaultAgents(
+  existing: Pick<Config, "claudeProjectsDir" | "codexSessionsDir"> | null,
+  home: string,
+  exists: (path: string) => boolean,
+): Array<Exclude<SourceId, "unknown">> {
+  if (existing?.claudeProjectsDir || existing?.codexSessionsDir) {
+    return [
+      ...(existing.claudeProjectsDir ? (["claude-code"] as const) : []),
+      ...(existing.codexSessionsDir ? (["codex"] as const) : []),
+    ];
+  }
+  return (["claude-code", "codex"] as const).filter((id) =>
+    exists(join(home, ...DEFAULT_SOURCE_DIRS[id])),
+  );
 }
