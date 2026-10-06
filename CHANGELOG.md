@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `vir connect` says "1 candidate", not "1 candidates".
+- README: a short demo of the connect → review → sync-claude flow.
+
 ## 0.25.3 — 2026-10-06
 
 **Small fixes from the first real `vir connect` run.**

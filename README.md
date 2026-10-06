@@ -23,7 +23,7 @@ developer-tools, mcp, local-first, cross-platform, llm-wiki
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/v/@djolex999/vir-cli?color=7c6af7&label=npm" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/dw/@djolex999/vir-cli?color=4fd1a0" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee" alt="license"></a>
-  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1234%20passing-22c55e" alt="tests"></a>
+  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1235%20passing-22c55e" alt="tests"></a>
   <a href="#project-status"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey" alt="platforms"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-c084fc" alt="mcp"></a>
   <a href="#"><img src="https://img.shields.io/badge/local--first-yes-f59e0b" alt="local-first"></a>
@@ -81,6 +81,14 @@ notes back into your CLAUDE.md files, with a diff and your confirmation.
 
 <p align="center">
   <img src="assets/demo.gif" width="800" alt="vir distilling Claude Code sessions into notes in an Obsidian vault">
+</p>
+
+New in 0.25: `vir connect` finds a lesson you keep re-learning across sessions
+and proposes it as a rule, quoting each note it came from. You review it, and
+`vir sync-claude` adds it to CLAUDE.md only with a yes for that rule.
+
+<p align="center">
+  <img src="assets/demo-connect.gif" width="800" alt="vir connect finds one recurring lesson; vir review --insights shows the proposed rule with its three quoted sources; vir sync-claude asks y/n for that rule before writing it into the project's CLAUDE.md">
 </p>
 
 ```
