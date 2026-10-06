@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.25.3 — 2026-10-06
+
+**Small fixes from the first real `vir connect` run.**
+
+- **`vir sync-claude` asks again on a typo** at the per-rule `y / n / s` and the final `y / n` prompts, instead of treating it as skip or abort. In a terminal it re-asks up to 5 times; without one it asks once, as before.
+- **No rule prompt for a CLAUDE.md that doesn't exist.** Such a rule could never be written and was re-asked every run; `sync-claude` now says once that it's waiting for that file.
+- **Sources from merged duplicates are marked `merged`** in the rule hunk, the review screen and the rule file, so the same `[[note]]` appearing twice is explained.
+- **`vir connect --dry-run` writes nothing,** not even the lesson-embedding cache, and its cost estimate uses the real output cap (1200 tokens), so "up to $X" is a true upper bound.
+- **MCP `vir_query` keeps project-scoped rules under a `project` filter;** rejected-rule matching compares vectors from one embedding model only; rule files say which lines an edit keeps.
+
 ## 0.25.2 — 2026-10-06
 
 - **Ships the 0.25.1 fix for real.** The 0.25.1 package was built a moment before the fix was merged, so it carried 0.25.0 code: `vir sync-claude` still skipped project folders like `pripremi.rs`. 0.25.2 is the same source as 0.25.1, built correctly.
