@@ -137,20 +137,32 @@ function checkConfig(): { result: CheckResult; cfg: Config | null } {
 // ── 2. api key / provider auth ──────────────────────────────────────────────
 // codex-cli: `codex login status` instead of a ping — a codex exec call costs
 // ~19k tokens of harness preamble, too much for a health check.
-function codexLoginStatus(): { code: number | null; stdout: string } | null {
+interface CodexLoginStatus {
+  code: number | null;
+  stdout: string;
+  // A spawn failure other than "not installed" (timeout, crash).
+  error?: string;
+}
+
+function codexLoginStatus(): CodexLoginStatus | null {
   const r = spawnSync(resolveBin("codex"), ["login", "status"], {
     encoding: "utf8",
     timeout: 15_000,
   });
-  if (r.error) return null;
-  return { code: r.status, stdout: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+  if ((r.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") return null;
+  return {
+    code: r.status,
+    stdout: `${r.stdout ?? ""}${r.stderr ?? ""}`,
+    ...(r.error ? { error: r.error.message } : {}),
+  };
 }
 
-export function codexLoginCheck(
-  r: { code: number | null; stdout: string } | null,
-): CheckResult {
+export function codexLoginCheck(r: CodexLoginStatus | null): CheckResult {
   if (r === null) {
     return fail("provider auth", "codex CLI not found — install @openai/codex or switch provider");
+  }
+  if (r.error !== undefined) {
+    return fail("provider auth", `codex-cli · \`codex login status\` failed: ${truncate(r.error)}`);
   }
   if (r.code === 0 && /^Logged in/m.test(r.stdout)) {
     return ok(

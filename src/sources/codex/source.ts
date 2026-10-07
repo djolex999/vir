@@ -65,7 +65,8 @@ const WORKTREE_SEGMENT = `${sep}.claude${sep}worktrees${sep}`;
 function codexProjectName(cwd: string, home: string): string {
   const scratch = join(home, "Documents", "Codex");
   const rel = relative(scratch, cwd);
-  if (rel.length > 0 && !rel.startsWith("..") && !rel.startsWith(sep)) return "codex-scratch";
+  // rel === "" is a chat started in the scratch root itself.
+  if (!rel.startsWith("..") && !rel.startsWith(sep)) return "codex-scratch";
   const wt = cwd.indexOf(WORKTREE_SEGMENT);
   if (wt !== -1) return basename(cwd.slice(0, wt));
   return basename(cwd);

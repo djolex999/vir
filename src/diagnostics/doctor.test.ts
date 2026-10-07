@@ -409,6 +409,12 @@ describe("codexLoginCheck (provider codex-cli)", () => {
     expect(codexLoginCheck({ code: 1, stdout: "Not logged in\n" })).toMatchObject({ status: "fail", detail: expect.stringContaining("codex login") });
     expect(codexLoginCheck(null)).toMatchObject({ status: "fail", detail: expect.stringContaining("not found") });
   });
+  it("a codex that hangs or crashes is not reported as missing", () => {
+    const r = codexLoginCheck({ code: null, stdout: "", error: "spawnSync codex ETIMEDOUT" });
+    expect(r.status).toBe("fail");
+    expect(r.detail).not.toContain("not found");
+    expect(r.detail).toContain("ETIMEDOUT");
+  });
 });
 
 describe("sessionChecks — one per configured source", () => {

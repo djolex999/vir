@@ -283,7 +283,9 @@ describe("defaultAgents", () => {
   it("pre-checks agents already configured, else those whose default dir exists", () => {
     const exists = (p: string) => p === "/h/.codex/sessions";
     expect(defaultAgents(null, "/h", exists)).toEqual(["codex"]);
-    expect(defaultAgents({ claudeProjectsDir: "/c" } as Config, "/h", exists)).toEqual(["claude-code"]);
+    expect(defaultAgents({ claudeProjectsDir: "/c" } as Config, "/h", () => false)).toEqual(["claude-code"]);
+    // Re-init of a Claude-only config on a machine that now has Codex: both.
+    expect(defaultAgents({ claudeProjectsDir: "/c" } as Config, "/h", exists)).toEqual(["claude-code", "codex"]);
     expect(defaultAgents(null, "/h", () => false)).toEqual([]);
   });
 });

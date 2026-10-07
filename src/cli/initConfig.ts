@@ -103,20 +103,19 @@ export const DEFAULT_SOURCE_DIRS = {
   codex: [".codex", "sessions"],
 } as const;
 
-// The init wizard's pre-checked agents: those already configured, else those
-// whose default transcript dir exists on this machine.
+// The init wizard's pre-checked agents: those already configured, plus those
+// whose default transcript dir exists on this machine — so re-running init on
+// a Claude-only install offers Codex once it's installed.
 export function defaultAgents(
   existing: Pick<Config, "claudeProjectsDir" | "codexSessionsDir"> | null,
   home: string,
   exists: (path: string) => boolean,
 ): Array<Exclude<SourceId, "unknown">> {
-  if (existing?.claudeProjectsDir || existing?.codexSessionsDir) {
-    return [
-      ...(existing.claudeProjectsDir ? (["claude-code"] as const) : []),
-      ...(existing.codexSessionsDir ? (["codex"] as const) : []),
-    ];
-  }
-  return (["claude-code", "codex"] as const).filter((id) =>
-    exists(join(home, ...DEFAULT_SOURCE_DIRS[id])),
+  const configured = {
+    "claude-code": Boolean(existing?.claudeProjectsDir),
+    codex: Boolean(existing?.codexSessionsDir),
+  };
+  return (["claude-code", "codex"] as const).filter(
+    (id) => configured[id] || exists(join(home, ...DEFAULT_SOURCE_DIRS[id])),
   );
 }

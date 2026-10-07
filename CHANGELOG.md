@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.26.1 — 2026-10-07
+
+- **Re-running `vir init` offers Codex once it's installed.** On a Claude-only install the wizard now pre-checks Codex too when `~/.codex/sessions` exists, as the README says, instead of only the agents already configured.
+- **A Codex desktop chat started in `~/Documents/Codex` itself** goes to `codex-scratch` like the dated chats under it, instead of a project named `Codex`.
+- **`vir doctor` no longer says "codex CLI not found" when `codex login status` hangs or crashes**; it reports the actual error. Only a missing binary reads as not installed.
+
 ## 0.26.0 — 2026-10-07
 
 **vir reads Codex sessions too, and can distill them on your ChatGPT plan with no API key.**

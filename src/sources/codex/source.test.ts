@@ -57,6 +57,8 @@ describe("Codex source", () => {
     expect(src.projectName(rollout("2.jsonl", { cwd: "/h/Documents/Codex/2026-10-04/other" }))).toBe("codex-scratch");
     expect(src.projectName(rollout("3.jsonl", { cwd: "/h/projects/growthq" }))).toBe("growthq");
     expect(src.projectName(rollout("4.jsonl", { cwd: "/h/projects/vir/.claude/worktrees/foo-123" }))).toBe("vir");
+    // A chat started in the scratch root itself, not a dated subfolder.
+    expect(src.projectName(rollout("5.jsonl", { cwd: "/h/Documents/Codex" }))).toBe("codex-scratch");
   });
 
   it("reads a 200 KB meta line; a 2 MB one yields null and the parent-dir fallback", () => {
