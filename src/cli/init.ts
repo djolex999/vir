@@ -35,6 +35,7 @@ import { buildInitConfig, DEFAULT_SOURCE_DIRS, defaultAgents, mcpSetupFor } from
 import { defaultNotesDir } from "./notesDir.js";
 import { codexInstallSnippet, installToClaudeCode } from "../mcp/install.js";
 import * as ui from "../ui/display.js";
+import { REPO_URL } from "./starNudge.js";
 
 export async function cmdInit(): Promise<void> {
   ensureVirDir();
@@ -481,6 +482,7 @@ export async function cmdInit(): Promise<void> {
 
   ui.blank();
   ui.line(ui.dim("next: `vir run` to test once, then `vir schedule install`"));
+  ui.line(ui.dim(`docs: virwiki.dev · source: ${REPO_URL}`));
 }
 
 function safeLoad(): Config | null {
