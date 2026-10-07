@@ -63,6 +63,7 @@ import { backfillInsightEmbeddings } from "../connect/embed.js";
 import { resolveEmbeddingProvider } from "../search/provider.js";
 import { isSubscriptionProvider } from "./subscription.js";
 import { sessionSuffix } from "./slug.js";
+import { partitionBySince } from "./since.js";
 
 export interface RunOptions {
   full?: boolean;
@@ -86,6 +87,10 @@ export interface RunOptions {
   // One-off project scoping for this run only — never persisted to config.
   onlyProjects?: string[];
   excludeProjects?: string[];
+  // `--since`: epoch ms. Sessions whose transcript is older are deferred to a
+  // later run (no DB row), so a first run can start small. Sessions only —
+  // articles and PDFs are unaffected.
+  sinceMs?: number;
   // Called once when undecided projects hold new sessions; returns the
   // decisions to apply (the callback owns persisting them to config). When
   // omitted — the daemon path — the run NEVER prompts: pending sessions get
@@ -135,6 +140,8 @@ export interface RunSummary {
   // unprocessed and re-enter next cycle), and the one-line reason when a
   // subscription limit halted the loop (null = no halt).
   capDeferred: number;
+  // Sessions left for a later run by --since (never recorded).
+  sinceDeferred: number;
   limitHalted: string | null;
 }
 
@@ -229,6 +236,7 @@ export async function runPipeline(
     pdfsSkipped: 0,
     pdfsErrored: 0,
     capDeferred: 0,
+    sinceDeferred: 0,
     limitHalted: null,
   };
 
@@ -515,6 +523,18 @@ export async function runPipeline(
     sessionsInScope = stillHuman;
     if (summary.agentSkipped > 0) {
       const msg = `${summary.agentSkipped} SDK-launched agent transcript(s) excluded — agentTranscripts: exclude`;
+      if (interactive) ui.line(ui.dim(`  ${msg}`));
+      fileLog(msg);
+    }
+  }
+
+  // ── --since (SCAN phase — before project triage and any paid call) ───────
+  if (opts.sinceMs !== undefined) {
+    const { recent, deferred } = partitionBySince(sessionsInScope, opts.sinceMs);
+    sessionsInScope = recent;
+    summary.sinceDeferred = deferred;
+    if (deferred > 0) {
+      const msg = `${deferred} older session(s) left for a later run (--since); a run without --since, or the daemon, will pick them up`;
       if (interactive) ui.line(ui.dim(`  ${msg}`));
       fileLog(msg);
     }

@@ -42,7 +42,7 @@ This scans, filters, and prints a per-session estimate, then exits before any AP
 vir run
 ```
 
-vir asks for confirmation if more than 20 new sessions are queued. The first pass over a few months of history typically costs $1–$5 on the Anthropic API, or nothing on a Claude subscription.
+vir asks for confirmation if more than 20 new sessions are queued. To start small, `vir run --since 14d` processes only the last two weeks; a later plain `vir run` backfills the rest. The first pass over a few months of history typically costs $1–$5 on the Anthropic API, or nothing on a Claude subscription.
 
 ## What you'll see
 

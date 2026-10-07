@@ -46,6 +46,7 @@ Haiku captures routine and tool-heavy sessions as well as Sonnet at about a thir
 ```bash
 vir run --dry-run              # per-session estimate, exit before any call
 vir run --force-model haiku    # override the distill model for this run
+vir run --since 14d            # only recently active sessions; older ones wait
 vir cost                       # actuals from ~/.vir/cost.log: total, median, p90
 vir cost --since 30d --top 10
 vir cost --by-session
