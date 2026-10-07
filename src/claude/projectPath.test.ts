@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { projectClaudePath } from "./updater.js";
+import { projectClaudePath, projectInstructionPath } from "./updater.js";
 
 let home: string;
 let prevHome: string | undefined;
@@ -49,5 +49,21 @@ describe("projectClaudePath", () => {
 
   it("falls back to the canonical path when nothing exists", () => {
     expect(projectClaudePath("nope")).toBe(join(home, "projects", "nope", "CLAUDE.md"));
+  });
+});
+
+describe("projectInstructionPath — AGENTS.md", () => {
+  it("resolves the same folders, ending in AGENTS.md", () => {
+    const home = mkdtempSync(join(tmpdir(), "vir-agentsmd-"));
+    const prev = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      mkdirSync(join(home, "projects", "pripremi.rs"), { recursive: true });
+      writeFileSync(join(home, "projects", "pripremi.rs", "AGENTS.md"), "x");
+      expect(projectInstructionPath("pripremi-rs", "AGENTS.md")).toBe(join(home, "projects", "pripremi.rs", "AGENTS.md"));
+    } finally {
+      process.env.HOME = prev;
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

@@ -23,7 +23,7 @@ developer-tools, mcp, local-first, cross-platform, llm-wiki
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/v/@djolex999/vir-cli?color=7c6af7&label=npm" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/dw/@djolex999/vir-cli?color=4fd1a0" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee" alt="license"></a>
-  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1310%20passing-22c55e" alt="tests"></a>
+  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1317%20passing-22c55e" alt="tests"></a>
   <a href="#project-status"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey" alt="platforms"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-c084fc" alt="mcp"></a>
   <a href="#"><img src="https://img.shields.io/badge/local--first-yes-f59e0b" alt="local-first"></a>
@@ -110,9 +110,10 @@ sources feed one vault:
 
 Everything embeds into one vector space (Ollama, optional, TF-IDF fallback).
 `vir query "<question>"` searches it and synthesizes an answer. An MCP server
-exposes the vault to Claude Code mid-session, so the agent consults past
-decisions instead of rediscovering them. `vir sync-claude` feeds the best
-notes back into your CLAUDE.md files, with a diff and your confirmation.
+exposes the vault to Claude Code or Codex mid-session, so the agent consults
+past decisions instead of rediscovering them. `vir sync-claude` feeds the best
+notes back into your CLAUDE.md files, and into AGENTS.md files that already
+exist (`~/.codex/AGENTS.md`, project roots), with a diff and your confirmation.
 
 <p align="center">
   <img src="assets/demo.gif" width="800" alt="vir distilling Claude Code sessions into notes in an Obsidian vault">
@@ -475,7 +476,7 @@ with your distro, init system, and Node version.
 | `vir prune`                 | free  | Dry run: agent-derived notes to demote    |
 | `vir prune --apply`         | free  | Demote them to `.rejected/` (never deletes) |
 | `vir prune --restore`       | free  | Put every pruned note back, exactly       |
-| `vir sync-claude`           | free  | Inject top knowledge into CLAUDE.md       |
+| `vir sync-claude`           | free  | Inject top knowledge into CLAUDE.md (and existing AGENTS.md; `--no-agents`, `--agents-only`) |
 | `vir embed`                 | free  | Generate embeddings for semantic search   |
 | `vir embed --setup`         | free  | Install the local embedding provider (no Ollama needed) |
 | `vir schedule install`      | free  | Register the background daemon            |

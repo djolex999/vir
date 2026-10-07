@@ -522,15 +522,20 @@ schedule
 
 program
   .command("sync-claude [project]")
-  .description("Update Vir blocks in CLAUDE.md files (global + per-project)")
+  .description("Update Vir blocks in CLAUDE.md files, and AGENTS.md files that exist (global + per-project)")
   .option("--dry-run", "Show diff only, never write")
   .option("--force", "Apply without confirmation")
-  .option("--global", "Only update ~/.claude/CLAUDE.md")
+  .option("--global", "Only update ~/.claude/CLAUDE.md (and ~/.codex/AGENTS.md)")
+  .option("--no-agents", "Leave AGENTS.md files alone")
+  .option("--agents-only", "Only update AGENTS.md files (already-promoted rules, no rule prompts)")
   .action(
     runAction(async (
       projectArg: string | undefined,
-      opts: { dryRun?: boolean; force?: boolean; global?: boolean },
+      opts: { dryRun?: boolean; force?: boolean; global?: boolean; agents?: boolean; agentsOnly?: boolean },
     ) => {
+      if (opts.agentsOnly === true && opts.agents === false) {
+        throw new Error("--agents-only and --no-agents contradict each other");
+      }
       const cfg = loadConfig();
       const db = new StateDb();
       try {
@@ -541,7 +546,13 @@ program
         await runSyncClaude(
           cfg,
           db,
-          { project: projectArg, globalOnly: opts.global === true, dryRun: opts.dryRun, force: opts.force },
+          {
+            project: projectArg,
+            globalOnly: opts.global === true,
+            dryRun: opts.dryRun,
+            force: opts.force,
+            agents: opts.agentsOnly === true ? "only" : opts.agents === false ? "off" : "also",
+          },
           {
             isTTY: stdin.isTTY === true,
             ask: async (question) => {

@@ -60,16 +60,21 @@ export interface PlanItem {
   scope: "global" | { project: string };
 }
 
-type PlanOptions = { project?: string; globalOnly?: boolean };
+// The instruction file a plan targets. AGENTS.md (Codex and other agents) gets
+// the same VIR block as CLAUDE.md, but only where the file already exists.
+export type InstructionFile = "CLAUDE.md" | "AGENTS.md";
+
+type PlanOptions = { project?: string; globalOnly?: boolean; file?: InstructionFile };
 
 // Which CLAUDE.md a rule's scope lands in, limited to the targets planUpdates
 // builds this run (a project with no distilled notes has no plan).
 function ruleTarget(scope: string, options: PlanOptions, projectSlugs: Set<string>): string | null {
-  if (scope === "global") return options.project ? null : globalClaudePath();
+  const file = options.file ?? "CLAUDE.md";
+  if (scope === "global") return options.project ? null : globalInstructionPath(file);
   if (!scope.startsWith("project:") || options.globalOnly) return null;
   const slug = scope.slice("project:".length);
   if (options.project && slug !== options.project) return null;
-  return projectSlugs.has(slug) ? projectClaudePath(slug) : null;
+  return projectSlugs.has(slug) ? projectInstructionPath(slug, file) : null;
 }
 
 function projectSlugsOf(rows: DistilledRow[]): Set<string> {
@@ -117,11 +122,12 @@ export function planUpdates(
     rulesByTarget.set(target, list);
   }
 
+  const file = options.file ?? "CLAUDE.md";
   if (!options.project) {
-    const target = globalClaudePath();
+    const target = globalInstructionPath(file);
     plans.push(buildPlan(target, rows, { scope: "global" }, rulesByTarget.get(target) ?? []));
   }
-  if (options.globalOnly) return plans;
+  if (options.globalOnly) return file === "AGENTS.md" ? plans.filter((p) => p.exists) : plans;
 
   const byProject = new Map<string, DistilledRow[]>();
   for (const r of rows) {
@@ -137,13 +143,15 @@ export function planUpdates(
   }
 
   for (const [slug, projectRows] of byProject) {
-    const target = projectClaudePath(slug);
+    const target = projectInstructionPath(slug, file);
     plans.push(
       buildPlan(target, projectRows, { scope: { project: slug } }, rulesByTarget.get(target) ?? []),
     );
   }
 
-  return plans;
+  // A missing CLAUDE.md is reported ("would be skipped"); most projects have
+  // no AGENTS.md, so those are left out instead of listed.
+  return file === "AGENTS.md" ? plans.filter((p) => p.exists) : plans;
 }
 
 function buildPlan(
@@ -458,6 +466,11 @@ export function globalClaudePath(): string {
   return join(homedir(), ".claude", "CLAUDE.md");
 }
 
+// Global AGENTS.md is Codex's (~/.codex/AGENTS.md).
+export function globalInstructionPath(file: InstructionFile): string {
+  return file === "CLAUDE.md" ? globalClaudePath() : join(homedir(), ".codex", "AGENTS.md");
+}
+
 // Resolve a project's CLAUDE.md across the layouts people actually use.
 // Checks candidates in priority order and returns the first that EXISTS:
 //   1. ~/projects/<slug>/CLAUDE.md
@@ -471,10 +484,14 @@ export function globalClaudePath(): string {
 // which the dry-run output prints as each plan's heading — so the matched
 // path is always visible.
 export function projectClaudePath(projectSlug: string): string {
+  return projectInstructionPath(projectSlug, "CLAUDE.md");
+}
+
+export function projectInstructionPath(projectSlug: string, file: InstructionFile): string {
   const home = homedir();
   const candidates: string[] = [];
 
-  const canonical = join(home, "projects", projectSlug, "CLAUDE.md");
+  const canonical = join(home, "projects", projectSlug, file);
   candidates.push(canonical);
 
   // Glob ~/projects/<slug>-*  (sorted for deterministic first-match).
@@ -482,15 +499,15 @@ export function projectClaudePath(projectSlug: string): string {
   try {
     for (const name of readdirSync(projectsDir).sort()) {
       if (name !== projectSlug && name.startsWith(`${projectSlug}-`)) {
-        candidates.push(join(projectsDir, name, "CLAUDE.md"));
+        candidates.push(join(projectsDir, name, file));
       }
     }
   } catch {
     // ~/projects may not exist — skip the glob, keep the other candidates.
   }
 
-  candidates.push(join(home, "code", projectSlug, "CLAUDE.md"));
-  candidates.push(join(home, "dev", projectSlug, "CLAUDE.md"));
+  candidates.push(join(home, "code", projectSlug, file));
+  candidates.push(join(home, "dev", projectSlug, file));
 
   // Project slugs are kebab-cased, so a folder named "pripremi.rs" or "My App"
   // never matched its own slug ("pripremi-rs", "my-app") and its CLAUDE.md was
@@ -500,7 +517,7 @@ export function projectClaudePath(projectSlug: string): string {
     try {
       for (const name of readdirSync(join(home, root)).sort()) {
         if (name !== projectSlug && kebab(name) === projectSlug) {
-          candidates.push(join(home, root, name, "CLAUDE.md"));
+          candidates.push(join(home, root, name, file));
         }
       }
     } catch {

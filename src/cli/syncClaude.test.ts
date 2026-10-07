@@ -136,3 +136,42 @@ describe("sync-claude rule promotion", () => {
     expect(claudeMd()).not.toContain("vir-rule:");
   });
 });
+
+describe("sync-claude → AGENTS.md", () => {
+  const agentsMd = () => readFileSync(join(home, ".codex", "AGENTS.md"), "utf8");
+  const withAgentsMd = () => {
+    mkdirSync(join(home, ".codex"), { recursive: true });
+    writeFileSync(join(home, ".codex", "AGENTS.md"), "# codex\n");
+  };
+
+  it("a rule approved for CLAUDE.md lands in an existing ~/.codex/AGENTS.md too", async () => {
+    withAgentsMd();
+    await runSyncClaude(cfg, db, opts, io(["y", "y"]));
+    expect(promotion()).toBe("promoted");
+    expect(agentsMd()).toContain("- rule: Use proxy.ts in Next 16");
+    expect(agentsMd().startsWith("# codex\n")).toBe(true);
+    expect(claudeMd()).toContain("- rule: Use proxy.ts in Next 16");
+  });
+
+  it("never mentions an AGENTS.md that doesn't exist", async () => {
+    const t = io(["y", "y"]);
+    await runSyncClaude(cfg, db, opts, t);
+    expect(t.printed.join("\n")).not.toContain("AGENTS.md");
+  });
+
+  it("agents: off leaves AGENTS.md alone", async () => {
+    withAgentsMd();
+    await runSyncClaude(cfg, db, { ...opts, agents: "off" }, io(["y", "y"]));
+    expect(agentsMd()).toBe("# codex\n");
+  });
+
+  it("agents: only writes promoted rules to AGENTS.md without asking about rules or touching CLAUDE.md", async () => {
+    withAgentsMd();
+    db.upsertInsight({ ...db.listInsights()[0]!, promotion: "promoted" });
+    const t = io(["y"]);
+    await runSyncClaude(cfg, db, { ...opts, agents: "only" }, t);
+    expect(t.asked.some((q) => q.includes("add this rule"))).toBe(false);
+    expect(claudeMd()).toBe("# me\n");
+    expect(agentsMd()).toContain("- rule: Use proxy.ts in Next 16");
+  });
+});
