@@ -4,6 +4,7 @@ import { stdin, stdout } from "node:process";
 import { loadConfig } from "../config.js";
 import { detectDuplicates } from "../dedupe/detector.js";
 import { mergeNotes } from "../dedupe/merger.js";
+import { sessionSuffix } from "../pipeline/slug.js";
 import { StateDb } from "../state/db.js";
 import { confirmPaidStep, withPipelineLock } from "./guards.js";
 
@@ -112,7 +113,7 @@ function noteRefOf(r: {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  return `${dir}/${slug}-${r.sessionId.slice(0, 8)}`;
+  return `${dir}/${slug}-${sessionSuffix(r.sessionId)}`;
 }
 
 function preview(s: string): string {

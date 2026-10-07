@@ -38,6 +38,7 @@ import { runAction } from "./cli/runAction.js";
 import { runReconcile } from "./cli/reconcile.js";
 import {
   installToClaudeCode,
+  installToCodex,
   isClaudeAvailable,
   isInstalled,
   uninstallFromClaudeCode,
@@ -66,6 +67,7 @@ import { auditCommand } from "./cli/audit.js";
 import { composeCommand } from "./cli/compose.js";
 import { dedupeCommand } from "./cli/dedupe.js";
 import { cmdInit } from "./cli/init.js";
+import { isSubscriptionProvider } from "./pipeline/subscription.js";
 
 // Read version at runtime from package.json (one dir up from dist/cli.js) so
 // `vir --version` never drifts from the published version. rootDir is ./src,
@@ -80,7 +82,7 @@ const pkg = JSON.parse(
 const program = new Command();
 program
   .name("vir")
-  .description("Distill your Claude Code sessions into a markdown knowledge base you own")
+  .description("Distill your coding-agent sessions (Claude Code, Codex) into a markdown knowledge base you own")
   .version(pkg.version);
 
 program
@@ -245,7 +247,7 @@ async function confirmCostIfNeeded(
   if (newCount <= 20) return true;
   // Upper bound from transcript sizes; sessions the filter drops cost nothing.
   const estimate =
-    cfg.provider === "claude-cli"
+    isSubscriptionProvider(cfg.provider)
       ? "subscription quota (no $)"
       : estimatedUsd === null
         ? "unknown (no price for the configured models)"
@@ -301,7 +303,7 @@ program
       if (report.subscriptionCalls > 0) {
         ui.stat(
           "subscription",
-          `${report.subscriptionCalls} claude-cli calls (quota, no $ — excluded from totals)`,
+          `${report.subscriptionCalls} claude-cli/codex-cli calls (quota, no $ — excluded from totals)`,
         );
       }
       if (report.unpricedCalls > 0) {
@@ -520,15 +522,20 @@ schedule
 
 program
   .command("sync-claude [project]")
-  .description("Update Vir blocks in CLAUDE.md files (global + per-project)")
+  .description("Update Vir blocks in CLAUDE.md files, and AGENTS.md files that exist (global + per-project)")
   .option("--dry-run", "Show diff only, never write")
   .option("--force", "Apply without confirmation")
-  .option("--global", "Only update ~/.claude/CLAUDE.md")
+  .option("--global", "Only update ~/.claude/CLAUDE.md (and ~/.codex/AGENTS.md)")
+  .option("--no-agents", "Leave AGENTS.md files alone")
+  .option("--agents-only", "Only update AGENTS.md files (already-promoted rules, no rule prompts)")
   .action(
     runAction(async (
       projectArg: string | undefined,
-      opts: { dryRun?: boolean; force?: boolean; global?: boolean },
+      opts: { dryRun?: boolean; force?: boolean; global?: boolean; agents?: boolean; agentsOnly?: boolean },
     ) => {
+      if (opts.agentsOnly === true && opts.agents === false) {
+        throw new Error("--agents-only and --no-agents contradict each other");
+      }
       const cfg = loadConfig();
       const db = new StateDb();
       try {
@@ -539,7 +546,13 @@ program
         await runSyncClaude(
           cfg,
           db,
-          { project: projectArg, globalOnly: opts.global === true, dryRun: opts.dryRun, force: opts.force },
+          {
+            project: projectArg,
+            globalOnly: opts.global === true,
+            dryRun: opts.dryRun,
+            force: opts.force,
+            agents: opts.agentsOnly === true ? "only" : opts.agents === false ? "off" : "also",
+          },
           {
             isTTY: stdin.isTTY === true,
             ask: async (question) => {
@@ -832,12 +845,19 @@ projectsCmd
         Math.max(...rows.map((r) => r.name.length), 7),
         44,
       );
+      // The sources column appears only once a second agent is configured, so
+      // a Claude-only table is unchanged.
+      const multiSource = new Set(rows.flatMap((r) => r.sources)).size > 1;
+      const srcW = 12;
       ui.line(
         ui.dim(
-          `  ${"project".padEnd(nameW)}  decision   sessions  distilled  pending  excluded  est. pending`,
+          `  ${"project".padEnd(nameW)}  decision   ${multiSource ? "sources".padEnd(srcW) + "  " : ""}sessions  distilled  pending  excluded  est. pending`,
         ),
       );
       for (const r of rows) {
+        const sourceCol = multiSource
+          ? ui.dim(r.sources.map((id) => (id === "claude-code" ? "claude" : id)).join("+").padEnd(srcW)) + "  "
+          : "";
         const decision =
           r.decision === "include"
             ? ui.success("include  ")
@@ -854,7 +874,7 @@ projectsCmd
         const nestedNote =
           nestedParts.length > 0 ? ui.dim(`  (${nestedParts.join(", ")})`) : "";
         ui.line(
-          `  ${ui.text(r.name.padEnd(nameW))}  ${decision}  ${String(r.sessions).padStart(8)}  ${String(r.distilled).padStart(9)}  ${String(r.pending).padStart(7)}  ${String(r.excluded).padStart(8)}  ${r.pending > 0 ? ui.warn(ui.formatUsd(r.estPendingCost).padStart(12)) : ui.dim("—".padStart(12))}${nestedNote}`,
+          `  ${ui.text(r.name.padEnd(nameW))}  ${decision}  ${sourceCol}${String(r.sessions).padStart(8)}  ${String(r.distilled).padStart(9)}  ${String(r.pending).padStart(7)}  ${String(r.excluded).padStart(8)}  ${r.pending > 0 ? ui.warn(ui.formatUsd(r.estPendingCost).padStart(12)) : ui.dim("—".padStart(12))}${nestedNote}`,
         );
       }
       const pending = rows.filter(
@@ -1057,12 +1077,13 @@ program
 
 const mcpCmd = program
   .command("mcp")
-  .description("MCP server + Claude Code registration")
+  .description("MCP server + Claude Code / Codex registration")
   .addHelpText(
     "after",
     `
 Quick start:
   vir mcp install      register with Claude Code (recommended)
+  vir mcp install --target codex   print the Codex config snippet
   vir mcp status       check registration
   vir mcp run          run the stdio server directly (vir mcp = vir mcp run)
 
@@ -1088,10 +1109,18 @@ mcpCmd
 
 mcpCmd
   .command("install")
-  .description("Register Vir with Claude Code")
-  .option("--scope <scope>", "user or project", "user")
+  .description("Register Vir with Claude Code, or print the Codex config (--target codex)")
+  .option("--scope <scope>", "user or project (Claude Code only)", "user")
+  .option("--target <agent>", "claude or codex", "claude")
   .action(
-    runAction(async (opts: { scope: string }) => {
+    runAction(async (opts: { scope: string; target: string }) => {
+      if (opts.target === "codex") {
+        installToCodex();
+        return;
+      }
+      if (opts.target !== "claude") {
+        throw new Error(`unknown --target '${opts.target}' — use 'claude' or 'codex'`);
+      }
       await installToClaudeCode(opts.scope as "user" | "project");
     }),
   );

@@ -1,9 +1,11 @@
+import type { SubscriptionProvider } from "../pipeline/subscription.js";
+
 export type Provider = "anthropic" | "kie";
 
 // Providers a cost.log record can carry. claude-cli calls have NO dollar
 // price (subscription quota, not metered dollars) — they are deliberately
 // absent from DEFAULT_PRICING so nothing can ever price them.
-export type CostProvider = Provider | "claude-cli";
+export type CostProvider = Provider | SubscriptionProvider;
 
 // Kie high-tier top-ups grant +10% bonus credits, so effective pricing is ~10%
 // below the posted rates — a per-user adjustment, NOT a change to the canonical

@@ -6,10 +6,11 @@ import type { Config } from "../config.js";
 import { readCostLog } from "../cost/log.js";
 import { computeCost } from "../cost/pricing.js";
 import { Distiller, normalizeModelName, resolveModelShorthand } from "../pipeline/distiller.js";
-import { ClaudeCliLimitError } from "../pipeline/claudeCli.js";
+import { SubscriptionLimitError } from "../pipeline/subscription.js";
 import { acquireLock, LockHeldError, releaseLock } from "../pipeline/lock.js";
 import { decideProject } from "../pipeline/projects.js";
 import { buildSources, resolveSource } from "../sources/registry.js";
+import type { SessionSource } from "../sources/types.js";
 import { scrub } from "../pipeline/scrubber.js";
 import { filterToolCalls } from "../pipeline/toolCallFilter.js";
 import { VaultWriter } from "../pipeline/writer.js";
@@ -22,6 +23,7 @@ import {
   type SkipReason,
 } from "../state/db.js";
 import * as ui from "../ui/display.js";
+import { isSubscriptionProvider } from "../pipeline/subscription.js";
 
 export interface ReconcileOptions {
   dryRun?: boolean;
@@ -69,10 +71,15 @@ export function reconcileGate(
   t: Pick<SessionRow, "path">,
   cfg: Pick<
     Config,
-    "claudeProjectsDir" | "workflowTranscripts" | "agentTranscripts" | "projects"
+    | "claudeProjectsDir"
+    | "codexSessionsDir"
+    | "workflowTranscripts"
+    | "agentTranscripts"
+    | "projects"
   >,
+  sources: SessionSource[] = buildSources(cfg),
 ): { reason: SkipReason; entrypoint?: string } | null {
-  const source = resolveSource(buildSources(cfg), t.path);
+  const source = resolveSource(sources, t.path);
   if (cfg.workflowTranscripts !== "include") {
     const cat = source.category(t.path);
     if (cat !== "session") {
@@ -112,7 +119,8 @@ export interface ReconcileTargetSummary {
   sessionId: string;
   hadCostRecord: boolean;
   estimatedCost: number;
-  // The transcript is gone (Claude Code deletes old ones): it cannot be
+  // The transcript is gone (Claude Code deletes old ones; a Codex thread may
+  // have been archived or deleted): it cannot be
   // retried, only an earlier note restored, so it costs nothing.
   missing: boolean;
 }
@@ -123,7 +131,7 @@ export function reconcileCostLabel(
   provider: Config["provider"],
   usd: number,
 ): string {
-  return provider === "claude-cli" ? "quota" : ui.formatUsd(usd);
+  return isSubscriptionProvider(provider) ? "quota" : ui.formatUsd(usd);
 }
 
 // Build the per-target summary (cost estimate + collateral flag) without doing
@@ -146,6 +154,7 @@ export function summarizeReconcileTargets(
   let totalCost = 0;
   let collateralCount = 0;
   const rows: ReconcileTargetSummary[] = [];
+  const sources = buildSources(cfg);
 
   for (const t of targets) {
     const sessionId = deriveSessionId(t.path);
@@ -155,9 +164,9 @@ export function summarizeReconcileTargets(
     let estimatedCost = 0;
     const missing = !existsSync(t.path);
     // Subscription path: retries cost quota, not dollars — estimate stays 0.
-    if (cfg.provider !== "claude-cli" && !missing) {
+    if (!isSubscriptionProvider(cfg.provider) && !missing) {
       try {
-        const parsed = resolveSource(buildSources(cfg), t.path).parse(t.path, t.hash);
+        const parsed = resolveSource(sources, t.path).parse(t.path, t.hash);
         const classifyIn = Math.ceil(
           scrub(parsed.rawSummary).length / CHARS_PER_TOKEN,
         );
@@ -246,10 +255,11 @@ export async function runReconcile(
     // Same filters as `vir run`. A gated row leaves the retry list with its
     // skip reason (it re-enters if the config changes); one that still holds
     // an earlier good note keeps it, since excluding never touches notes.
+    const sources = buildSources(cfg);
     const targets: SessionRow[] = [];
     const gatedBy = new Map<SkipReason, number>();
     for (const t of candidates) {
-      const gate = existsSync(t.path) ? reconcileGate(t, cfg) : null;
+      const gate = existsSync(t.path) ? reconcileGate(t, cfg, sources) : null;
       if (gate === null) {
         targets.push(t);
         continue;
@@ -382,7 +392,7 @@ export async function runReconcile(
       // are cached but we know their stored content is empty, so we want a
       // forced retry. Parse, score, distill, then update the row in place.
       try {
-        const source = resolveSource(buildSources(cfg), t.path);
+        const source = resolveSource(sources, t.path);
         const parsed = source.parse(t.path, t.hash, source.projectName(t.path));
         const outcome = await distillOneSession(parsed, t, {
           cfg,
@@ -414,7 +424,7 @@ export async function runReconcile(
         // A subscription limit halts reconcile exactly like the run loop:
         // one wall, not N failures — and force-retries against it would burn
         // quota for nothing. Remaining targets stay eligible for the next pass.
-        if (err instanceof ClaudeCliLimitError) {
+        if (err instanceof SubscriptionLimitError) {
           ui.row(ui.errorColor(ui.CROSS), ui.text(err.message));
           process.exitCode = 1;
           break;

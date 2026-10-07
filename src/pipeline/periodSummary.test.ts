@@ -275,6 +275,7 @@ describe("summarizePeriod (end-to-end, LLM mocked)", () => {
       claudeProjectsDir: "/tmp/claude-projects",
       cadenceHours: 3,
       provider: "anthropic",
+      connectMaxCandidates: 10,
       anthropicApiKey: "sk-ant-test",
       kieTopUpTier: "standard",
       filterThreshold: 0.4,

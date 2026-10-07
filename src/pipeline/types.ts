@@ -38,9 +38,13 @@ export interface ParsedSession {
   entrypoint: string | null;
   // Every git branch the session's lines were recorded on, in first-seen order
   // (a session can switch branches). Kept because it cannot be recovered later:
-  // Claude Code deletes transcripts after ~30 days. Nothing reads it yet — a
+  // Claude Code deletes transcripts after ~30 days (Codex keeps them, but a
+  // thread can be deleted). Nothing reads it yet — a
   // future check can flag notes whose branch never merged.
   branches: string[];
+  // The agent that wrote the transcript, as the prompts name it. Absent =
+  // "Claude Code", so Claude prompts stay byte-identical to the evaluated text.
+  agentLabel?: string;
 }
 
 export type Category = "pattern" | "gotcha" | "decision" | "tool";

@@ -125,3 +125,10 @@ describe("preflightFailureCheck", () => {
     expect(r?.status).toBe("warn");
   });
 });
+
+describe("preflightFailureNotice — codex-cli", () => {
+  it("names the codex login fix for an auth failure", () => {
+    const n = preflightFailureNotice("codex-cli", "codex exec failed (exit 1): 401 Unauthorized");
+    expect(n.message).toBe("Codex is logged out — run `codex login`, then `vir run`");
+  });
+});

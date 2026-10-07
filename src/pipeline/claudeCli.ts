@@ -1,15 +1,18 @@
 import { spawn } from "node:child_process";
-import { accessSync, appendFileSync, constants, writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { join } from "node:path";
 import type { TokenUsage } from "./distiller.js";
+import {
+  resolveBin,
+  runProcess,
+  SubscriptionLimitError,
+  type SpawnImpl,
+} from "./subscription.js";
 
-// Neutral spawn cwd is a CORRECTNESS requirement, not a preference: `claude -p`
-// run from a project directory loads that project's CLAUDE.md into context,
-// silently injecting the user's project instructions into every distill prompt.
-// ~/.vir is guaranteed to exist (config lives there) and carries no CLAUDE.md.
-// Deliberately not injectable — no config or call-site path may change it.
-const CLAUDE_CLI_CWD = join(homedir(), ".vir");
+// The spawn cwd is pinned to ~/.vir by runProcess (SUBSCRIPTION_CLI_CWD) — a
+// CORRECTNESS requirement: `claude -p` run from a project directory loads that
+// project's CLAUDE.md into every distill prompt. Deliberately not injectable.
 
 // Generous by design: the API path's slowest observed distill was 437s, and a
 // stalled subprocess would otherwise hang the daemon forever (the callKie
@@ -25,18 +28,16 @@ export const CLAUDE_CLI_LIMIT_MARKER_PATH = join(
   "claude-cli-limit.confirmed",
 );
 
-// A subscription limit is a WALL that persists for hours — the polar opposite
-// of a transient 429. isRetryable must treat it as non-retryable, and the run
-// loop halts on it without burning the per-session attempt counter.
-export class ClaudeCliLimitError extends Error {
+export class ClaudeCliLimitError extends SubscriptionLimitError {
   constructor(
     readonly kind: "session" | "weekly" | "opus",
-    readonly resetsAt: string | null,
+    resetsAt: string | null,
   ) {
     super(
       `Claude Code ${kind} limit reached` +
         (resetsAt ? ` — resets ${resetsAt}` : "") +
         ". Distillation halted; unprocessed sessions will be picked up next run.",
+      resetsAt,
     );
     this.name = "ClaudeCliLimitError";
   }
@@ -149,21 +150,7 @@ function defaultWriteMarker(line: string): void {
   }
 }
 
-function isExecutable(path: string): boolean {
-  try {
-    accessSync(path, constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// Scheduled runs get a minimal PATH (launchd pins a few system dirs, systemd and
-// cron set little or none), so a bare `claude` that resolves in your shell can
-// fail every daemon run. Look on PATH first, then where Claude Code is commonly
-// installed: next to the node running vir (an nvm/npm global install), the
-// native installer's dirs, then Homebrew and /usr/local. Falls back to bare
-// `claude`, which keeps the existing not-installed error.
+// The daemon's PATH is minimal; see resolveBin.
 export function resolveClaudeBin(
   opts: {
     path?: string;
@@ -172,31 +159,10 @@ export function resolveClaudeBin(
     exists?: (p: string) => boolean;
   } = {},
 ): string {
-  const exists = opts.exists ?? isExecutable;
-  const home = opts.home ?? homedir();
-  const dirs = [
-    ...(opts.path ?? process.env.PATH ?? "").split(delimiter),
-    opts.execDir ?? dirname(process.execPath),
-    join(home, ".claude", "local"),
-    join(home, ".local", "bin"),
-    join(home, ".npm-global", "bin"),
-    "/opt/homebrew/bin",
-    "/usr/local/bin",
-  ].filter((d) => d.length > 0);
-  for (const dir of dirs) {
-    const candidate = join(dir, "claude");
-    if (exists(candidate)) return candidate;
-  }
-  return "claude";
+  return resolveBin("claude", opts);
 }
 
 let resolvedClaudeBin: string | null = null;
-
-type SpawnImpl = (
-  cmd: string,
-  args: string[],
-  opts: { cwd: string },
-) => ReturnType<typeof spawn>;
 
 // Injectable for tests ONLY — production callers pass nothing. cwd and the
 // arg set are NOT injectable (correctness requirements, see above).
@@ -229,6 +195,7 @@ export async function callClaudeCli(
     buildClaudeCliArgs(opts.model),
     opts.prompt,
     timeoutMs,
+    (m) => new ClaudeCliError(m.startsWith("timed out") ? `claude -p ${m}` : m, null),
   );
 
   const envelope = parseCliEnvelope(stdout);
@@ -273,53 +240,4 @@ export async function callClaudeCli(
       ? { input_tokens: u.input_tokens, output_tokens: u.output_tokens }
       : null;
   return { text: envelope.result, usage };
-}
-
-function runProcess(
-  spawnImpl: SpawnImpl,
-  bin: string,
-  args: string[],
-  stdin: string,
-  timeoutMs: number,
-): Promise<{ stdout: string; stderr: string; code: number | null }> {
-  return new Promise((resolve, reject) => {
-    // Arg array + no shell, same discipline as mcp/install.ts. cwd pinned.
-    const child = spawnImpl(bin, args, { cwd: CLAUDE_CLI_CWD });
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      child.kill();
-      reject(
-        new ClaudeCliError(
-          `claude -p timed out after ${timeoutMs / 1000}s`,
-          null,
-        ),
-      );
-    }, timeoutMs);
-
-    child.stdout?.on("data", (d: Buffer) => (stdout += d.toString()));
-    child.stderr?.on("data", (d: Buffer) => (stderr += d.toString()));
-    child.on("error", (err: Error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      // ENOENT (claude not installed) arrives here, not on close.
-      reject(
-        new ClaudeCliError(`could not spawn claude: ${err.message}`, null),
-      );
-    });
-    child.on("close", (code: number | null) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve({ stdout, stderr, code });
-    });
-
-    child.stdin?.write(stdin);
-    child.stdin?.end();
-  });
 }

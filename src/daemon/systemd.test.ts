@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isUserBusUnavailable,
+  renderService,
   SystemdNotAvailableError,
   SystemdUserBusUnavailableError,
 } from "./systemd.js";
@@ -66,5 +67,13 @@ describe("systemd error classes", () => {
     // Must not collide with the "systemctl missing" case — the router treats
     // them as separate fall-back triggers.
     expect(err).not.toBeInstanceOf(SystemdNotAvailableError);
+  });
+});
+
+describe("renderService description", () => {
+  it("names coding-agent sessions, not one agent", () => {
+    expect(renderService({ nodePath: "/n", cliPath: "/c" })).toContain(
+      "Description=Vir coding-agent session distillation",
+    );
   });
 });

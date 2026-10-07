@@ -5,6 +5,7 @@ import {
 } from "../pipeline/projects.js";
 import { normalizeModelName } from "../pipeline/distiller.js";
 import { buildSources, groupSessions, resolveSource, scanAll } from "../sources/registry.js";
+import type { SourceId } from "../sources/types.js";
 import { StateDb } from "../state/db.js";
 
 export interface SessionMetaRow {
@@ -35,6 +36,8 @@ export interface ProjectReportRow {
   // Top-level SDK-launched agent transcripts (agentTranscripts: exclude) —
   // its own count, separate from the nested workflow/sidechain categories.
   agentSessions: number;
+  // Every agent whose sessions land in this project (merged by name), sorted.
+  sources: SourceId[];
 }
 
 // Aggregate the scan (every project seen on disk) against DB state into the
@@ -55,6 +58,7 @@ export function buildProjectsReport(
     string,
     { workflow: number; sidechain: number; agent?: number }
   >,
+  sourceOf: (path: string) => SourceId = () => "claude-code",
 ): ProjectReportRow[] {
   const byPath = new Map(meta.map((m) => [m.path, m]));
   const rows: ProjectReportRow[] = [];
@@ -73,6 +77,7 @@ export function buildProjectsReport(
       workflowSessions: nestedCounts?.workflow ?? 0,
       sidechainSessions: nestedCounts?.sidechain ?? 0,
       agentSessions: nestedCounts?.agent ?? 0,
+      sources: [...new Set(g.sessions.map((s) => sourceOf(s.path)))].sort(),
     };
     for (const s of g.sessions) {
       const m = byPath.get(s.path);
@@ -177,5 +182,6 @@ export function gatherProjectsReport(cfg: Config): ProjectReportRow[] {
         cfg.kieTopUpTier,
       ),
     nested,
+    (path) => resolveSource(sources, path).id,
   );
 }

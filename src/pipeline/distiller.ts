@@ -2,7 +2,6 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { Config } from "../config.js";
 import {
   ClaudeCliError,
-  ClaudeCliLimitError,
   callClaudeCli,
 } from "./claudeCli.js";
 import { computeCost, resolvePricing } from "../cost/pricing.js";
@@ -13,6 +12,8 @@ import type {
   DistilledNote,
   ParsedSession,
 } from "./types.js";
+import { callCodexCli, CodexCliError } from "./codexCli.js";
+import { isSubscriptionProvider, SubscriptionLimitError } from "./subscription.js";
 
 const CATEGORIES: Category[] = ["pattern", "gotcha", "decision", "tool"];
 
@@ -52,9 +53,9 @@ export function buildAnthropicClient(config: Config): Anthropic {
   return new Anthropic({ apiKey: config.anthropicApiKey ?? "" });
 }
 
-// Returns null on the Kie and claude-cli paths — Kie uses native fetch
-// (callKie) and claude-cli spawns the `claude` binary; neither touches the
-// Anthropic SDK, so don't allocate a client (claude-cli has no key at all).
+// Returns null on the Kie and CLI paths — Kie uses native fetch
+// (callKie) and claude-cli/codex-cli spawn a binary; none touches the
+// Anthropic SDK, so don't allocate a client (the CLIs have no key at all).
 export function maybeAnthropicClient(config: Config): Anthropic | null {
   return config.provider === "anthropic" ? buildAnthropicClient(config) : null;
 }
@@ -281,7 +282,7 @@ export function costForRecord(
   overrides: Config["pricing"],
   tier: Config["kieTopUpTier"],
 ): number | null {
-  if (provider === "claude-cli") return null;
+  if (isSubscriptionProvider(provider)) return null;
   // No price for this model on this provider (e.g. claude-sonnet-5 on Kie):
   // unknown, never $0, or `vir cost` silently under-reports real spend.
   if (resolvePricing(provider, model, overrides, tier) === null) return null;
@@ -335,6 +336,8 @@ export async function callLLM(
   if (config.provider === "claude-cli") {
     const cli = await callClaudeCli({ prompt: opts.prompt, model: opts.model });
     result = { text: cli.text, usage: cli.usage };
+  } else if (config.provider === "codex-cli") {
+    result = await callCodexCli({ prompt: opts.prompt, model: opts.model });
   } else if (config.provider === "kie") {
     result = await callKie({
       apiKey: config.kieApiKey ?? "",
@@ -427,7 +430,7 @@ export function buildDistillPrompt(
   // is for a retrieving session, which wants state and specifics first. The
   // "not replying" line exists because a longer prompt once made Haiku echo
   // the session's closing chat message instead of writing a note.
-  return `Extract durable knowledge from this Claude Code session.
+  return `Extract durable knowledge from this ${session.agentLabel ?? "Claude Code"} session.
 
 Output a markdown page with these sections (no preamble, start with '## Summary'):
 - ## Summary (2-3 sentences)
@@ -536,7 +539,7 @@ export class Distiller {
     session: ParsedSession,
     scrubbedSummary: string,
   ): Promise<Classification> {
-    const prompt = `Given this Claude Code session summary, output JSON only:
+    const prompt = `Given this ${session.agentLabel ?? "Claude Code"} session summary, output JSON only:
 { "category": "pattern" | "gotcha" | "decision" | "tool",
   "topic": string (2-5 words, kebab-friendly: name the SINGLE most durable or
     surprising lesson, NOT a summary of everything the session touched),
@@ -626,7 +629,7 @@ ${scrubbedSummary}`;
     try {
       return (await this.retitle(session, markdown, cls)) ?? cls.topic;
     } catch (err) {
-      if (err instanceof ClaudeCliLimitError) throw err;
+      if (err instanceof SubscriptionLimitError) throw err;
       console.warn(
         `[vir] retitle failed for ${session.sessionId.slice(0, 8)}, keeping classify topic: ${(err as Error).message}`,
       );
@@ -669,8 +672,9 @@ export function isRetryable(err: unknown): boolean {
   // halts on it instead. Ordinary claude-cli failures also stay non-retryable
   // (fail safe: a limit the docs-sourced regex misclassified must never enter
   // a retry chain).
-  if (err instanceof ClaudeCliLimitError) return false;
+  if (err instanceof SubscriptionLimitError) return false;
   if (err instanceof ClaudeCliError) return false;
+  if (err instanceof CodexCliError) return false;
   // A client-side timeout is a transient stall, same family as a 5xx.
   if (err instanceof KieTimeoutError) return true;
   // Node's fetch (undici) surfaces network-level failures (ECONNREFUSED,

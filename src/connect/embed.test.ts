@@ -34,6 +34,7 @@ function fakeProvider(): EmbeddingProvider & { calls: number } {
       return { embedding: [1, text.length], sentChars: text.length, truncated: false };
     },
     embedQuery: async () => [1, 0],
+    provenance: () => ({ model: "fake-model", dim: 2 }),
   };
   return p;
 }

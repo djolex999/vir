@@ -111,3 +111,23 @@ describe("buildProjectsReport — agent annotation separate from workflow/sidech
     expect(rows.find((r) => r.name === "scratch")?.agentSessions).toBe(0);
   });
 });
+
+describe("buildProjectsReport — sources per project", () => {
+  it("lists every agent behind a project, merged by name", () => {
+    const g = [{ name: "growthq", totalBytes: 2, sessions: [
+      { path: "/claude/-x-growthq/a.jsonl", hash: "a", size: 1 },
+      { path: "/codex/2026/rollout-b.jsonl", hash: "b", size: 1 },
+    ] }];
+    const sourceOf = (p: string) => (p.startsWith("/codex/") ? ("codex" as const) : ("claude-code" as const));
+    const [row] = buildProjectsReport(g, [], {}, estCost, undefined, sourceOf);
+    expect(row?.sources).toEqual(["claude-code", "codex"]);
+  });
+
+  it("defaults to claude-code when no resolver is given", () => {
+    expect(rows0()[0]?.sources).toEqual(["claude-code"]);
+  });
+});
+
+function rows0() {
+  return buildProjectsReport([{ name: "vir", totalBytes: 1, sessions: [{ path: "/t/vir/a.jsonl", hash: "a", size: 1 }] }], [], {}, estCost);
+}

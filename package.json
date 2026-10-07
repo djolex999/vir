@@ -1,6 +1,6 @@
 {
   "name": "@djolex999/vir-cli",
-  "version": "0.25.3",
+  "version": "0.26.0",
   "description": "An LLM Wiki for Claude Code, in your Obsidian vault.",
   "author": "Djordje Marković <djordje@growthq.rs>",
   "license": "MIT",
@@ -37,6 +37,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "fixture:codex": "npm run build --silent && node scripts/codex-fixture.mjs",
     "build:notifier": "native/notifier/build.sh",
     "prepublishOnly": "npm run build && npm test",
     "dev": "tsc --watch",

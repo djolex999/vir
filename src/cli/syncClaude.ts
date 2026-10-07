@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
+import { basename } from "node:path";
 import { applyPlan, planRules, planUpdates, renderRuleHunk, type PlanItem } from "../claude/updater.js";
 import type { Config } from "../config.js";
 import { writeInsightFile } from "../connect/insightFile.js";
@@ -13,6 +14,9 @@ export interface SyncOptions {
   globalOnly?: boolean;
   dryRun?: boolean;
   force?: boolean;
+  // AGENTS.md files that exist get the same block: "also" (default), "off",
+  // or "only" (no CLAUDE.md, no rule prompts — promoted rules only).
+  agents?: "also" | "off" | "only";
 }
 
 export interface SyncIo {
@@ -28,7 +32,7 @@ function collapseHome(p: string): string {
 }
 
 export function renderPlanLines(p: PlanItem): string[] {
-  if (!p.exists) return [ui.dim("no CLAUDE.md found — would be skipped")];
+  if (!p.exists) return [ui.dim(`no ${basename(p.target)} found — would be skipped`)];
   const lines: string[] = [];
   for (const e of p.diff.added) lines.push(`${ui.success("+")} ${ui.text(e.slug)}`);
   for (const u of p.diff.upgraded) {
@@ -77,8 +81,10 @@ async function askUntil(io: SyncIo, question: string, valid: (a: string) => bool
 // after their CLAUDE.md write succeeds — so DB and file never disagree.
 export async function runSyncClaude(cfg: Config, db: StateDb, opts: SyncOptions, io: SyncIo): Promise<void> {
   const planOpts = { project: opts.project, globalOnly: opts.globalOnly === true };
+  const agents = opts.agents ?? "also";
   const interactive = opts.force !== true && opts.dryRun !== true && io.isTTY;
-  const allPending = planRules(db, planOpts);
+  // Rules are approved against CLAUDE.md; AGENTS.md only mirrors approved ones.
+  const allPending = agents === "only" ? [] : planRules(db, planOpts);
   // A rule for a missing CLAUDE.md can't be written; asking would only repeat
   // every run. Say so once instead.
   const pending = allPending.filter((c) => existsSync(c.target));
@@ -103,7 +109,11 @@ export async function runSyncClaude(cfg: Config, db: StateDb, opts: SyncOptions,
     io.print(`${pending.length} rule(s) awaiting your approval: run vir sync-claude in a terminal`);
   }
 
-  const plans = planUpdates(cfg, db, planOpts, new Set(approved.keys()));
+  const approvedIds = new Set(approved.keys());
+  const plans = [
+    ...(agents === "only" ? [] : planUpdates(cfg, db, planOpts, approvedIds)),
+    ...(agents === "off" ? [] : planUpdates(cfg, db, { ...planOpts, file: "AGENTS.md" }, approvedIds)),
+  ];
   if (plans.length === 0) {
     io.print("nothing to plan");
     return;

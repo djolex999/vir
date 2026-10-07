@@ -9,6 +9,7 @@
 import Database from "better-sqlite3";
 import { accessSync, constants, existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
+import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -52,6 +53,8 @@ import {
   notifierPermission,
   type NotifierPermission,
 } from "../ui/macNotifier.js";
+import { isSubscriptionProvider, resolveBin } from "../pipeline/subscription.js";
+import { buildSources, resolveSource } from "../sources/registry.js";
 
 interface CheckResult {
   status: ui.CheckStatus;
@@ -118,7 +121,12 @@ function checkConfig(): { result: CheckResult; cfg: Config | null } {
   const cfg: Config = {
     ...parsed.data,
     vaultPath: expandHome(parsed.data.vaultPath),
-    claudeProjectsDir: expandHome(parsed.data.claudeProjectsDir),
+    ...(parsed.data.claudeProjectsDir
+      ? { claudeProjectsDir: expandHome(parsed.data.claudeProjectsDir) }
+      : {}),
+    ...(parsed.data.codexSessionsDir
+      ? { codexSessionsDir: expandHome(parsed.data.codexSessionsDir) }
+      : {}),
   };
   return {
     result: ok("config", `${collapseHome(CONFIG_PATH)} (valid)`),
@@ -127,6 +135,32 @@ function checkConfig(): { result: CheckResult; cfg: Config | null } {
 }
 
 // ── 2. api key / provider auth ──────────────────────────────────────────────
+// codex-cli: `codex login status` instead of a ping — a codex exec call costs
+// ~19k tokens of harness preamble, too much for a health check.
+function codexLoginStatus(): { code: number | null; stdout: string } | null {
+  const r = spawnSync(resolveBin("codex"), ["login", "status"], {
+    encoding: "utf8",
+    timeout: 15_000,
+  });
+  if (r.error) return null;
+  return { code: r.status, stdout: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+}
+
+export function codexLoginCheck(
+  r: { code: number | null; stdout: string } | null,
+): CheckResult {
+  if (r === null) {
+    return fail("provider auth", "codex CLI not found — install @openai/codex or switch provider");
+  }
+  if (r.code === 0 && /^Logged in/m.test(r.stdout)) {
+    return ok(
+      "provider auth",
+      "codex-cli · logged in (experimental — distills consume your Codex limits)",
+    );
+  }
+  return fail("provider auth", "codex-cli · not logged in — run `codex login`");
+}
+
 async function checkApiKey(cfg: Config): Promise<CheckResult> {
   const provider = cfg.provider;
   if (provider === "claude-cli") {
@@ -157,6 +191,7 @@ async function checkApiKey(cfg: Config): Promise<CheckResult> {
       return fail("provider auth", `claude-cli · ${truncate((err as Error).message)}`);
     }
   }
+  if (provider === "codex-cli") return codexLoginCheck(codexLoginStatus());
   if (provider === "anthropic") {
     const key = cfg.anthropicApiKey ?? "";
     if (!key.startsWith("sk-ant-")) {
@@ -193,7 +228,7 @@ async function checkApiKey(cfg: Config): Promise<CheckResult> {
 // point at the config escape hatch. Subscription (claude-cli) has no prices.
 export function pricedModelsCheck(cfg: Config): CheckResult | null {
   const provider = cfg.provider;
-  if (provider === "claude-cli") return null;
+  if (isSubscriptionProvider(provider)) return null;
   const configured = [
     cfg.models.classify,
     cfg.models.distill,
@@ -251,7 +286,7 @@ function checkOutputDir(cfg: Config): CheckResult {
   return ok("output directory", `${count} note${count === 1 ? "" : "s"}`);
 }
 
-// ── 5. Claude Code sessions ───────────────────────────────────────────────────
+// ── 5. agent sessions ───────────────────────────────────────────────────
 function countJsonl(dir: string): number {
   let n = 0;
   let entries;
@@ -268,14 +303,20 @@ function countJsonl(dir: string): number {
   return n;
 }
 
-function checkSessions(cfg: Config): CheckResult {
-  const dir = cfg.claudeProjectsDir;
-  if (!existsSync(dir)) {
-    return fail("Claude Code sessions", `${collapseHome(dir)} — directory not found`);
-  }
-  const n = countJsonl(dir);
-  if (n === 0) return warn("Claude Code sessions", "no sessions found yet");
-  return ok("Claude Code sessions", `${n} JSONL files found`);
+// One check per configured source; an unconfigured agent gets none.
+export function sessionChecks(
+  cfg: Pick<Config, "claudeProjectsDir" | "codexSessionsDir">,
+): CheckResult[] {
+  const dirs: Array<[string, string | undefined]> = [
+    ["Claude Code sessions", cfg.claudeProjectsDir],
+    ["Codex sessions", cfg.codexSessionsDir],
+  ];
+  return dirs.flatMap(([label, dir]) => {
+    if (dir === undefined) return [];
+    if (!existsSync(dir)) return [fail(label, `${collapseHome(dir)} — directory not found`)];
+    const n = countJsonl(dir);
+    return [n === 0 ? warn(label, "no sessions found yet") : ok(label, `${n} JSONL files found`)];
+  });
 }
 
 // ── 5b. project decisions ─────────────────────────────────────────────────────
@@ -287,6 +328,9 @@ export function pendingProjectsCheck(
   pendingProjects: number,
   oldestPendingMtimeIso: string | null,
   now: number,
+  // Shortest retention among the sources holding pending sessions; null when
+  // none of them prunes (Codex), so there is no deadline to warn about.
+  retentionDays: number | null = 30,
 ): CheckResult {
   if (pendingSessions === 0) {
     return ok("project decisions", "all projects decided");
@@ -302,7 +346,10 @@ export function pendingProjectsCheck(
   }
   return warn(
     "project decisions",
-    `${pendingSessions} session(s) in ${pendingProjects} undecided project(s)${age} — Claude Code prunes transcripts at ~30 days, so undecided means lost; run vir projects`,
+    `${pendingSessions} session(s) in ${pendingProjects} undecided project(s)${age} — ` +
+      (retentionDays === null
+        ? "run vir projects"
+        : `Claude Code prunes transcripts at ~${retentionDays} days, so undecided means lost; run vir projects`),
   );
 }
 
@@ -340,9 +387,13 @@ function checkPendingProjects(cfg: Config): CheckResult {
     const rows = gatherProjectsReport(cfg);
     const pendingRows = rows.filter((r) => r.pending > 0);
     const pendingSessions = pendingRows.reduce((s, r) => s + r.pending, 0);
+    const sources = buildSources(cfg);
     let oldest: string | null = null;
+    let retention: number | null = null;
     for (const r of pendingRows) {
       for (const p of r.pendingPaths) {
+        const days = resolveSource(sources, p).retentionDays;
+        if (days !== null && (retention === null || days < retention)) retention = days;
         try {
           const iso = statSync(p).mtime.toISOString();
           if (oldest === null || iso < oldest) oldest = iso;
@@ -356,6 +407,7 @@ function checkPendingProjects(cfg: Config): CheckResult {
       pendingRows.length,
       oldest,
       Date.now(),
+      retention,
     );
   } catch (err) {
     return warn("project decisions", truncate((err as Error).message));
@@ -881,7 +933,7 @@ export async function runDoctor(): Promise<void> {
     if (preflight) record(preflight);
     record(checkVaultPath(cfg));
     record(checkOutputDir(cfg));
-    record(checkSessions(cfg));
+    for (const c of sessionChecks(cfg)) record(c);
     record(checkPendingProjects(cfg));
     record(checkAgentTranscripts());
   } else {

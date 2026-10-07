@@ -33,6 +33,7 @@ export async function mineQuestions(opts: { dryRun: boolean; max?: number; deps?
   };
   const cfg = loadConfig();
   const dir = cfg.claudeProjectsDir;
+  if (dir === undefined) throw new Error("usefulness mining reads Claude Code transcripts: set claudeProjectsDir in ~/.vir/config.json");
   const db = new StateDb(STATE_PATH, { readonly: true });
   const noteStarts = new Map<string, string[]>();
   try {

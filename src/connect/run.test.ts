@@ -27,6 +27,7 @@ function provider(): EmbeddingProvider {
     available: async () => true,
     embedDoc: async (t: string) => ({ embedding: vec(t), sentChars: t.length, truncated: false }),
     embedQuery: async (t: string) => vec(t),
+    provenance: () => ({ model: "fake-model", dim: 2 }),
   };
 }
 

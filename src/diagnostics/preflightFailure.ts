@@ -79,17 +79,19 @@ export function readPreflightFailure(
   return { at, provider, message };
 }
 
-function isClaudeCliAuthFailure(provider: string, message: string): boolean {
-  return (
-    provider === "claude-cli" &&
-    /authenticat|oauth|log ?in|401|unauthori[sz]ed/i.test(message)
-  );
-}
+const AUTH_FAILURE = /authenticat|oauth|log ?in|401|unauthori[sz]ed/i;
 
-// The one thing the user has to do, when we know it.
-function remedy(provider: string, message: string): string | null {
-  if (isClaudeCliAuthFailure(provider, message)) {
-    return "run `claude` and `/login`, then `vir run`";
+// Who is logged out, and the one thing the user has to do, when we know it.
+function authRemedy(
+  provider: string,
+  message: string,
+): { agent: string; fix: string } | null {
+  if (!AUTH_FAILURE.test(message)) return null;
+  if (provider === "claude-cli") {
+    return { agent: "Claude Code", fix: "run `claude` and `/login`, then `vir run`" };
+  }
+  if (provider === "codex-cli") {
+    return { agent: "Codex", fix: "run `codex login`, then `vir run`" };
   }
   return null;
 }
@@ -103,9 +105,9 @@ export function preflightFailureNotice(
   provider: string,
   message: string,
 ): FailureNotice {
-  const fix = remedy(provider, message);
+  const auth = authRemedy(provider, message);
   const title = `vir — ${provider} unavailable, nothing distilled`;
-  if (fix !== null) return { title, message: `Claude Code is logged out — ${fix}` };
+  if (auth !== null) return { title, message: `${auth.agent} is logged out — ${auth.fix}` };
   return { title, message: truncate(message, NOTICE_MAX_CHARS) };
 }
 
@@ -118,7 +120,7 @@ export function preflightFailureCheck(
   const recent =
     !Number.isNaN(at) &&
     (now - at) / 86_400_000 <= RECENT_PREFLIGHT_FAILURE_DAYS;
-  const fix = remedy(f.provider, f.message);
+  const fix = authRemedy(f.provider, f.message)?.fix ?? null;
   return {
     status: recent ? "fail" : "warn",
     label: "provider preflight",

@@ -8,14 +8,18 @@ import {
   type ProjectGroup,
 } from "../pipeline/projects.js";
 import { createClaudeCodeSource } from "./claudeCode.js";
+import { createCodexSource } from "./codex/source.js";
 import type { SessionSource, SourceSession } from "./types.js";
 
-export type SourceConfig = Pick<Config, "claudeProjectsDir">;
+export type SourceConfig = Pick<Config, "claudeProjectsDir" | "codexSessionsDir">;
 
 export function buildSources(cfg: SourceConfig): SessionSource[] {
   const sources: SessionSource[] = [];
   if (cfg.claudeProjectsDir) {
     sources.push(createClaudeCodeSource(cfg.claudeProjectsDir));
+  }
+  if (cfg.codexSessionsDir) {
+    sources.push(createCodexSource(cfg.codexSessionsDir));
   }
   return sources;
 }
@@ -41,6 +45,10 @@ export function resolveSource(
   path: string,
 ): SessionSource {
   return sources.find((s) => s.owns(path)) ?? FALLBACK_SOURCE;
+}
+
+export function scanLabel(sources: SessionSource[]): string {
+  return `scanning ${sources.map((s) => s.label).join(" + ")}`;
 }
 
 export function scanAll(sources: SessionSource[]): SourceSession[] {

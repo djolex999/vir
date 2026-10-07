@@ -1,6 +1,8 @@
 import { closeSync, openSync, readSync, readdirSync } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { computeCost, type PricingOverrides } from "../cost/pricing.js";
+import { isSubscriptionProvider } from "./subscription.js";
+import type { Config } from "../config.js";
 
 // Dependency-injection seam for tests: list the sub-DIRECTORIES of a path,
 // [] on any error. The default reads the real filesystem.
@@ -313,7 +315,7 @@ const MAX_DISTILL_INPUT_TOKENS = 150_000;
 const MAX_CLASSIFY_INPUT_TOKENS = 30_000;
 
 export function estimateSessionCost(
-  provider: "anthropic" | "kie" | "claude-cli",
+  provider: Config["provider"],
   classifyModel: string,
   distillModel: string,
   sizeBytes: number,
@@ -322,7 +324,7 @@ export function estimateSessionCost(
 ): number {
   // Subscription path: the dollar estimate is genuinely $0 — the real cost is
   // Claude Code quota, which has no meter to estimate against.
-  if (provider === "claude-cli") return 0;
+  if (isSubscriptionProvider(provider)) return 0;
   const classifyIn = Math.min(
     Math.ceil(sizeBytes / CLASSIFY_BYTES_PER_TOKEN),
     MAX_CLASSIFY_INPUT_TOKENS,

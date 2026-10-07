@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseFrontmatter } from "../cli/review.js";
-import { ClaudeCliLimitError } from "../pipeline/claudeCli.js";
+import { SubscriptionLimitError } from "../pipeline/subscription.js";
 import { makeSlug } from "../pipeline/slug.js";
 import { CATEGORY_DIR } from "../pipeline/writer.js";
 import type { AuditRow, DistilledRow, StateDb } from "../state/db.js";
@@ -106,7 +106,7 @@ export async function runAudit(
         batch.rows.length,
       );
     } catch (err) {
-      if (err instanceof ClaudeCliLimitError) throw err;
+      if (err instanceof SubscriptionLimitError) throw err;
       if (!(err instanceof AuditParseError)) throw err;
       summary.failedBatches += 1;
       continue;

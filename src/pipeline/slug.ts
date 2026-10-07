@@ -13,13 +13,19 @@ export function kebab(s: string): string {
 
 export function makeSlug(topic: string, sessionId: string): string {
   const base = kebab(topic).slice(0, 50);
-  const suffix = sessionId.slice(0, 8);
+  const suffix = sessionSuffix(sessionId);
   return base.length > 0 ? `${base}-${suffix}` : `note-${suffix}`;
 }
 
 // The half of a note filename that identifies its session. MUST stay in step
 // with the suffix makeSlug appends: callers resolve an existing note by this
 // when the topic half has changed underneath them.
+// Codex ids are `rollout-<ts>-<uuidv7>`: the head is the same for every note,
+// and a v7 uuid's leading hex is a timestamp, so take its random tail.
+const CODEX_ROLLOUT_ID = /^rollout-.*-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-([0-9a-f]{12})$/;
+
 export function sessionSuffix(sessionId: string): string {
-  return sessionId.slice(0, 8);
+  const codex = CODEX_ROLLOUT_ID.exec(sessionId);
+  const tail = codex?.[1];
+  return tail !== undefined ? tail.slice(-8) : sessionId.slice(0, 8);
 }

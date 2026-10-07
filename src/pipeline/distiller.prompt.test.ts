@@ -84,6 +84,7 @@ describe("Distiller distill prompt seam", () => {
       claudeProjectsDir: "/tmp/p",
       cadenceHours: 3,
       provider: "kie",
+      connectMaxCandidates: 10,
       kieApiKey: "k",
       kieTopUpTier: "standard",
       filterThreshold: 0.4,
@@ -140,5 +141,33 @@ describe("Distiller distill prompt seam", () => {
     const { maxTokens } = captureKiePrompt();
     await new Distiller(kieConfig()).distill(session, "BODY", cls, "claude-sonnet-4-6");
     expect(maxTokens).toEqual([2500]);
+  });
+});
+
+describe("per-source agent label (Codex sessions)", () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+  const codex: ParsedSession = { ...session, agentLabel: "Codex" };
+
+  it("names Codex in the distill prompt and changes nothing else", () => {
+    const claude = buildDistillPrompt(session, cls, "BODY");
+    const p = buildDistillPrompt(codex, cls, "BODY");
+    expect(p.split("\n")[0]).toBe("Extract durable knowledge from this Codex session.");
+    expect(p.split("\n").slice(1)).toEqual(claude.split("\n").slice(1));
+  });
+
+  it("names Codex in the classify prompt; Claude sessions keep 'Claude Code'", async () => {
+    const sent: string[] = [];
+    globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+      sent.push((JSON.parse(String(init?.body)) as { messages: Array<{ content: string }> }).messages[0]!.content);
+      return new Response(JSON.stringify({ content: [{ type: "text", text: '{"category":"gotcha","topic":"t","themes":[],"project":"p","confidence":0.9}' }] }), { status: 200 });
+    }) as typeof fetch;
+    const cfg = { provider: "kie", kieApiKey: "k", kieTopUpTier: "standard", models: { classify: "claude-haiku-4-5", distill: "claude-sonnet-4-6" } } as Config;
+    await new Distiller(cfg).classify(codex, "S");
+    await new Distiller(cfg).classify(session, "S");
+    expect(sent[0]?.startsWith("Given this Codex session summary, output JSON only:")).toBe(true);
+    expect(sent[1]?.startsWith("Given this Claude Code session summary, output JSON only:")).toBe(true);
   });
 });

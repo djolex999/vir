@@ -19,13 +19,19 @@ export const ConfigSchema = z
     // Vault subdirectory (inside outputDir) for `vir compose` topic pages.
     // Existing configs without this field get "topics" via the default.
     topicsDir: z.string().min(1).default("topics"),
-    claudeProjectsDir: z.string().min(1),
+    // Session sources: at least one is required (superRefine below). Absent =
+    // that agent's ingestion is disabled, like articlesDir.
+    claudeProjectsDir: z.string().min(1).optional(),
+    codexSessionsDir: z.string().min(1).optional(),
     cadenceHours: z.number().positive().default(3),
     // "claude-cli" shells out to the user's Claude Code CLI (subscription
     // path, zero credential, consumes Claude Code usage limits). It is an
     // OPTION in this release — anthropic stays the default for new and
-    // existing installs until claude-cli has real mileage.
-    provider: z.enum(["anthropic", "kie", "claude-cli"]).default("anthropic"),
+    // existing installs until claude-cli has real mileage. "codex-cli" is the
+    // same idea over `codex exec` (ChatGPT login) — experimental.
+    provider: z
+      .enum(["anthropic", "kie", "claude-cli", "codex-cli"])
+      .default("anthropic"),
     anthropicApiKey: z.string().optional(),
     kieApiKey: z.string().optional(),
     // Kie top-up tier. High-tier top-ups grant +10% bonus credits, so effective
@@ -165,6 +171,14 @@ export const ConfigSchema = z
       .optional(),
   })
   .superRefine((val, ctx) => {
+    if (!val.claudeProjectsDir && !val.codexSessionsDir) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["claudeProjectsDir"],
+        message:
+          "configure at least one session source (claudeProjectsDir or codexSessionsDir)",
+      });
+    }
     if (val.provider === "anthropic" && !val.anthropicApiKey) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -242,7 +256,12 @@ export function loadConfig(): Config {
   return {
     ...parsed,
     vaultPath: expandHome(parsed.vaultPath),
-    claudeProjectsDir: expandHome(parsed.claudeProjectsDir),
+    ...(parsed.claudeProjectsDir
+      ? { claudeProjectsDir: expandHome(parsed.claudeProjectsDir) }
+      : {}),
+    ...(parsed.codexSessionsDir
+      ? { codexSessionsDir: expandHome(parsed.codexSessionsDir) }
+      : {}),
     ...(parsed.articlesDir
       ? { articlesDir: expandHome(parsed.articlesDir) }
       : {}),

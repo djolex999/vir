@@ -5,7 +5,7 @@
 <h1 align="center">vir</h1>
 
 <p align="center">
-  Karpathy's LLM Wiki, built automatically from your Claude Code sessions.<br>
+  Karpathy's LLM Wiki, built automatically from your Claude Code and Codex sessions.<br>
   Plain markdown you own: best in Obsidian, fine without it.
 </p>
 
@@ -23,7 +23,7 @@ developer-tools, mcp, local-first, cross-platform, llm-wiki
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/v/@djolex999/vir-cli?color=7c6af7&label=npm" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/dw/@djolex999/vir-cli?color=4fd1a0" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee" alt="license"></a>
-  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1235%20passing-22c55e" alt="tests"></a>
+  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1317%20passing-22c55e" alt="tests"></a>
   <a href="#project-status"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey" alt="platforms"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-c084fc" alt="mcp"></a>
   <a href="#"><img src="https://img.shields.io/badge/local--first-yes-f59e0b" alt="local-first"></a>
@@ -57,9 +57,44 @@ vir init
 vir run
 ```
 
-`vir init` is a wizard: provider, models, notes folder. `vir run` does one pass
+`vir init` is a wizard: which coding agents you use, provider, models, notes
+folder. `vir run` does one pass
 over your sessions and writes notes. When you like the output,
 `vir schedule install` registers a daemon that keeps the vault current.
+
+## Supported agents
+
+| Agent | Sessions | Status |
+|---|---|---|
+| Claude Code | `~/.claude/projects/` | ✅ |
+| Codex (CLI, IDE extension, desktop app) | `~/.codex/sessions/` | ✅ new in 0.26 |
+| Cursor | — | planned |
+
+`vir init` asks which agents you use and pre-checks the ones it finds. To add
+Codex to an existing install, re-run `vir init`, or set `codexSessionsDir` in
+`~/.vir/config.json`:
+
+```json
+{ "codexSessionsDir": "~/.codex/sessions" }
+```
+
+A project you work on from both agents is one project: vir names it by the
+folder you started in, the same way for each. Codex desktop chats started
+outside a repo (`~/Documents/Codex/…`) are grouped as one `codex-scratch`
+project. Codex subagent and review threads are skipped, like Claude Code's
+sidechains.
+
+Things to know about Codex:
+
+- **New Codex projects start undecided.** Codex sessions run larger than
+  Claude Code's, so nothing is distilled until you include a project. Run
+  `vir run --dry-run` first to see the estimate, then `vir projects`.
+- **Archived Codex threads are not distilled.** vir reads
+  `~/.codex/sessions/` only; archiving a thread moves it out of reach.
+- **No API key needed with a ChatGPT plan:** `provider: "codex-cli"`
+  distills through `codex exec` (experimental, see
+  [Cost](#codex-subscription-codex-cli-experimental)). Any other provider
+  works too.
 
 ## What it does
 
@@ -75,9 +110,10 @@ sources feed one vault:
 
 Everything embeds into one vector space (Ollama, optional, TF-IDF fallback).
 `vir query "<question>"` searches it and synthesizes an answer. An MCP server
-exposes the vault to Claude Code mid-session, so the agent consults past
-decisions instead of rediscovering them. `vir sync-claude` feeds the best
-notes back into your CLAUDE.md files, with a diff and your confirmation.
+exposes the vault to Claude Code or Codex mid-session, so the agent consults
+past decisions instead of rediscovering them. `vir sync-claude` feeds the best
+notes back into your CLAUDE.md files, and into AGENTS.md files that already
+exist (`~/.codex/AGENTS.md`, project roots), with a diff and your confirmation.
 
 <p align="center">
   <img src="assets/demo.gif" width="800" alt="vir distilling Claude Code sessions into notes in an Obsidian vault">
@@ -203,7 +239,7 @@ The LLM Wiki space has grown fast. Honest comparison:
 | Language                          | TypeScript / Node            | Python                        | Python                                   | Cross-platform desktop    |
 | Distribution                      | `npm install -g`             | Local app + hosted SaaS       | `git clone` + python                     | Desktop app installer     |
 | Obsidian integration              | Native (sidebar plugin)      | Markdown output               | Outputs to vault                         | Own UI, no Obsidian       |
-| Input sources                     | Claude Code, web clips, PDFs | PDFs, docs upload             | Claude Code, Cursor, Cline, Codex, Gemini | Documents, mixed sources  |
+| Input sources                     | Claude Code, Codex, web clips, PDFs | PDFs, docs upload             | Claude Code, Cursor, Cline, Codex, Gemini | Documents, mixed sources  |
 | Retroactive on existing sessions  | ✓                            | n/a                           | from install forward                     | n/a                       |
 | MCP server                        | ✓                            | ✓                             | ✓                                        | ✓                         |
 | License                           | MIT                          | open source + hosted commercial | MIT                                    | open source               |
@@ -276,13 +312,15 @@ sources 4 · via embedding · searched 126
 
 - macOS or Linux (systemd or cron)
 - Node.js 20+
-- Claude Code (sessions at `~/.claude/projects/`)
+- Claude Code (sessions at `~/.claude/projects/`) and/or Codex (sessions at
+  `~/.codex/sessions/`)
 - A folder for notes. An Obsidian vault works great but is optional; see
   [Without Obsidian](#without-obsidian).
 - A distill provider — any one of:
   - Anthropic API key (predictable per-session cost, no effect on your Claude Code limits)
   - Your Claude Code subscription (`provider: "claude-cli"` — free and keyless; distills consume your Claude Code usage limits)
   - Kie.ai API key (~72% cheaper, third-party proxy — used for testing and calibration runs, not recommended for your real vault)
+  - Your ChatGPT plan through the Codex CLI (`provider: "codex-cli"` — experimental, keyless; distills consume your Codex usage limits)
 - Optional: Ollama + `nomic-embed-text` for semantic search
 
 
@@ -315,6 +353,24 @@ up next cycle), halts immediately if your subscription limit is hit (with
 the reset time; nothing is retried against the wall), and records these
 calls in `cost.log` with cost marked not-applicable — never a fake $0.00.
 The API path remains the default.
+
+### Codex subscription: `codex-cli` (experimental)
+
+With `provider: "codex-cli"` vir distills through `codex exec` on your
+ChatGPT login: no key, no per-session dollars, and the same quota rules as
+`claude-cli` (25-session cap per run, halt on a usage limit, cost logged as
+not-applicable). Codex picks the model (`models.classify` / `models.distill`
+set to `"default"`); set a model id there to pin one.
+
+Every call runs read-only, ephemeral (no new rollout in `~/.codex/sessions`,
+so vir never distills its own calls) and with Codex's tools switched off:
+no shell, web search, apps, plugins or subagents, because the prompt carries
+transcript text vir doesn't control. Your global `~/.codex/AGENTS.md` still
+loads, as `~/.claude/CLAUDE.md` does for `claude-cli`. Each call carries about
+16k tokens of Codex's own preamble. Verified on codex-cli 0.160.1; a Codex
+version that doesn't know one of the switched-off features makes the call
+fail with an "update Codex" message rather than run with tools vir hasn't
+checked.
 
 ### Real cost shape (measured on 226 historical sessions via Kie)
 
@@ -420,7 +476,7 @@ with your distro, init system, and Node version.
 | `vir prune`                 | free  | Dry run: agent-derived notes to demote    |
 | `vir prune --apply`         | free  | Demote them to `.rejected/` (never deletes) |
 | `vir prune --restore`       | free  | Put every pruned note back, exactly       |
-| `vir sync-claude`           | free  | Inject top knowledge into CLAUDE.md       |
+| `vir sync-claude`           | free  | Inject top knowledge into CLAUDE.md (and existing AGENTS.md; `--no-agents`, `--agents-only`) |
 | `vir embed`                 | free  | Generate embeddings for semantic search   |
 | `vir embed --setup`         | free  | Install the local embedding provider (no Ollama needed) |
 | `vir schedule install`      | free  | Register the background daemon            |
@@ -452,16 +508,26 @@ set it up instead of installing it. It prefers the MCP server when that's
 registered, and falls back to reading the notes folder directly. Source:
 [`skills/vir/SKILL.md`](skills/vir/SKILL.md).
 
-## MCP server (Claude Code integration)
+## MCP server (Claude Code and Codex)
 
-Vir runs as an MCP server, letting Claude Code consult your vault mid-session
-instead of relying on static CLAUDE.md content.
+Vir runs as an MCP server, letting your coding agent consult your vault
+mid-session instead of relying on static CLAUDE.md / AGENTS.md content.
 
 ```bash
-vir mcp install
+vir mcp install                  # Claude Code: registers via `claude mcp add`
+vir mcp install --target codex   # Codex: prints the config to add
 ```
 
-Restart Claude Code. The vault is now queryable mid-session via six tools:
+For Codex, vir never edits `~/.codex/config.toml` itself; it prints the block
+(or run `codex mcp add vir -- vir mcp`):
+
+```toml
+[mcp_servers.vir]
+command = "vir"
+args = ["mcp"]
+```
+
+Restart the agent. The vault is now queryable mid-session via six tools:
 `vir_query`, `vir_status`, `vir_recent_notes`, `vir_recent_articles`,
 `vir_project_summary`, `vir_compose`. `vir_query` takes a `type` filter
 (`session` | `article` | `topic` | `pdf` | `all`). Human-verified notes
@@ -604,6 +670,7 @@ Shipped:
 - [x] Obsidian optional: any folder of markdown works (0.24.3)
 - [x] Any agent can read your notes: `npx skills add djolex999/vir` (0.25.0)
 - [x] Recurring lessons become reviewed rules: `vir connect` (0.25.0)
+- [x] Codex sessions, and a keyless `codex-cli` provider (0.26.0)
 
 Not built:
 
@@ -611,9 +678,7 @@ Not built:
 - [ ] GUI installer for non-developers
 - [ ] More input sources: code repos, images
 - [ ] Export to anchor-plugin skill format
-- [ ] Distill Codex sessions too. The groundwork shipped in 0.24.3: transcript
-      discovery and parsing now sit behind a session-source layer, with Claude
-      Code as the first source. Cursor would follow.
+- [ ] Cursor sessions (Codex shipped in 0.26.0)
 - [ ] Connect pass v2: flag decisions that contradict each other or went stale
 
 ## Contributing

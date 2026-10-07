@@ -106,6 +106,8 @@ export interface RunRecord {
 function buildAgentClassifier(): (slug: string) => boolean {
   const cfg = loadConfig();
   const root = vaultRoot(cfg);
+  const claudeDir = cfg.claudeProjectsDir;
+  if (claudeDir === undefined) throw new Error("the retrieval eval reads Claude Code transcripts: set claudeProjectsDir in ~/.vir/config.json");
   // Row identity only (path, entrypoint, note_paths); no StateDb accessor
   // exposes that triple for every row and adding one to src/ for the harness
   // would be scope creep. Read-only connection, plain SELECT.
@@ -141,7 +143,7 @@ function buildAgentClassifier(): (slug: string) => boolean {
     } else {
       const file = join(root, `${slug}.md`);
       const isMergeWinner = existsSync(file) && readFileSync(file, "utf8").includes("## Archived Duplicates");
-      v = isAgentDerived({ path: row.path, entrypoint: row.entrypoint, isMergeWinner }, cfg.claudeProjectsDir);
+      v = isAgentDerived({ path: row.path, entrypoint: row.entrypoint, isMergeWinner }, claudeDir);
     }
     cache.set(slug, v);
     return v;

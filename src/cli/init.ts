@@ -1,3 +1,4 @@
+import checkbox from "@inquirer/checkbox";
 import confirm from "@inquirer/confirm";
 import input from "@inquirer/input";
 import select from "@inquirer/select";
@@ -30,7 +31,7 @@ import {
 } from "../sources/registry.js";
 import { promptProjectDecisions } from "./projectSelect.js";
 import { normalizeModelName } from "../pipeline/distiller.js";
-import { buildInitConfig } from "./initConfig.js";
+import { buildInitConfig, DEFAULT_SOURCE_DIRS, defaultAgents } from "./initConfig.js";
 import { defaultNotesDir } from "./notesDir.js";
 import { installToClaudeCode } from "../mcp/install.js";
 import * as ui from "../ui/display.js";
@@ -72,27 +73,40 @@ export async function cmdInit(): Promise<void> {
     default: existing?.outputDir ?? "vir",
   });
 
-  // ── claude projects dir ─────────────────────────────────────────────────
-  let claudeProjectsDir = "";
-  for (;;) {
-    claudeProjectsDir = await input({
-      message: "Claude Code projects dir",
-      default:
-        existing?.claudeProjectsDir ?? join(homedir(), ".claude", "projects"),
-    });
-    const expanded = expandHome(claudeProjectsDir);
-    if (existsSync(expanded)) break;
-    console.warn(
-      chalk.yellow(
-        "directory not found — Claude Code sessions may not exist yet",
-      ),
-    );
-    const cont = await confirm({
-      message: "continue anyway?",
-      default: false,
-    });
-    if (cont) break;
-  }
+  // ── session sources ─────────────────────────────────────────────────────
+  // Which agents to read; at least one. An unchecked agent's dir is null, so
+  // a re-init that drops an agent removes it instead of carrying it over.
+  const agents = await checkbox<"claude-code" | "codex">({
+    message: "Which coding agents do you use?",
+    choices: [
+      { name: "Claude Code", value: "claude-code" as const },
+      { name: "Codex", value: "codex" as const },
+    ].map((c) => ({
+      ...c,
+      checked: defaultAgents(existing, homedir(), existsSync).includes(c.value),
+    })),
+    required: true,
+  });
+  const askDir = async (label: string, current: string): Promise<string> => {
+    for (;;) {
+      const dir = await input({ message: `${label} sessions dir`, default: current });
+      if (existsSync(expandHome(dir))) return dir;
+      console.warn(chalk.yellow(`directory not found — ${label} sessions may not exist yet`));
+      if (await confirm({ message: "continue anyway?", default: false })) return dir;
+    }
+  };
+  const claudeProjectsDir = agents.includes("claude-code")
+    ? await askDir(
+        "Claude Code",
+        existing?.claudeProjectsDir ?? join(homedir(), ...DEFAULT_SOURCE_DIRS["claude-code"]),
+      )
+    : null;
+  const codexSessionsDir = agents.includes("codex")
+    ? await askDir(
+        "Codex",
+        existing?.codexSessionsDir ?? join(homedir(), ...DEFAULT_SOURCE_DIRS.codex),
+      )
+    : null;
 
   // ── web articles (optional second input source) ─────────────────────────
   let articlesDir: string | undefined = existing?.articlesDir;
@@ -193,8 +207,12 @@ export async function cmdInit(): Promise<void> {
         name: "Kie.ai       (~72% cheaper API, third-party proxy — you trade reliability for cost)",
         value: "kie" as const,
       },
+      {
+        name: "Codex        (experimental — ChatGPT subscription via `codex exec`, keyless; consumes your Codex limits)",
+        value: "codex-cli" as const,
+      },
     ],
-  })) as "anthropic" | "kie" | "claude-cli";
+  })) as Config["provider"];
 
   // Secret prompt discipline: mask while typing, echo only a masked
   // confirmation (maskSecret), and NEVER render the existing key as the
@@ -231,7 +249,7 @@ export async function cmdInit(): Promise<void> {
       (v) => (v.length > 10 ? true : "enter a valid Kie.ai API key"),
     );
   }
-  // claude-cli: no credential of any kind — it uses the `claude` login.
+  // claude-cli / codex-cli: no credential of any kind — they use the CLI's login.
 
   // ── model pickers (provider-aware) ──────────────────────────────────────
   // claude-cli accepts the same full Anthropic model ids (and pins them per
@@ -252,10 +270,15 @@ export async function cmdInit(): Promise<void> {
           },
           { name: "claude-sonnet-4-6", value: "claude-sonnet-4-6" },
         ];
-  const classifyModel = await select({
-    message: "Classify model (fast pass)",
-    choices: classifyChoices,
-  });
+  // codex-cli: Codex picks the model ("default" omits -m). Model ids differ
+  // per ChatGPT plan, so vir doesn't guess; set models.* by hand to pin one.
+  const classifyModel =
+    provider === "codex-cli"
+      ? "default"
+      : await select({
+          message: "Classify model (fast pass)",
+          choices: classifyChoices,
+        });
 
   const distillChoices =
     provider !== "kie"
@@ -280,10 +303,13 @@ export async function cmdInit(): Promise<void> {
             value: "claude-haiku-4-5",
           },
         ];
-  const distillModel = await select({
-    message: "Distill model (deep extraction)",
-    choices: distillChoices,
-  });
+  const distillModel =
+    provider === "codex-cli"
+      ? "default"
+      : await select({
+          message: "Distill model (deep extraction)",
+          choices: distillChoices,
+        });
 
   const filterThreshold = Number(
     await input({
@@ -305,8 +331,14 @@ export async function cmdInit(): Promise<void> {
   let projectDecisions: Record<string, "include" | "exclude"> = {};
   let agentTranscriptsAnswer: "exclude" | "include" | undefined;
   try {
-    const projectsDirX = expandHome(claudeProjectsDir);
-    const sources = buildSources({ claudeProjectsDir: projectsDirX });
+    const sources = buildSources({
+      ...(claudeProjectsDir !== null ? { claudeProjectsDir: expandHome(claudeProjectsDir) } : {}),
+      ...(codexSessionsDir !== null ? { codexSessionsDir: expandHome(codexSessionsDir) } : {}),
+    });
+    for (const src of sources) {
+      const n = scanAll([src]).length;
+      ui.line(ui.dim(`  ${src.label}: ${n} session file(s)`));
+    }
     const allFound = scanAll(sources);
     // Triage counts + the agent-transcript question. Only top-level
     // transcripts count (nested workflow/sidechain have their own filter),
@@ -318,7 +350,16 @@ export async function cmdInit(): Promise<void> {
     const counts = { interactive: 0, agent: 0, stub: 0 };
     const agentPaths = new Set<string>();
     for (const s of topLevel) {
-      const cat = categorizeTranscriptHead(readTranscriptHead(s.path), s.size);
+      // Head triage reads Claude transcripts only: on a Codex rollout it would
+      // read 1 MB per file and call everything interactive. Other sources
+      // answer from their own metadata.
+      const src = resolveSource(sources, s.path);
+      const cat =
+        src.id === "claude-code"
+          ? categorizeTranscriptHead(readTranscriptHead(s.path), s.size)
+          : src.agentEntrypoint(s.path) !== null
+            ? "agent"
+            : "interactive";
       counts[cat] += 1;
       if (cat === "agent") agentPaths.add(s.path);
     }
@@ -388,6 +429,7 @@ export async function cmdInit(): Promise<void> {
       vaultPath,
       outputDir,
       claudeProjectsDir,
+      codexSessionsDir,
       cadenceHours,
       provider,
       anthropicApiKey,

@@ -68,7 +68,9 @@ export function loadArmConfig(home: string): Config {
   const cfg: Config = {
     ...parsed,
     vaultPath: expandHome(parsed.vaultPath),
-    claudeProjectsDir: expandHome(parsed.claudeProjectsDir),
+    ...(parsed.claudeProjectsDir
+      ? { claudeProjectsDir: expandHome(parsed.claudeProjectsDir) }
+      : {}),
   };
   const vault = resolve(cfg.vaultPath);
   if (!vault.startsWith(resolve(home) + sep)) throw new Error(`refusing: arm vault ${vault} is outside ${home}`);
