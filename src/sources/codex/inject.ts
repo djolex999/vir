@@ -68,15 +68,18 @@ function trailingProse(body: string): string {
 }
 
 export function stripCodexInjected(text: string): string | null {
-  const t = text.trimStart();
+  // Image tags first: an image attached before the typed text starts the
+  // message with "<image name=", which must not drop the request with it.
+  const t = withoutImageTags(text);
+  if (t.split("\n").every((l) => l.trim() === "" || PLACEHOLDER.test(l.trim()))) return null;
   if (DROP_PREFIXES.some((p) => t.startsWith(p))) return null;
   const wrapper = WRAPPER_PREFIXES.find((p) => t.startsWith(p));
-  if (wrapper === undefined) return withoutImageTags(text) || null;
+  if (wrapper === undefined) return t;
   const markers = [...t.matchAll(REQUEST_MARKER)];
   const last = markers.at(-1);
   if (last !== undefined) {
-    return withoutImageTags(t.slice(last.index + last[0].length)) || null;
+    return t.slice(last.index + last[0].length).trim() || null;
   }
   if (!FILE_WRAPPERS.includes(wrapper)) return null;
-  return withoutImageTags(trailingProse(t.slice(wrapper.length))) || null;
+  return trailingProse(t.slice(wrapper.length)) || null;
 }

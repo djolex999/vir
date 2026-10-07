@@ -88,6 +88,10 @@ export function buildCodexCliArgs(model: string): string[] {
     ...CODEX_DISABLED_FEATURES.flatMap((f) => ["--disable", f]),
     "-c",
     'web_search="disabled"',
+    // --ignore-user-config already skips ~/.codex/config.toml's MCP servers
+    // (probed); pinned anyway, as claude-cli pins --strict-mcp-config.
+    "-c",
+    "mcp_servers={}",
     ...(model === "default" ? [] : ["-m", model]),
     "-",
   ];

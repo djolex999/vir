@@ -50,6 +50,18 @@ describe("stripCodexInjected", () => {
     )).toBe("fix the layout\n[input_image]\n[input_image]");
   });
 
+  // Review finding: "<image name=" is a drop prefix, so an image attached
+  // BEFORE the typed text dropped the request with it.
+  it("keeps the request when an image precedes it", () => {
+    expect(stripCodexInjected(
+      "<image name=[Image #1]>\n[input_image]\n</image>\nwhy is this red",
+    )).toBe("[input_image]\nwhy is this red");
+  });
+
+  it("drops a message that is only an attached image", () => {
+    expect(stripCodexInjected("<image name=[Image #1]>\n[input_image]\n</image>")).toBeNull();
+  });
+
   it("ignores a marker inside an ordinary prompt", () => {
     const t = "explain this template:\n## My request:\nfill me in";
     expect(stripCodexInjected(t)).toBe(t);

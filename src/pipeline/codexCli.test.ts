@@ -80,7 +80,11 @@ describe("buildCodexCliArgs", () => {
       "code_mode_host", "hooks"]) {
       expect(disabled).toContain(f);
     }
-    expect(args.slice(args.indexOf("-c"), args.indexOf("-c") + 2)).toEqual(["-c", 'web_search="disabled"']);
+    const overrides = args.flatMap((a, i) => (args[i - 1] === "-c" ? [a] : []));
+    expect(overrides).toContain('web_search="disabled"');
+    // No MCP server from ~/.codex/config.toml, even if --ignore-user-config
+    // ever stops covering them (claude-cli pins --strict-mcp-config the same way).
+    expect(overrides).toContain("mcp_servers={}");
   });
 
   it("always runs ephemeral, read-only, JSON, prompt on stdin", () => {
