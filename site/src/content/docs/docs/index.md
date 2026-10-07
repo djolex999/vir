@@ -4,7 +4,7 @@ description: Everything about vir — installing it, what it writes, how retriev
 tableOfContents: false
 ---
 
-vir reads the Claude Code transcripts already on your disk, filters out what isn't yours, and writes typed markdown notes into a folder you own — an Obsidian vault works great, but any folder does. It's a CLI, an MCP server, an Obsidian plugin, and a skill any coding agent can install. Nothing is hosted.
+vir reads the Claude Code and Codex transcripts already on your disk, filters out what isn't yours, and writes typed markdown notes into a folder you own — an Obsidian vault works great, but any folder does. It's a CLI, an MCP server, an Obsidian plugin, and a skill any coding agent can install. Nothing is hosted.
 
 New here? **[Getting started](/docs/getting-started/)** takes about five minutes.
 
@@ -14,14 +14,15 @@ New here? **[Getting started](/docs/getting-started/)** takes about five minutes
 | --- | --- |
 | **[Getting started](/docs/getting-started/)** | Prerequisites, install, your first run, and what appears in the vault |
 | **[How it works](/docs/how-it-works/)** | The pipeline, what gets filtered and why, the anatomy of a note, and the quality controls |
-| **[Inputs](/docs/inputs/)** | The three sources: Claude Code sessions, clipped web articles, PDFs |
+| **[Inputs](/docs/inputs/)** | The sources: Claude Code and Codex sessions, clipped web articles, PDFs |
+| **[Codex](/docs/codex/)** | Codex sessions, the keyless `codex-cli` provider, and Codex over MCP |
 
 ## Use it
 
 | | |
 | --- | --- |
-| **[Retrieval and MCP](/docs/retrieval/)** | `vir query`, embedding providers, and letting Claude Code consult the vault mid-session |
-| **[Keeping it current](/docs/keeping-it-current/)** | The daemon, `sync-claude`, review, lint, dedupe, and syntheses |
+| **[Retrieval and MCP](/docs/retrieval/)** | `vir query`, embedding providers, and letting Claude Code or Codex consult the vault mid-session |
+| **[Keeping it current](/docs/keeping-it-current/)** | The daemon, `sync-claude` (CLAUDE.md and AGENTS.md), review, lint, dedupe, and syntheses |
 | **[Recurring rules](/docs/recurring-rules/)** | `vir connect`: lessons you keep re-learning, proposed as cited rules that reach CLAUDE.md only with your yes |
 | **[Any agent](/docs/any-agent/)** | The skill that lets Claude Code, Codex, Cursor and others check your notes before they work |
 | **[Commands](/docs/commands/)** | Every subcommand, with what it costs |
@@ -30,7 +31,7 @@ New here? **[Getting started](/docs/getting-started/)** takes about five minutes
 
 | | |
 | --- | --- |
-| **[Providers and cost](/docs/providers-and-cost/)** | The three distill providers, measured spend, hybrid routing, and every cost control |
+| **[Providers and cost](/docs/providers-and-cost/)** | The four distill providers, measured spend, hybrid routing, and every cost control |
 | **[Configuration](/docs/configuration/)** | Every key in `~/.vir/config.json`, with defaults |
 | **[Obsidian plugin](/docs/obsidian-plugin/)** | The sidebar: recent notes, related notes, daemon health |
 

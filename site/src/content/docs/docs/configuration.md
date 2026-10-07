@@ -10,13 +10,14 @@ description: Every key in ~/.vir/config.json.
 | `vaultPath` | *(required)* | Absolute path to your notes folder (an Obsidian vault, or any folder) |
 | `outputDir` | `vir` | Folder inside the vault that vir owns |
 | `topicsDir` | `topics` | Subfolder for `vir compose` pages |
-| `claudeProjectsDir` | required (`vir init` sets `~/.claude/projects`) | Where Claude Code keeps transcripts |
+| `claudeProjectsDir` | — (`vir init` sets `~/.claude/projects`) | Where Claude Code keeps transcripts. Unset = Claude Code not read |
+| `codexSessionsDir` | — (`vir init` sets `~/.codex/sessions`) | Where Codex keeps rollouts. Unset = Codex not read. At least one of the two is required |
 | `cadenceHours` | `3` | Daemon interval |
-| `provider` | `anthropic` | `anthropic` \| `claude-cli` \| `kie` |
+| `provider` | `anthropic` | `anthropic` \| `claude-cli` \| `codex-cli` \| `kie` |
 | `anthropicApiKey` | — | Required for `anthropic` |
 | `kieApiKey` | — | Required for `kie` |
 | `kieTopUpTier` | `standard` | `high` applies Kie's 10% bonus-credit discount to cost records |
-| `models.classify` | `claude-haiku-4-5-20251001` | Classify model |
+| `models.classify` | `claude-haiku-4-5-20251001` | Classify model. `"default"` on `codex-cli` lets Codex pick |
 | `models.distill` | `claude-sonnet-5` | Distill model for decisions and large sessions |
 | `models.distillFast` | — | Cheaper distill model for routine sessions; set → hybrid routing on |
 | `models.distillThreshold` | `100000` | Input tokens above which `distill` is forced |

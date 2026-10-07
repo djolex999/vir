@@ -1,6 +1,6 @@
 ---
 title: Keeping it current
-description: The daemon, syncing back into CLAUDE.md, and the maintenance commands that keep a vault trustworthy.
+description: The daemon, syncing back into CLAUDE.md and AGENTS.md, and the maintenance commands that keep a vault trustworthy.
 ---
 
 ## The daemon
@@ -22,18 +22,22 @@ Cadence is `cadenceHours` in config (default 3). The daemon path never prompts: 
 
 Distill runs are serialized by a lockfile (`~/.vir/vir.lock`), so a manual `vir run` and the daemon can't collide. A session that fails three times in a row is parked until `vir reconcile --force`.
 
-## Back into CLAUDE.md
+## Back into CLAUDE.md and AGENTS.md
 
 ```bash
 vir sync-claude              # diff, then confirm
 vir sync-claude --dry-run    # diff only
 vir sync-claude <project>    # one project
-vir sync-claude --global     # only ~/.claude/CLAUDE.md
+vir sync-claude --global     # only ~/.claude/CLAUDE.md (and ~/.codex/AGENTS.md)
+vir sync-claude --no-agents  # leave AGENTS.md files alone
+vir sync-claude --agents-only # only AGENTS.md
 ```
 
 vir writes only between `<!-- VIR:START -->` and `<!-- VIR:END -->` markers. The rest of the file is preserved byte-for-byte; if there's no block yet, one is appended. Nothing is written without you seeing the diff, unless you pass `--force`.
 
-Project paths resolve flexibly: `~/projects/<slug>`, `~/projects/<slug>-*`, `~/code/<slug>`, `~/dev/<slug>`, and, since 0.25.1, a folder in any of those whose name slugs to the project (`pripremi.rs` → `pripremi-rs`).
+**AGENTS.md** (since 0.26) gets the same block, in `~/.codex/AGENTS.md` and in project roots, but only where the file already exists; a missing AGENTS.md is never created or listed. It carries the rules you approved for CLAUDE.md, never more, and `--agents-only` writes those without asking about rules.
+
+Project paths resolve flexibly, for both files: `~/projects/<slug>`, `~/projects/<slug>-*`, `~/code/<slug>`, `~/dev/<slug>`, and, since 0.25.1, a folder in any of those whose name slugs to the project (`pripremi.rs` → `pripremi-rs`).
 
 **Rules.** Accepted [recurring rules](/docs/recurring-rules/) go into the same block under `## Rules (from vir)`, but never in bulk: each one is shown as its own hunk with its source notes and needs its own `y`. `n` declines it for good; `s` asks again next time. Under `--force`, `--dry-run`, or without a terminal, rules are listed as awaiting approval and never added.
 

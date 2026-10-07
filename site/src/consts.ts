@@ -46,6 +46,7 @@ export const MEASURE: string[] = Object.entries(NUMBERS)
 
 export const WORKS_WITH = [
   "Claude Code",
+  "Codex",
   "Obsidian",
   "MCP",
   "Dataview",

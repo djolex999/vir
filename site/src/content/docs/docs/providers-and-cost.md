@@ -1,6 +1,6 @@
 ---
 title: Providers and cost
-description: The three distill providers, what a run costs, and every knob that controls spend.
+description: The four distill providers, what a run costs, and every knob that controls spend.
 ---
 
 vir makes two model calls per session: a cheap classify (Haiku) and a distill (the main cost). Which provider handles them is one config key.
@@ -11,11 +11,12 @@ vir makes two model calls per session: a cheap classify (Haiku) and a distill (t
 | --- | --- | --- | --- |
 | `anthropic` (default) | `anthropicApiKey` | Per-token, Anthropic list price | Predictable; no effect on Claude Code limits |
 | `claude-cli` | none — uses the installed `claude` binary | $0; consumes your Claude Code subscription quota | Capped at 25 sessions per run; halts cleanly at a subscription limit with the reset time |
+| `codex-cli` (experimental) | none — uses the installed `codex` binary and your ChatGPT login | $0; consumes your Codex usage limits | Same 25-session cap and halt-at-limit as `claude-cli`; Codex picks the model unless you pin one. See [Codex](/docs/codex/#distill-on-your-chatgpt-plan-codex-cli) |
 | `kie` | `kieApiKey` | Per-token, ~28% of Anthropic | Third-party proxy. Kept for cheap testing and calibration runs, not recommended for your real vault; `kieTopUpTier: "high"` applies the 10% bonus-credit discount |
 
-**Which one?** `anthropic` for predictability, `claude-cli` if you already pay for Claude and don't mind distills sharing its quota. Kie exists because it's cheap enough to burn through hundreds of sessions while calibrating prompts — that's what it's used for in vir's own development. It routes your transcripts through a third party, so it isn't the right choice for the vault you actually rely on.
+**Which one?** `anthropic` for predictability, `claude-cli` if you already pay for Claude and don't mind distills sharing its quota, `codex-cli` likewise for a ChatGPT plan. Kie exists because it's cheap enough to burn through hundreds of sessions while calibrating prompts — that's what it's used for in vir's own development. It routes your transcripts through a third party, so it isn't the right choice for the vault you actually rely on.
 
-`claude-cli` always runs with `--no-session-persistence` and a neutral working directory, so vir never writes transcripts into `~/.claude/projects` (no self-scanning) and no project's CLAUDE.md leaks into distill context. Its calls are logged with cost marked not-applicable — never a fake $0.00.
+`claude-cli` always runs with `--no-session-persistence` and a neutral working directory, so vir never writes transcripts into `~/.claude/projects` (no self-scanning) and no project's CLAUDE.md leaks into distill context. `codex-cli` does the same with `--ephemeral`. Both run with **no tools**: the distill prompt carries transcript text vir doesn't control, so `claude -p` gets `--tools "" --strict-mcp-config` (no built-in tools, no MCP servers or connectors) and `codex exec` runs read-only with its shell, web search, apps, plugins, MCP servers and subagents switched off. Calls on both are logged with cost marked not-applicable — never a fake $0.00.
 
 ## Measured cost
 

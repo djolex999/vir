@@ -1,6 +1,6 @@
 ---
 title: Retrieval and MCP
-description: Ask the vault from the terminal, or let Claude Code consult it mid-session.
+description: Ask the vault from the terminal, or let Claude Code or Codex consult it mid-session.
 ---
 
 ## `vir query`
@@ -52,13 +52,16 @@ Every stored vector records which model produced it. Vectors from different mode
 
 When no provider is available, results say so: `via tfidf (no provider)`.
 
-## MCP: Claude Code asks the vault itself
+## MCP: your agent asks the vault itself
 
 ```bash
-vir mcp install
+vir mcp install                  # Claude Code: registers via `claude mcp add`
+vir mcp install --target codex   # Codex: prints the config block to add
 ```
 
-Restart Claude Code. The vault is now available mid-session through six read-only tools:
+For Codex, vir never edits `~/.codex/config.toml`; it prints the `[mcp_servers.vir]` block, or run `codex mcp add vir -- vir mcp`. Codex asks before each tool call ("Always allow" stops the prompts), and headless `codex exec` never approves them. See [Codex](/docs/codex/#let-codex-query-your-notes-mcp).
+
+Restart the agent. The vault is now available mid-session through six read-only tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -73,7 +76,7 @@ The server never changes the vault. `vir_query` is the one tool that spends toke
 
 `vir mcp status` checks registration; `vir mcp uninstall` removes it.
 
-`type: insight` returns only [recurring rules](/docs/recurring-rules/) you accepted; proposed and rejected ones are never served, here or in `vir query`. To let agents other than Claude Code use the vault, see [Any agent](/docs/any-agent/).
+`type: insight` returns only [recurring rules](/docs/recurring-rules/) you accepted; proposed and rejected ones are never served, here or in `vir query`. For agents without MCP setup, see [Any agent](/docs/any-agent/).
 
 ## Retrieval logging
 

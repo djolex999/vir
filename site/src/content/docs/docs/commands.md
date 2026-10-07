@@ -9,7 +9,7 @@ description: Every vir subcommand with what it costs.
 
 | Command | Cost | |
 | --- | --- | --- |
-| `vir init` | free | Setup wizard: provider, models, vault, project triage |
+| `vir init` | free | Setup wizard: coding agents, provider, models, vault, project triage |
 | `vir run` | cheap–$$ | One pass over new sessions (what the daemon runs) |
 | `vir run --dry-run` | free | Per-session estimate, exit before any call |
 | `vir run --full` | $$ | Ignore the cache, reprocess everything |
@@ -55,14 +55,14 @@ description: Every vir subcommand with what it costs.
 | `vir summarize --week [N]` / `--month [N]` | cheap | Period digest |
 | `vir embed` | free | Embed notes with the detected provider. `--force` re-embeds all |
 | `vir embed --setup` | free | Install the local embedding provider |
-| `vir mcp install` / `uninstall` / `status` | free | Register with Claude Code. `install --scope user\|project` |
+| `vir mcp install` / `uninstall` / `status` | free | Register with Claude Code. `install --scope user\|project`; `install --target codex` prints the Codex config instead |
 | `vir mcp` | free | Run the MCP server over stdio |
 
 ## Sync and operate
 
 | Command | Cost | |
 | --- | --- | --- |
-| `vir sync-claude [project]` | free | Diff, confirm, write between VIR markers; accepted rules get their own y/n each. `--dry-run`, `--force`, `--global` |
+| `vir sync-claude [project]` | free | Diff, confirm, write between VIR markers in CLAUDE.md and existing AGENTS.md; accepted rules get their own y/n each. `--dry-run`, `--force`, `--global`, `--no-agents`, `--agents-only` |
 | `vir schedule install` / `uninstall` | free | Daemon. `--run-now` |
 | `vir status` | free | Knowledge base breakdown + daemon state |
 | `vir doctor` | cheap | 13–20 install/config checks. `--json` |
