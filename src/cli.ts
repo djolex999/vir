@@ -35,6 +35,7 @@ import { runMcpServer } from "./mcp/server.js";
 import { runReview, type ReviewCliOptions } from "./cli/review.js";
 import { runReviewJson, type ReviewJsonOptions } from "./cli/reviewJson.js";
 import { runAction } from "./cli/runAction.js";
+import { maybeShowStarNudge, REPO_URL } from "./cli/starNudge.js";
 import { runReconcile } from "./cli/reconcile.js";
 import {
   installToClaudeCode,
@@ -84,7 +85,8 @@ const program = new Command();
 program
   .name("vir")
   .description("Distill your coding-agent sessions (Claude Code, Codex) into a markdown knowledge base you own")
-  .version(pkg.version);
+  .version(pkg.version)
+  .addHelpText("after", `\nDocs: https://virwiki.dev · Source: https://${REPO_URL}`);
 
 program
   .command("init")
@@ -236,6 +238,20 @@ program
         ) {
           process.exitCode = 1;
         }
+        maybeShowStarNudge(
+          {
+            interactive:
+              process.stdout.isTTY === true &&
+              !daemon &&
+              !dryRun &&
+              !rewriteOnly &&
+              !articlesOnly &&
+              !pdfsOnly,
+            distilled: summary.distilled,
+            failed: process.exitCode === 1,
+          },
+          (l) => ui.line(ui.dim(l)),
+        );
       },
     ),
   );
