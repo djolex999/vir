@@ -17,7 +17,7 @@
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/v/@djolex999/vir-cli?color=7c6af7&label=npm" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/dw/@djolex999/vir-cli?color=4fd1a0" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee" alt="license"></a>
-  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1325%20passing-22c55e" alt="tests"></a>
+  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1328%20passing-22c55e" alt="tests"></a>
   <a href="#project-status"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey" alt="platforms"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-c084fc" alt="mcp"></a>
   <a href="#"><img src="https://img.shields.io/badge/local--first-yes-f59e0b" alt="local-first"></a>
@@ -62,7 +62,9 @@ over your sessions and writes notes. When you like the output,
 through your Claude Code subscription (it uses your usage limits, not
 dollars). With an Anthropic API key, my 226-session backfill would cost
 about $25 on Haiku and $75 on Sonnet (the default hybrid lands between);
-`vir run` asks before spending on more than 20 sessions. Details in [Cost](#cost).
+`vir run` asks before spending on more than 20 sessions. To start small,
+`vir run --since 14d` does only the last two weeks; a later plain `vir run`
+backfills the rest. Details in [Cost](#cost).
 
 macOS is stable, Linux is experimental, Windows isn't supported yet
 ([platform support](#platform-support)).
@@ -416,6 +418,8 @@ from ~217k to ~95k tokens without dropping signal.
 
 - `vir run --dry-run` previews per-session cost before any API call.
 - `vir run` asks for confirmation when more than 20 new sessions are queued.
+- `vir run --since 14d` processes only recently active sessions; older ones
+  wait, unrecorded, for a later run.
 - `vir cost --since 7d` aggregates real (not estimated) token usage from
   `~/.vir/cost.log`; `--by-session` and `--top 5` surface outliers.
 - `vir run --force-model haiku|sonnet` overrides the distill model per run.
@@ -469,6 +473,7 @@ with your distro, init system, and Node version.
 | `vir run --pdfs-only`       | $$    | Distill only PDFs                         |
 | `vir run --dry-run`         | free  | Estimate per-session cost, exit before LLM |
 | `vir run --force-model <m>` | cheap | Override distill model: `haiku` \| `sonnet` |
+| `vir run --since <d>`       | cheap | Only sessions active in the window (`14d`, `2w`); older ones wait |
 | `vir projects`              | free  | Per-project triage: counts + pending cost |
 | `vir projects include <p>`  | free  | Track a project                           |
 | `vir projects exclude <p>`  | free  | Stop tracking (existing notes untouched)  |

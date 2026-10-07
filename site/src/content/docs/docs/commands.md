@@ -18,6 +18,7 @@ description: Every vir subcommand with what it costs.
 | `vir run --pdfs-only` | $$ | Only the PDF phase |
 | `vir run --yes` | | Skip the >20-sessions confirmation |
 | `vir run --force-model haiku\|sonnet` | | Override the distill model this run |
+| `vir run --since <duration>` | | Only sessions active in the window (`14d`, `2w`); older ones wait for a later run, unrecorded |
 | `vir run --only <project>` / `--exclude-project <p>` | | Scope one run; records nothing |
 | `vir reconcile` | $$ | Retry sessions that failed; `--force` includes parked ones. `--dry-run`, `--yes` |
 | `vir calibrate <sessionId>` | $$ | Distill one session to stdout, write nothing. `--model` |

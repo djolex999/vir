@@ -118,6 +118,10 @@ program
     "Estimate per-session cost after filtering, then exit before any LLM call",
   )
   .option(
+    "--since <duration>",
+    "Only sessions active in this window, e.g. 14d, 2w (older ones wait for a later run)",
+  )
+  .option(
     "--only <project>",
     "Restrict this run to a project (repeatable, never persisted)",
     (v: string, acc: string[]) => acc.concat(v),
@@ -140,6 +144,7 @@ program
         yes?: boolean;
         forceModel?: string;
         dryRun?: boolean;
+        since?: string;
         only?: string[];
         excludeProject?: string[];
       }) => {
@@ -157,6 +162,18 @@ program
           );
           process.exitCode = 1;
           return;
+        }
+        let sinceMs: number | undefined;
+        if (opts.since !== undefined) {
+          try {
+            sinceMs = Date.now() - parseDuration(opts.since);
+          } catch {
+            console.error(
+              chalk.red(`invalid --since value: ${opts.since} (use e.g. 14d, 2w, 48h)`),
+            );
+            process.exitCode = 1;
+            return;
+          }
         }
         const skipPrompt =
           opts.yes === true ||
@@ -196,6 +213,7 @@ program
             pdfsOnly,
             forceDistillModel: opts.forceModel,
             dryRun,
+            sinceMs,
             onlyProjects: opts.only?.length ? opts.only : undefined,
             excludeProjects: opts.excludeProject?.length
               ? opts.excludeProject
@@ -220,7 +238,7 @@ program
             onConfirm: skipPrompt
               ? undefined
               : async (newCount, estimatedUsd) =>
-                  confirmCostIfNeeded(cfg, newCount, estimatedUsd),
+                  confirmCostIfNeeded(cfg, newCount, estimatedUsd, sinceMs !== undefined),
           });
         } finally {
           if (needsLock) releaseLock();
@@ -260,6 +278,7 @@ async function confirmCostIfNeeded(
   cfg: Config,
   newCount: number,
   estimatedUsd: number | null,
+  sinceGiven: boolean,
 ): Promise<boolean> {
   if (newCount <= 20) return true;
   // Upper bound from transcript sizes; sessions the filter drops cost nothing.
@@ -277,6 +296,11 @@ async function confirmCostIfNeeded(
     ],
     { title: "cost estimate" },
   );
+  if (!sinceGiven) {
+    ui.line(
+      ui.dim("  tip: answer n and run `vir run --since 14d` to start with recent sessions only"),
+    );
+  }
   const rl = createInterface({ input: stdin, output: stdout });
   const ans = (await rl.question(ui.muted("continue? (y/n) ")))
     .trim()

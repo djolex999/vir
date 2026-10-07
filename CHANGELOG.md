@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **`vir run --since <duration>`** (`14d`, `2w`, `48h`) processes only sessions active in that window. Older ones aren't recorded, so a later plain `vir run` or the daemon backfills them. The confirmation prompt for more than 20 sessions now suggests it, so a first run can start small.
+- **A one-time line after your first notes** asks for a GitHub star, once, and never from the daemon, a dry run, or a failed run. `vir init` and `vir --help` now link the repo and docs.
+- **README:** a "What leaves your machine" section, the keyless `claude-cli` path in Quick start, honest backfill cost, and platform support up front.
+
 ## 0.26.2 — 2026-10-07
 
 - **Codex sessions show a real short id** in `vir run --dry-run`, `vir cost`, `vir reconcile` and the logs (`TRAIN/d8e621fc`, not `TRAIN/rollout-`). Every short id now comes from the same helper as note filenames; a test keeps it that way.
