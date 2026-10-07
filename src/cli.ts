@@ -68,6 +68,7 @@ import { composeCommand } from "./cli/compose.js";
 import { dedupeCommand } from "./cli/dedupe.js";
 import { cmdInit } from "./cli/init.js";
 import { isSubscriptionProvider } from "./pipeline/subscription.js";
+import { sessionSuffix } from "./pipeline/slug.js";
 
 // Read version at runtime from package.json (one dir up from dist/cli.js) so
 // `vir --version` never drifts from the published version. rootDir is ./src,
@@ -331,7 +332,7 @@ program
         ),
       );
       for (const s of rows) {
-        const id = s.session.slice(0, 8);
+        const id = sessionSuffix(s.session);
         const label = s.project ? `${s.project}/${id}` : id;
         ui.line(
           `  ${ui.dim(ui.BULLET)} ${ui.text(label.padEnd(42))} ${ui.dim(`${s.calls}×`)}  ${ui.warn(ui.formatUsd(s.cost))}`,

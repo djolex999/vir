@@ -119,3 +119,11 @@ export function defaultAgents(
     (id) => configured[id] || exists(join(home, ...DEFAULT_SOURCE_DIRS[id])),
   );
 }
+
+// The wizard's MCP step: Claude Code registers through `claude mcp add`;
+// Codex gets the config snippet (vir never edits Codex's config itself).
+export function mcpSetupFor(
+  agents: ReadonlyArray<Exclude<SourceId, "unknown">>,
+): { offerClaude: boolean; showCodex: boolean } {
+  return { offerClaude: agents.includes("claude-code"), showCodex: agents.includes("codex") };
+}

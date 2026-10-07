@@ -14,6 +14,7 @@ import type {
 } from "./types.js";
 import { callCodexCli, CodexCliError } from "./codexCli.js";
 import { isSubscriptionProvider, SubscriptionLimitError } from "./subscription.js";
+import { sessionSuffix } from "./slug.js";
 
 const CATEGORIES: Category[] = ["pattern", "gotcha", "decision", "tool"];
 
@@ -631,7 +632,7 @@ ${scrubbedSummary}`;
     } catch (err) {
       if (err instanceof SubscriptionLimitError) throw err;
       console.warn(
-        `[vir] retitle failed for ${session.sessionId.slice(0, 8)}, keeping classify topic: ${(err as Error).message}`,
+        `[vir] retitle failed for ${sessionSuffix(session.sessionId)}, keeping classify topic: ${(err as Error).message}`,
       );
       return cls.topic;
     }

@@ -62,6 +62,7 @@ import { sweepEmbeddings } from "./embeddingSweep.js";
 import { backfillInsightEmbeddings } from "../connect/embed.js";
 import { resolveEmbeddingProvider } from "../search/provider.js";
 import { isSubscriptionProvider } from "./subscription.js";
+import { sessionSuffix } from "./slug.js";
 
 export interface RunOptions {
   full?: boolean;
@@ -751,7 +752,7 @@ export async function runPipeline(
       totalCost += cost;
       estimated += 1;
       if (interactive) {
-        const label = `${parsed.projectSlug}/${parsed.sessionId.slice(0, 8)}`;
+        const label = `${parsed.projectSlug}/${sessionSuffix(parsed.sessionId)}`;
         ui.line(
           `  ${label.padEnd(42)} ${ui.dim(`${(classifyIn + distillIn).toLocaleString()} in`)}  ${ui.warn(ui.formatUsd(cost))}`,
         );
@@ -1024,7 +1025,7 @@ export async function runPipeline(
         ui.categoryRow(note.classification.category, note.classification.topic);
       }
       fileLog(
-        `distilled ${parsed.sessionId.slice(0, 8)} → ${note.classification.category}/${note.classification.topic}`,
+        `distilled ${sessionSuffix(parsed.sessionId)} → ${note.classification.category}/${note.classification.topic}`,
       );
       if (note.classification.confidence >= 0.8 && cfg.notifications !== false) {
         notify(

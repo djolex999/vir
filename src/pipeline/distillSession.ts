@@ -4,6 +4,7 @@ import { scoreSession } from "./filter.js";
 import { scrub } from "./scrubber.js";
 import { filterToolCalls } from "./toolCallFilter.js";
 import type { DistilledNote, ParsedSession } from "./types.js";
+import { sessionSuffix } from "./slug.js";
 
 // The part of distilling one session that `vir run` and `vir reconcile`
 // share: heuristic filter, scrub + tool filter, the paid distill, write,
@@ -119,7 +120,7 @@ export async function distillOneSession(
   const trimmed = trimTranscript(scrubbedContent);
   if (trimmed !== null) {
     deps.log?.(
-      `trimmed ${parsed.sessionId.slice(0, 8)} from ${scrubbedContent.length} to ${MAX_DISTILL_INPUT_CHARS} chars to fit the model's context`,
+      `trimmed ${sessionSuffix(parsed.sessionId)} from ${scrubbedContent.length} to ${MAX_DISTILL_INPUT_CHARS} chars to fit the model's context`,
     );
     scrubbedContent = trimmed;
   }

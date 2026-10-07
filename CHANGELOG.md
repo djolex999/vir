@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.26.2 — 2026-10-07
+
+- **Codex sessions show a real short id** in `vir run --dry-run`, `vir cost`, `vir reconcile` and the logs (`TRAIN/d8e621fc`, not `TRAIN/rollout-`). Every short id now comes from the same helper as note filenames; a test keeps it that way.
+- **A Codex-only `vir init` no longer offers to register with Claude Code.** It prints the Codex config snippet instead (`codex mcp add vir -- vir mcp`). With both agents ticked you get the Claude Code offer and the snippet.
+
 ## 0.26.1 — 2026-10-07
 
 - **Re-running `vir init` offers Codex once it's installed.** On a Claude-only install the wizard now pre-checks Codex too when `~/.codex/sessions` exists, as the README says, instead of only the agents already configured.

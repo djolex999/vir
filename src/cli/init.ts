@@ -31,9 +31,9 @@ import {
 } from "../sources/registry.js";
 import { promptProjectDecisions } from "./projectSelect.js";
 import { normalizeModelName } from "../pipeline/distiller.js";
-import { buildInitConfig, DEFAULT_SOURCE_DIRS, defaultAgents } from "./initConfig.js";
+import { buildInitConfig, DEFAULT_SOURCE_DIRS, defaultAgents, mcpSetupFor } from "./initConfig.js";
 import { defaultNotesDir } from "./notesDir.js";
-import { installToClaudeCode } from "../mcp/install.js";
+import { codexInstallSnippet, installToClaudeCode } from "../mcp/install.js";
 import * as ui from "../ui/display.js";
 
 export async function cmdInit(): Promise<void> {
@@ -458,12 +458,20 @@ export async function cmdInit(): Promise<void> {
   ui.row(ui.success(ui.CHECK), ui.text(`saved ${CONFIG_PATH}`));
 
   ui.blank();
-  const wantsMcp = await confirm({
-    message: "Register Vir with Claude Code now? (recommended)",
-    default: true,
-  });
-  if (wantsMcp) {
-    await installToClaudeCode("user");
+  const mcp = mcpSetupFor(agents);
+  if (mcp.offerClaude) {
+    const wantsMcp = await confirm({
+      message: "Register Vir with Claude Code now? (recommended)",
+      default: true,
+    });
+    if (wantsMcp) {
+      await installToClaudeCode("user");
+    }
+  }
+  if (mcp.showCodex) {
+    ui.blank();
+    ui.line(ui.dim("  To use your notes from Codex:"));
+    for (const l of codexInstallSnippet().split("\n")) ui.line(ui.dim(`  ${l}`));
   }
 
   if (process.platform === "darwin" && parsed.data.notifications) {

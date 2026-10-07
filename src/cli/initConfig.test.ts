@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ConfigSchema, type Config } from "../config.js";
-import { buildInitConfig, defaultAgents, type InitAnswers } from "./initConfig.js";
+import { buildInitConfig, defaultAgents, mcpSetupFor, type InitAnswers } from "./initConfig.js";
 
 // ── Schema-enumerated survival guard ─────────────────────────────────────────
 // buildInitConfig has silently dropped a config key THREE times (bug #5, the
@@ -287,5 +287,17 @@ describe("defaultAgents", () => {
     // Re-init of a Claude-only config on a machine that now has Codex: both.
     expect(defaultAgents({ claudeProjectsDir: "/c" } as Config, "/h", exists)).toEqual(["claude-code", "codex"]);
     expect(defaultAgents(null, "/h", () => false)).toEqual([]);
+  });
+});
+
+describe("mcpSetupFor — the wizard's MCP step follows the ticked agents", () => {
+  it("Codex-only: no Claude Code offer, show the Codex setup", () => {
+    expect(mcpSetupFor(["codex"])).toEqual({ offerClaude: false, showCodex: true });
+  });
+  it("Claude Code only: offer Claude Code registration, as before", () => {
+    expect(mcpSetupFor(["claude-code"])).toEqual({ offerClaude: true, showCodex: false });
+  });
+  it("both: offer Claude Code and show the Codex setup", () => {
+    expect(mcpSetupFor(["claude-code", "codex"])).toEqual({ offerClaude: true, showCodex: true });
   });
 });
