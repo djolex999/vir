@@ -12,6 +12,7 @@ import {
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "../config.js";
+import { extractLessonTexts, normalizeLesson } from "../connect/extract.js";
 import { ruleText } from "../connect/text.js";
 import type { InsightRow } from "../connect/types.js";
 import type { DistilledRow, StateDb } from "../state/db.js";
@@ -19,14 +20,16 @@ import { kebab } from "../pipeline/writer.js";
 
 export const VIR_START = "<!-- VIR:START -->";
 export const VIR_END = "<!-- VIR:END -->";
-const TOP_N_PER_CATEGORY = 5;
+// CLAUDE.md is loaded into every session, so the block carries only what an
+// agent can't find on its own: a few project gotchas, each as its lesson. The
+// global file points at vir_query for everything else.
+const TOP_GOTCHAS = 5;
+const MAX_LESSON_CHARS = 200;
+const POINTER =
+  'Search notes from past sessions (patterns, decisions, gotchas) with the `vir_query` MCP tool, or `vir query "<topic>"`.';
 
 export interface Entry {
-  slug: string;
-  topic: string;
-  category: string;
-  confidence: number;
-  startedAt: string | null;
+  lesson: string;
 }
 
 // A connect-pass rule the owner promoted into this CLAUDE.md. Kept apart from
@@ -38,8 +41,7 @@ export interface RuleEntry {
 
 export interface DiffResult {
   added: Entry[];
-  removed: { slug: string }[];
-  upgraded: Array<{ slug: string; oldConf: number; newConf: number }>;
+  removed: Entry[];
   unchanged: Entry[];
   rulesAdded: RuleEntry[];
   rulesRemoved: RuleEntry[];
@@ -125,7 +127,9 @@ export function planUpdates(
   const file = options.file ?? "CLAUDE.md";
   if (!options.project) {
     const target = globalInstructionPath(file);
-    plans.push(buildPlan(target, rows, { scope: "global" }, rulesByTarget.get(target) ?? []));
+    // Notes are project-scoped: the global file gets the pointer and global
+    // rules, never every project's gotchas.
+    plans.push(buildPlan(target, [], { scope: "global" }, rulesByTarget.get(target) ?? []));
   }
   if (options.globalOnly) return file === "AGENTS.md" ? plans.filter((p) => p.exists) : plans;
 
@@ -161,7 +165,7 @@ function buildPlan(
   rules: RuleEntry[] = [],
 ): PlanItem {
   const entries = selectTopEntries(rows);
-  const newBlock = renderBlock(entries, rules);
+  const newBlock = renderBlock(entries, rules, meta.scope === "global" ? "global" : "project");
   const existsAtPath = existsSync(target);
 
   let existingBlock = "";
@@ -198,68 +202,124 @@ function buildPlan(
 }
 
 function selectTopEntries(rows: DistilledRow[]): Entry[] {
-  const byCategory: Record<string, DistilledRow[]> = {
-    pattern: [],
-    gotcha: [],
-    decision: [],
-    tool: [],
-  };
-  for (const r of rows) {
-    const bucket = byCategory[r.category];
-    if (bucket) bucket.push(r);
-  }
+  const seen = new Set<string>();
   const out: Entry[] = [];
-  for (const cat of Object.keys(byCategory)) {
-    const sorted = (byCategory[cat] ?? [])
-      .slice()
-      .sort((a, b) => b.confidence - a.confidence)
-      .slice(0, TOP_N_PER_CATEGORY);
-    for (const r of sorted) {
-      out.push({
-        slug: `${cat}/${kebab(r.topic)}`,
-        topic: r.topic,
-        category: cat,
-        confidence: r.confidence,
-        startedAt: r.startedAt,
-      });
-    }
+  const sorted = rows
+    .filter((r) => r.category === "gotcha")
+    .sort((a, b) => b.confidence - a.confidence || (b.startedAt ?? "").localeCompare(a.startedAt ?? ""));
+  for (const r of sorted) {
+    if (out.length >= TOP_GOTCHAS) break;
+    const lesson = extractLesson(r.content, r.topic);
+    if (lesson.length === 0 || seen.has(lesson)) continue;
+    seen.add(lesson);
+    out.push({ lesson });
   }
   return out;
 }
 
-export function renderBlock(entries: Entry[], rules: RuleEntry[] = []): string {
+// Words that mark a point as a gotcha rather than background ("Codebase
+// structure: 304 files…"). Among a note's first few points, the first that has
+// one wins; otherwise the first point.
+const GOTCHA_CUE =
+  /\b(?:must|never|only|cannot|can't|doesn't|don't|isn't|won't|requires?|breaks?|fails?|silently|instead|always)\b/i;
+const ABBREV = /\b(?:e\.g|i\.e|etc|vs|cf)\.$/i;
+
+function firstSentence(text: string): string {
+  for (const m of text.matchAll(/[.!?][)*`"']*(?=\s+[A-Z`*("']|\s*$)/g)) {
+    const end = (m.index ?? 0) + m[0].length;
+    if (!ABBREV.test(text.slice(0, end))) return text.slice(0, end);
+  }
+  return text;
+}
+
+function clip(text: string): string {
+  if (text.length <= MAX_LESSON_CHARS) return text;
+  const cut = text.slice(0, MAX_LESSON_CHARS);
+  const space = cut.lastIndexOf(" ");
+  let out = (space > MAX_LESSON_CHARS / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:(—–-]+$/, "");
+  // An odd backtick would swallow the rest of the line as code.
+  if ((out.match(/`/g) ?? []).length % 2 === 1) out += "`";
+  return `${out}…`;
+}
+
+// "Order State Machine Pattern": most words capitalized reads as a heading.
+function isTitle(text: string): boolean {
+  const words = text.split(/\s+/).filter((w) => /^[A-Za-z]/.test(w));
+  return words.length > 0 && words.filter((w) => /^[A-Z]/.test(w)).length / words.length > 0.6;
+}
+
+// One learned point (from extractLessonTexts) as one sentence. A bold lead that
+// reads as a claim is the lesson; one that reads as a label ("**Gate-field
+// mismatch**:", "**MIME Validation**") keeps the sentence after it; bold that
+// starts a running sentence ("**Never** trust…") is read straight through.
+function lessonFromPoint(point: string): string {
+  const [head = "", ...body] = point.split("\n");
+  const line = head.trim().replace(/^(?:[-*]|\d+[.)])\s+/, "");
+  const m = line.match(/^(?:\*\*|__)(.+?)(?:\*\*|__)(:?)\s*(.*)$/);
+  if (!m) return firstSentence(normalizeLesson(line));
+  const raw = (m[1] ?? "").trim().replace(/^\d+[.)]\s+/, "");
+  const lead = raw.replace(/:$/, "").trim();
+  const sameLine = (m[3] ?? "").replace(/^[:—–-]+\s*/, "");
+  const colon = raw.endsWith(":") || m[2] === ":";
+  if (!colon && sameLine.length > 0 && !/^[A-Z]/.test(sameLine) && !/[.!?]$/.test(lead)) {
+    return firstSentence(normalizeLesson(line));
+  }
+  // Sub-bullets under a label are separate points: take the first, not all.
+  const rest = sameLine || normalizeLesson(body.find((l) => l.trim().length > 0) ?? "");
+  const isClaim = /[.!?]$/.test(lead) || (!colon && sameLine.length === 0 && !isTitle(lead));
+  return isClaim || rest.length === 0 ? lead : `${lead}: ${firstSentence(normalizeLesson(rest))}`;
+}
+
+function plainSection(content: string, heading: string): string[] {
+  const lines = content.split("\n");
+  const start = lines.findIndex((l) => l.trim().toLowerCase() === `## ${heading.toLowerCase()}`);
+  if (start === -1) return [];
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((l) => l.startsWith("## "));
+  return end === -1 ? rest : rest.slice(0, end);
+}
+
+// A note's lesson as one line. Points come from the connect pass's parser
+// (bold-led items under What Was Learned, else the Summary); a section of plain
+// bullets, or an article's Key Points, falls back to its first line.
+export function extractLesson(content: string, topic: string): string {
+  const points = extractLessonTexts(content);
+  let lesson: string | undefined;
+  if (points.length > 0 && /^##\s+What Was Learned\s*$/m.test(content)) {
+    const lessons = points.slice(0, 3).map(lessonFromPoint);
+    lesson = lessons.find((l) => GOTCHA_CUE.test(l)) ?? lessons[0];
+  } else {
+    const fallback = [...plainSection(content, "What Was Learned"), ...plainSection(content, "Key Points")]
+      .map((l) => l.trim())
+      .find((l) => l.length > 0 && !l.startsWith("#") && !l.startsWith("```"));
+    const summary = points[0];
+    if (fallback !== undefined) lesson = lessonFromPoint(fallback);
+    else if (summary !== undefined) lesson = firstSentence(normalizeLesson(summary));
+  }
+  const text = ruleText((lesson ?? topic).replace(/\*\*|__/g, ""));
+  return clip(text.length > 0 ? text : ruleText(topic));
+}
+
+export function renderBlock(
+  entries: Entry[],
+  rules: RuleEntry[] = [],
+  scope: "global" | "project" = "project",
+): string {
   const today = new Date().toISOString().slice(0, 10);
   const lines: string[] = [];
   lines.push(VIR_START);
   lines.push(`<!-- vir-last-updated: ${today} -->`);
   lines.push("");
-  lines.push("## Distilled Knowledge (from Vir)");
-  lines.push("");
-  const byCat: Record<string, Entry[]> = {
-    pattern: [],
-    gotcha: [],
-    decision: [],
-    tool: [],
-  };
-  for (const e of entries) {
-    const cat = byCat[e.category];
-    if (cat) cat.push(e);
+  if (scope === "global") {
+    lines.push("## Past sessions (from vir)");
+    lines.push("");
+    lines.push(POINTER);
+    lines.push("");
   }
-  const order: Array<[string, string]> = [
-    ["pattern", "Patterns"],
-    ["gotcha", "Gotchas"],
-    ["decision", "Decisions"],
-    ["tool", "Tools"],
-  ];
-  for (const [key, label] of order) {
-    const list = byCat[key] ?? [];
-    if (list.length === 0) continue;
-    lines.push(`### ${label}`);
-    for (const e of list) {
-      lines.push(
-        `- ${e.slug} (conf ${e.confidence.toFixed(2)}) — ${e.topic}`,
-      );
-    }
+  if (entries.length > 0) {
+    lines.push("## Gotchas (from vir)");
+    lines.push("");
+    for (const e of entries) lines.push(`- ${e.lesson}`);
     lines.push("");
   }
   if (rules.length > 0) {
@@ -293,60 +353,29 @@ function extractLastUpdated(block: string): string | null {
   return m ? (m[1] ?? null) : null;
 }
 
+// Lesson lines under the block's Gotchas heading, plus old-format lines
+// ("- gotcha/topic (conf 0.84) — topic") so the first sync after upgrading
+// shows them leaving.
 function parseEntries(block: string): Entry[] {
-  if (block.length === 0) return [];
   const out: Entry[] = [];
-  const lines = block.split("\n");
-  for (const line of lines) {
-    // - pattern/topic (conf 0.84) — display topic
-    const m = line.match(
-      /^- ([a-z]+\/[a-z0-9-]+) \(conf ([\d.]+)\)\s*—\s*(.+)$/i,
-    );
-    if (!m) continue;
-    const slug = m[1] ?? "";
-    const conf = Number(m[2] ?? 0);
-    const topic = m[3] ?? "";
-    const category = slug.split("/")[0] ?? "";
-    out.push({
-      slug,
-      topic,
-      category,
-      confidence: Number.isFinite(conf) ? conf : 0,
-      startedAt: null,
-    });
+  let inGotchas = false;
+  for (const line of block.split("\n")) {
+    if (line.startsWith("## ")) inGotchas = line === "## Gotchas (from vir)";
+    const legacy = line.match(/^- ([a-z]+\/[a-z0-9-]+) \(conf [\d.]+\)\s*—\s*(.+)$/i);
+    if (legacy?.[1] !== undefined) out.push({ lesson: line.slice(2) });
+    else if (inGotchas && line.startsWith("- ")) out.push({ lesson: line.slice(2) });
   }
   return out;
 }
 
-function computeDiff(
-  old: Entry[],
-  next: Entry[],
-): Omit<DiffResult, "rulesAdded" | "rulesRemoved"> {
-  const oldBySlug = new Map(old.map((e) => [e.slug, e]));
-  const newBySlug = new Map(next.map((e) => [e.slug, e]));
-  const added: Entry[] = [];
-  const removed: { slug: string }[] = [];
-  const upgraded: Array<{ slug: string; oldConf: number; newConf: number }> = [];
-  const unchanged: Entry[] = [];
-
-  for (const e of next) {
-    const prev = oldBySlug.get(e.slug);
-    if (!prev) {
-      added.push(e);
-    } else if (Math.abs(prev.confidence - e.confidence) > 0.05) {
-      upgraded.push({
-        slug: e.slug,
-        oldConf: prev.confidence,
-        newConf: e.confidence,
-      });
-    } else {
-      unchanged.push(e);
-    }
-  }
-  for (const e of old) {
-    if (!newBySlug.has(e.slug)) removed.push({ slug: e.slug });
-  }
-  return { added, removed, upgraded, unchanged };
+function computeDiff(old: Entry[], next: Entry[]): Omit<DiffResult, "rulesAdded" | "rulesRemoved"> {
+  const oldSet = new Set(old.map((e) => e.lesson));
+  const newSet = new Set(next.map((e) => e.lesson));
+  return {
+    added: next.filter((e) => !oldSet.has(e.lesson)),
+    removed: old.filter((e) => !newSet.has(e.lesson)),
+    unchanged: next.filter((e) => oldSet.has(e.lesson)),
+  };
 }
 
 export interface ApplyResult {
