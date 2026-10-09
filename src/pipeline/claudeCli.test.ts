@@ -31,6 +31,13 @@ describe("buildClaudeCliArgs — correctness flags cannot be omitted", () => {
     expect(args[m + 1]).toBe("claude-haiku-4-5-20251001");
   });
 
+  it("asks Haiku 5.5 for low effort; other models get no --effort", () => {
+    const h = buildClaudeCliArgs("claude-haiku-5-5");
+    expect(h[h.indexOf("--effort") + 1]).toBe("low");
+    expect(buildClaudeCliArgs("claude-haiku-4-5-20251001")).not.toContain("--effort");
+    expect(buildClaudeCliArgs("claude-sonnet-5")).not.toContain("--effort");
+  });
+
   it("takes only a model — there is no parameter that could drop the safety flags", () => {
     // The signature itself is the guarantee: no options object exists whose
     // omission or misuse could remove --no-session-persistence.

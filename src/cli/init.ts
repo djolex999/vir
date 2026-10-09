@@ -258,9 +258,10 @@ export async function cmdInit(): Promise<void> {
     provider !== "kie"
       ? [
           {
-            name: "claude-haiku-4-5-20251001  (recommended)",
-            value: "claude-haiku-4-5-20251001",
+            name: "claude-haiku-5-5  (recommended)",
+            value: "claude-haiku-5-5",
           },
+          { name: "claude-haiku-4-5-20251001", value: "claude-haiku-4-5-20251001" },
           { name: "claude-sonnet-4-6", value: "claude-sonnet-4-6" },
         ]
       : [
@@ -289,8 +290,8 @@ export async function cmdInit(): Promise<void> {
           },
           { name: "claude-sonnet-4-6", value: "claude-sonnet-4-6" },
           {
-            name: "claude-haiku-4-5-20251001  (faster, cheaper)",
-            value: "claude-haiku-4-5-20251001",
+            name: "claude-haiku-5-5  (faster, cheaper)",
+            value: "claude-haiku-5-5",
           },
         ]
       : [
