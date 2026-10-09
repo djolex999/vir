@@ -7,6 +7,7 @@ import {
   ClaudeCliLimitError,
   type CallClaudeCliTestOpts,
   buildClaudeCliArgs,
+  buildClaudeCliEnv,
   callClaudeCli,
   parseCliEnvelope,
   parseLimitMessage,
@@ -34,6 +35,23 @@ describe("buildClaudeCliArgs — correctness flags cannot be omitted", () => {
     // The signature itself is the guarantee: no options object exists whose
     // omission or misuse could remove --no-session-persistence.
     expect(buildClaudeCliArgs.length).toBe(1);
+  });
+});
+
+describe("buildClaudeCliEnv — thinking disabled for every call", () => {
+  it("sets MAX_THINKING_TOKENS=0 and keeps the rest of the environment", () => {
+    const env = buildClaudeCliEnv({ PATH: "/usr/bin", HOME: "/home/u" });
+    expect(env).toEqual({ PATH: "/usr/bin", HOME: "/home/u", MAX_THINKING_TOKENS: "0" });
+  });
+
+  it("overrides a MAX_THINKING_TOKENS the user's shell exports", () => {
+    expect(buildClaudeCliEnv({ MAX_THINKING_TOKENS: "31999" }).MAX_THINKING_TOKENS).toBe("0");
+  });
+
+  it("does not mutate the base environment", () => {
+    const base: NodeJS.ProcessEnv = { PATH: "/usr/bin" };
+    buildClaudeCliEnv(base);
+    expect(base).toEqual({ PATH: "/usr/bin" });
   });
 });
 
@@ -83,7 +101,7 @@ describe("parseCliEnvelope", () => {
 interface SpawnCall {
   cmd: string;
   args: string[];
-  opts: { cwd?: string };
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv };
 }
 
 function fakeChild(stdout: string, stderr: string, code: number) {
@@ -118,7 +136,11 @@ function fakeChild(stdout: string, stderr: string, code: number) {
 
 function spawnRecorder(stdout: string, stderr = "", code = 0) {
   const calls: SpawnCall[] = [];
-  const impl = (cmd: string, args: string[], opts: { cwd?: string }) => {
+  const impl = (
+    cmd: string,
+    args: string[],
+    opts: { cwd?: string; env?: NodeJS.ProcessEnv },
+  ) => {
     calls.push({ cmd, args, opts });
     return fakeChild(stdout, stderr, code);
   };
@@ -156,9 +178,15 @@ describe("callClaudeCli", () => {
     expect(calls[0]!.args[t + 1]).toBe("");
     expect(calls[0]!.args).toContain("--strict-mcp-config");
     expect(calls[0]!.args).not.toContain("--mcp-config");
+    // No user CLAUDE.md, skills, plugins, hooks or auto memory in the child.
+    expect(calls[0]!.args).toContain("--safe-mode");
     // Neutral cwd is a correctness requirement (a project cwd would load that
     // project's CLAUDE.md into the distill context) and is NOT injectable.
     expect(calls[0]!.opts.cwd).toBe(join(homedir(), ".vir"));
+    // Thinking off: the child gets MAX_THINKING_TOKENS=0 on top of the
+    // inherited environment (PATH, HOME and auth must survive).
+    expect(calls[0]!.opts.env?.MAX_THINKING_TOKENS).toBe("0");
+    expect(calls[0]!.opts.env?.PATH).toBe(process.env.PATH);
   });
 
   it("throws ClaudeCliLimitError (with reset time) on the documented limit message and stamps the marker", async () => {

@@ -75,11 +75,12 @@ export function resolveBin(
 export type SpawnImpl = (
   cmd: string,
   args: string[],
-  opts: { cwd: string },
+  opts: { cwd: string; env?: NodeJS.ProcessEnv },
 ) => ReturnType<typeof spawn>;
 
 // Arg array + no shell, cwd pinned. `fail` builds the provider's own error for
-// a timeout or a spawn failure (ENOENT = not installed arrives here).
+// a timeout or a spawn failure (ENOENT = not installed arrives here). `env`
+// omitted = inherit the parent's environment (spawn's default).
 export function runProcess(
   spawnImpl: SpawnImpl,
   bin: string,
@@ -87,9 +88,13 @@ export function runProcess(
   stdin: string,
   timeoutMs: number,
   fail: (message: string) => Error,
+  env?: NodeJS.ProcessEnv,
 ): Promise<{ stdout: string; stderr: string; code: number | null }> {
   return new Promise((resolve, reject) => {
-    const child = spawnImpl(bin, args, { cwd: SUBSCRIPTION_CLI_CWD });
+    const child = spawnImpl(bin, args, {
+      cwd: SUBSCRIPTION_CLI_CWD,
+      ...(env ? { env } : {}),
+    });
     let stdout = "";
     let stderr = "";
     let settled = false;
