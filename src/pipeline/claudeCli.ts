@@ -69,6 +69,12 @@ export class ClaudeCliError extends Error {
 // --mcp-config drops every MCP server, claude.ai connectors included. Each
 // alone left the other half open. Both are empty allowlists, so tools a future
 // CLI adds stay off; an older CLI that lacks a flag errors out (fails closed).
+//
+// `--safe-mode` keeps the user's own setup out of the prompt: global CLAUDE.md,
+// skills, plugins, hooks and auto memory otherwise all load (the neutral cwd
+// only stops a project's CLAUDE.md). A live probe had a SessionStart hook make
+// Haiku print fake Skill calls and offer to save a memory inside a one-sentence
+// lesson. Unlike `--bare`, safe mode keeps OAuth, so subscription auth works.
 export function buildClaudeCliArgs(model: string): string[] {
   return [
     "-p",
@@ -80,7 +86,22 @@ export function buildClaudeCliArgs(model: string): string[] {
     "--tools",
     "",
     "--strict-mcp-config",
+    "--safe-mode",
   ];
+}
+
+// Thinking off for every claude-cli call. vir's prompts are short structured
+// jobs (classify, retitle, distill) written and calibrated against the SDK
+// path, which never enables thinking. Left on, `claude -p` let Haiku 4.5 spend
+// 3812 thinking tokens on a one-sentence answer, 30–75s per tiny call, on the
+// user's subscription quota. There is no CLI flag for this; MAX_THINKING_TOKENS=0
+// is the documented switch (code.claude.com/docs/en/env-vars). It is ignored on
+// Opus 5.5, Sonnet 5.5, Haiku 5.5 and Fable models, which can't turn thinking
+// off. Overrides any MAX_THINKING_TOKENS the user's shell exports.
+export function buildClaudeCliEnv(
+  base: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return { ...base, MAX_THINKING_TOKENS: "0" };
 }
 
 // DOCS-SOURCED AND UNVERIFIED against a real limit hit (documented shapes:
@@ -196,6 +217,7 @@ export async function callClaudeCli(
     opts.prompt,
     timeoutMs,
     (m) => new ClaudeCliError(m.startsWith("timed out") ? `claude -p ${m}` : m, null),
+    buildClaudeCliEnv(),
   );
 
   const envelope = parseCliEnvelope(stdout);
