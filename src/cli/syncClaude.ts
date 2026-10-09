@@ -34,13 +34,8 @@ function collapseHome(p: string): string {
 export function renderPlanLines(p: PlanItem): string[] {
   if (!p.exists) return [ui.dim(`no ${basename(p.target)} found — would be skipped`)];
   const lines: string[] = [];
-  for (const e of p.diff.added) lines.push(`${ui.success("+")} ${ui.text(e.slug)}`);
-  for (const u of p.diff.upgraded) {
-    lines.push(
-      `${ui.info(ui.UP_ARROW)} ${ui.text(u.slug)}  ${ui.dim(`${u.oldConf.toFixed(2)}${ui.ARROW}${u.newConf.toFixed(2)}`)}`,
-    );
-  }
-  for (const r of p.diff.removed) lines.push(`${ui.warn("-")} ${ui.text(r.slug)}`);
+  for (const e of p.diff.added) lines.push(`${ui.success("+")} ${ui.text(e.lesson)}`);
+  for (const r of p.diff.removed) lines.push(`${ui.warn("-")} ${ui.text(r.lesson)}`);
   for (const r of p.diff.rulesAdded) lines.push(`${ui.success("+")} ${ui.text(`rule: ${r.rule}`)}`);
   for (const r of p.diff.rulesRemoved) lines.push(`${ui.warn("-")} ${ui.text(`rule: ${r.rule}`)}`);
   if (p.diff.unchanged.length > 0) {

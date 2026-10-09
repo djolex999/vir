@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **`vir sync-claude` writes lessons, not slugs.** A project's CLAUDE.md gets its top 5 gotchas, each as the one-line lesson from the note (`- Zod 4 toJSONSchema requires io: "input" when schemas contain .transform()`). Confidence scores and slugs are gone from the file. The global CLAUDE.md and AGENTS.md no longer get every project's notes: only one line pointing at `vir_query`, plus your global rules. The first sync after upgrading shows the old lines as removals.
+
 ## 0.26.2 — 2026-10-07
 
 - **Codex sessions show a real short id** in `vir run --dry-run`, `vir cost`, `vir reconcile` and the logs (`TRAIN/d8e621fc`, not `TRAIN/rollout-`). Every short id now comes from the same helper as note filenames; a test keeps it that way.
