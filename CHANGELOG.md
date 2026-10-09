@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Haiku 5.5 is the default Haiku.** `models.classify`, the `haiku` shorthand (`--force-model haiku`, `--model haiku`), new installs' `distillFast` and the `vir init` pick are now `claude-haiku-5-5` ($0.10/$0.50 per MTok vs $1/$5). Configs that name Haiku 4.5 keep it. Haiku 5.5 thinks by default, which would eat vir's small output caps (a retitle gets 40 tokens), so API calls send `thinking: disabled` and `claude-cli` asks for `--effort low`. A refusal now fails the call with a clear error instead of an empty answer. Kie keeps serving Haiku 4.5.
 - **`claude-cli` calls no longer think, and no longer see your Claude Code setup.** `claude -p` ran Haiku with extended thinking (3812 thinking tokens for a one-sentence answer, 30–75s per classify or retitle, on your quota) and loaded your global CLAUDE.md, skills, plugins and hooks into every prompt, which could leak into notes. Calls now set `MAX_THINKING_TOKENS=0` and pass `--safe-mode`. A one-sentence lesson dropped from 36.9s to 1.3s. Opus, Sonnet and Haiku 5.5 can't turn thinking off, so they still think.
 
 ## 0.26.2 — 2026-10-07

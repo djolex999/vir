@@ -30,6 +30,9 @@ export type PricingOverrides = Partial<Record<Provider, Record<string, Partial<M
 export const DEFAULT_PRICING: Record<Provider, Record<string, ModelPricing>> = {
   anthropic: {
     "claude-haiku-4-5-20251001": { inputPer1M: 1.0,  outputPer1M: 5.0  },
+    // Prompts up to 100K tokens; longer ones bill $0.50/$2.50. vir's prompts
+    // are bounded well below that (distill input caps at ~24K tokens).
+    "claude-haiku-5-5":          { inputPer1M: 0.1,  outputPer1M: 0.5  },
     "claude-sonnet-4-6":         { inputPer1M: 3.0,  outputPer1M: 15.0 },
     // Posted rate. Intro pricing ($2/$10 through 2026-08-31) is NOT encoded —
     // costs shown are the stable ceiling; use config.pricing to opt into the

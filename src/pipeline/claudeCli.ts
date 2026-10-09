@@ -75,6 +75,13 @@ export class ClaudeCliError extends Error {
 // only stops a project's CLAUDE.md). A live probe had a SessionStart hook make
 // Haiku print fake Skill calls and offer to save a memory inside a one-sentence
 // lesson. Unlike `--bare`, safe mode keeps OAuth, so subscription auth works.
+//
+// Haiku 5.5: per the Claude Code docs, MAX_THINKING_TOKENS=0 can't turn its
+// thinking off, leaving effort as the only lever (`low`, not its `medium`
+// default). CLI 2.1.292 doesn't recognize the model yet (stderr warns
+// `unrecognized_model`), so today the env var still applies (live: 0 thinking
+// tokens); `--effort low` keeps calls cheap once the CLI learns the model.
+// Only for Haiku 5.5: older models reject effort or already run thinking-off.
 export function buildClaudeCliArgs(model: string): string[] {
   return [
     "-p",
@@ -87,6 +94,7 @@ export function buildClaudeCliArgs(model: string): string[] {
     "",
     "--strict-mcp-config",
     "--safe-mode",
+    ...(model.startsWith("claude-haiku-5-5") ? ["--effort", "low"] : []),
   ];
 }
 

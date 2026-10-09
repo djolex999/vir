@@ -596,7 +596,7 @@ Located at `~/.vir/config.json`.
 | `retrievalDiversity`| `0.3`                       | MMR diversity (0..1)                                       |
 | `logQueries`        | `true`                      | Log retrievals to `~/.vir/queries.jsonl`; `false` = off    |
 | `embeddingProvider` | (unset)                     | `ollama` \| `local` \| `none`; unset = auto-detect         |
-| `models.classify`   | `claude-haiku-4-5-20251001` | Classify model                                             |
+| `models.classify`   | `claude-haiku-5-5`          | Classify model (Kie keeps Haiku 4.5)                       |
 | `models.distill`    | `claude-sonnet-5`           | Distill model for decision-heavy and large sessions        |
 | `models.distillFast`| (unset)                     | Cheap model for routine sessions; set → hybrid routing on  |
 | `models.distillThreshold` | `100000`              | Input-token ceiling above which `distill` is forced        |
