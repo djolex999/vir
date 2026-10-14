@@ -67,6 +67,14 @@ per-project files), and the slug-list VIR block.
   `listDistilled` selects `NULL AS lesson` on a read-only pre-migration DB.
 - `selectTopEntries` uses the stored lesson (`ruleText` + clip), else `extractLesson`.
   No backfill: old notes keep the heuristic until they're re-distilled for other reasons.
+- Eval (2026-10-09/14, a copy of the real DB, the 44 gotchas sync-claude would pick):
+  the first prompt beat the heuristic on ~24 of 42 answered but drifted to a side rule
+  on ~7 grab-bag notes. The shipped prompt passes the title (the retitle) and asks for
+  code in backticks and a rule that stays true. On Haiku 5.5: 0 errors, 4–11 s a call,
+  the drift cases on topic, 5 NONE (those fall back to `extractLesson`; 3 of them had a
+  usable rule, so NONE is a bit eager), 2 task-shaped answers left. 6 of 39 came back
+  wrapped in backticks; `parseLesson` strips a pair that closes after the final
+  punctuation, which a real code span doesn't.
 - `vir run --dry-run` charges every session for the lesson call (category is unknown
   before classify), so the estimate is an upper bound.
 

@@ -559,13 +559,20 @@ ${markdown}`;
 // anything past it ignored the instruction and the heuristic does better.
 const MAX_LESSON_CHARS = 220;
 
+// Haiku 5.5 sometimes wraps the whole sentence in backticks around its own
+// code spans (6 of 39 on the 2026-10 eval), escaping the inner ones. A real
+// code span doesn't close after sentence punctuation, so `….` marks a wrapper.
+const WRAPPED = /^`(.*[.!?)])`$/;
+
 export function parseLesson(text: string): string | null {
   const first = text.trim().split("\n")[0] ?? "";
-  const lesson = first
+  const unquoted = first
     .replace(/^(?:[-*]|\d+[.)])\s+/, "")
     .replace(/^(?:\*\*)?(?:lesson|rule):(?:\*\*)?\s*/i, "")
     .replace(/^["'“]+|["'”]+$/g, "")
+    .replace(/\\`/g, "`")
     .trim();
+  const lesson = unquoted.replace(WRAPPED, "$1").trim();
   if (lesson.length === 0 || lesson.length > MAX_LESSON_CHARS) return null;
   if (/^none\.?$/i.test(lesson)) return null;
   return lesson;

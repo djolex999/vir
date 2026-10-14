@@ -535,6 +535,19 @@ describe("gotchas get a one-line lesson read off the finished note", () => {
     );
   });
 
+  it("parseLesson unwraps a sentence the model put in backticks, keeping its code spans", () => {
+    expect(parseLesson('`Zod 4 `z.toJSONSchema` needs `io: "input"` with transforms.`')).toBe(
+      'Zod 4 `z.toJSONSchema` needs `io: "input"` with transforms.',
+    );
+    expect(parseLesson("`Render must run \\`npm ci --include=dev\\` (devDeps).`")).toBe(
+      "Render must run `npm ci --include=dev` (devDeps).",
+    );
+    expect(parseLesson("`pnpm --filter <pkg> run <script>` is required to run scripts.")).toBe(
+      "`pnpm --filter <pkg> run <script>` is required to run scripts.",
+    );
+    expect(parseLesson("Prefer `a` over `b`")).toBe("Prefer `a` over `b`");
+  });
+
   it("parseLesson rejects NONE, an empty answer, or a ramble", () => {
     expect(parseLesson("NONE")).toBeNull();
     expect(parseLesson("None.")).toBeNull();
