@@ -702,7 +702,7 @@ ${scrubbedSummary}`;
   // One cheap classify-model call over the finished, titled note (cls.topic is
   // the retitle). Null means the note holds no rule or the reply was unusable.
   async lesson(
-    session: ParsedSession,
+    session: Pick<ParsedSession, "sessionId">,
     markdown: string,
     cls: Classification,
   ): Promise<string | null> {

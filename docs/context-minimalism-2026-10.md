@@ -66,7 +66,11 @@ per-project files), and the slug-list VIR block.
   lesson clears the stale one) and keeps it otherwise; `rewriteRow` carries it over.
   `listDistilled` selects `NULL AS lesson` on a read-only pre-migration DB.
 - `selectTopEntries` uses the stored lesson (`ruleText` + clip), else `extractLesson`.
-  No backfill: old notes keep the heuristic until they're re-distilled for other reasons.
+  Old notes keep the heuristic unless `vir sync-claude --backfill-lessons` runs: one
+  lesson call per gotcha with `lesson IS NULL` over the stored note and title, behind
+  `confirmPaidStep` and the pipeline lock, DB only (the note file gets `lesson:` on its
+  next rewrite). NONE stores "" so it isn't re-asked; a failure stays NULL; a
+  subscription limit stops it. Not a re-distill.
 - Eval (2026-10-09/14, a copy of the real DB, the 44 gotchas sync-claude would pick):
   the first prompt beat the heuristic on ~24 of 42 answered but drifted to a side rule
   on ~7 grab-bag notes. The shipped prompt passes the title (the retitle) and asks for

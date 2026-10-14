@@ -4,6 +4,7 @@
 
 - **`vir sync-claude` writes lessons, not slugs.** A project's CLAUDE.md gets its top 5 gotchas, each as the one-line lesson from the note (`- Zod 4 toJSONSchema requires io: "input" when schemas contain .transform()`). Confidence scores and slugs are gone from the file. The global CLAUDE.md and AGENTS.md no longer get every project's notes: only one line pointing at `vir_query`, plus your global rules. The first sync after upgrading shows the old lines as removals.
 - **Gotchas get their lesson at distill time.** After titling, a gotcha note gets one more cheap classify-model call that states its rule in one sentence (`lesson:` in frontmatter and a new `lesson` column). `vir sync-claude` uses it, so a note whose first points are background no longer puts that background into CLAUDE.md. Older notes keep the extracted lesson; nothing is re-distilled. Other categories make no extra call.
+- **`vir sync-claude --backfill-lessons`** gives those older gotchas a lesson too: one classify-model call per gotcha without one (asks first with the count; `--yes` skips the prompt), then the usual diff. Notes are not re-distilled or rewritten.
 
 ## 0.27.0 — 2026-10-14
 

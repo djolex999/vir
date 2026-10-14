@@ -1287,6 +1287,12 @@ export class StateDb {
   // New content invalidates the stored vector — NULL it so the self-heal sweep
   // re-embeds. The sweep only fills NULLs, so a stale non-NULL embedding here
   // would never heal (the 0.8.2-class blind spot, on the UPDATE path).
+  // A lesson for an existing note (`sync-claude --backfill-lessons`). "" means
+  // the model found no rule: asked once, not re-asked; readers fall back.
+  setLesson(path: string, lesson: string): void {
+    this.db.prepare("UPDATE sessions SET lesson = ? WHERE path = ?").run(lesson, path);
+  }
+
   updateContent(path: string, content: string): void {
     this.db
       .prepare(

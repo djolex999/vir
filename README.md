@@ -476,7 +476,7 @@ with your distro, init system, and Node version.
 | `vir prune`                 | free  | Dry run: agent-derived notes to demote    |
 | `vir prune --apply`         | free  | Demote them to `.rejected/` (never deletes) |
 | `vir prune --restore`       | free  | Put every pruned note back, exactly       |
-| `vir sync-claude`           | free  | Inject top knowledge into CLAUDE.md (and existing AGENTS.md; `--no-agents`, `--agents-only`) |
+| `vir sync-claude`           | free  | Inject top knowledge into CLAUDE.md (and existing AGENTS.md; `--no-agents`, `--agents-only`; `--backfill-lessons` is a cheap paid step for older gotchas) |
 | `vir embed`                 | free  | Generate embeddings for semantic search   |
 | `vir embed --setup`         | free  | Install the local embedding provider (no Ollama needed) |
 | `vir schedule install`      | free  | Register the background daemon            |
