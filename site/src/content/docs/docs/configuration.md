@@ -17,7 +17,7 @@ description: Every key in ~/.vir/config.json.
 | `anthropicApiKey` | — | Required for `anthropic` |
 | `kieApiKey` | — | Required for `kie` |
 | `kieTopUpTier` | `standard` | `high` applies Kie's 10% bonus-credit discount to cost records |
-| `models.classify` | `claude-haiku-4-5-20251001` | Classify model. `"default"` on `codex-cli` lets Codex pick |
+| `models.classify` | `claude-haiku-5-5` | Classify model. Kie keeps Haiku 4.5. `"default"` on `codex-cli` lets Codex pick |
 | `models.distill` | `claude-sonnet-5` | Distill model for decisions and large sessions |
 | `models.distillFast` | — | Cheaper distill model for routine sessions; set → hybrid routing on |
 | `models.distillThreshold` | `100000` | Input tokens above which `distill` is forced |

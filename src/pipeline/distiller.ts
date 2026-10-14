@@ -67,8 +67,13 @@ export function maybeAnthropicClient(config: Config): Anthropic | null {
 // "v1messages", etc.) can't corrupt the outgoing model string.
 const KIE_CANONICAL_MODELS = ["claude-haiku-4-5", "claude-sonnet-4-6"] as const;
 
+export const HAIKU_5_5 = "claude-haiku-5-5";
+
 export function normalizeModelName(model: string, provider: string): string {
   if (provider !== "kie") return model;
+  // The `haiku` shorthand and the classify default are Haiku 5.5, which Kie's
+  // endpoint doesn't list: Kie keeps serving Haiku 4.5.
+  if (model.startsWith(HAIKU_5_5)) return "claude-haiku-4-5";
   for (const canonical of KIE_CANONICAL_MODELS) {
     if (model.startsWith(canonical)) return canonical;
   }
@@ -76,11 +81,11 @@ export function normalizeModelName(model: string, provider: string): string {
   return model.replace(/-\d{8}$/, "");
 }
 
-// `--force-model haiku|sonnet` shorthand → full model id. We map to the dated
+// `--force-model haiku|sonnet` shorthand → full model id. We map to the
 // Anthropic ids; normalizeModelName then collapses them for the Kie path. Any
 // other value passes through (already a full id), so a full id still works.
 export function resolveModelShorthand(model: string): string {
-  if (model === "haiku") return "claude-haiku-4-5-20251001";
+  if (model === "haiku") return HAIKU_5_5;
   if (model === "sonnet") return "claude-sonnet-4-6";
   return model;
 }
@@ -230,17 +235,48 @@ export async function callKie(opts: {
   return { text, usage: usageOf(data.usage?.input_tokens, data.usage?.output_tokens) };
 }
 
+// The pinned SDK (0.32) predates the `thinking` request field; the API accepts
+// it and the SDK forwards unknown body fields as-is.
+type MessageParamsWithThinking = Anthropic.MessageCreateParamsNonStreaming & {
+  thinking?: { type: "disabled" };
+};
+
+// Haiku 5.5 thinks unless told not to, and thinking counts against max_tokens:
+// a 40-token retitle or a 5-token probe would end before any text. Every vir
+// prompt was written for a model that doesn't think, so turn it off (the API
+// accepts `disabled` on Haiku 5.5 at its default effort).
+export function buildAnthropicParams(opts: {
+  model: string;
+  maxTokens: number;
+  prompt: string;
+}): MessageParamsWithThinking {
+  return {
+    model: opts.model,
+    max_tokens: opts.maxTokens,
+    messages: [{ role: "user", content: opts.prompt }],
+    ...(opts.model.startsWith(HAIKU_5_5) ? { thinking: { type: "disabled" } } : {}),
+  };
+}
+
+// Haiku 5.5 safety classifiers can decline a request (HTTP 200, no text) and
+// there is no server-side fallback. Fail loudly instead of returning "".
+export class ModelRefusalError extends Error {
+  constructor(model: string) {
+    super(`${model} declined the request (stop_reason: refusal)`);
+    this.name = "ModelRefusalError";
+  }
+}
+
 async function callAnthropic(opts: {
   client: Anthropic;
   model: string;
   maxTokens: number;
   prompt: string;
 }): Promise<LlmResult> {
-  const resp = await opts.client.messages.create({
-    model: opts.model,
-    max_tokens: opts.maxTokens,
-    messages: [{ role: "user", content: opts.prompt }],
-  });
+  const resp = await opts.client.messages.create(buildAnthropicParams(opts));
+  // Widened: the pinned SDK's union has no "refusal" member yet.
+  const stopReason: string | null = resp.stop_reason;
+  if (stopReason === "refusal") throw new ModelRefusalError(opts.model);
   const parts: string[] = [];
   for (const block of resp.content) {
     if (block.type === "text") parts.push(block.text);

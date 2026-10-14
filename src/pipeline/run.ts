@@ -683,6 +683,10 @@ export async function runPipeline(
     // The retitle call reads the finished note (~540 words) plus its prompt.
     const RETITLE_INPUT_TOKENS = 900;
     const RETITLE_OUTPUT_TOKENS = 40;
+    // Output figures assume no thinking (SDK path, and claude-cli since it sets
+    // MAX_THINKING_TOKENS=0). On Opus/Sonnet/Haiku 5.5 thinking can't be
+    // turned off, so real claude-cli output can run well above these numbers.
+    // Their dollar estimate is 0 regardless (subscription quota).
     // Gotchas also get a lesson call over the note. The category isn't known
     // before classify, so every session is charged for it: an upper bound.
     const LESSON_INPUT_TOKENS = 950;

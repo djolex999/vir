@@ -89,7 +89,7 @@ export function buildInitConfig(
               existing?.models?.distillFast ??
               (a.provider === "kie"
                 ? "claude-haiku-4-5"
-                : "claude-haiku-4-5-20251001"),
+                : "claude-haiku-5-5"),
           }),
       ...(existing?.models?.distillThreshold != null
         ? { distillThreshold: existing.models.distillThreshold }

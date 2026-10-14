@@ -25,6 +25,10 @@ describe("computeCost", () => {
     ).toBeCloseTo(5.2);
   });
 
+  it("anthropic claude-haiku-5-5 1M in / 1M out = 0.6", () => {
+    expect(computeCost("anthropic", "claude-haiku-5-5", 1_000_000, 1_000_000)).toBeCloseTo(0.6);
+  });
+
   it("unknown model → 0", () => {
     expect(computeCost("anthropic", "gpt-4", 1_000_000, 1_000_000)).toBe(0);
   });
