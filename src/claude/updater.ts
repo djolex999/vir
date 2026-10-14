@@ -344,7 +344,7 @@ function parseRules(block: string): RuleEntry[] {
   const out: RuleEntry[] = [];
   for (const line of block.split("\n")) {
     const m = line.match(/^- rule: (.+) <!-- vir-rule:([A-Za-z0-9-]+) -->$/);
-    if (m?.[1] !== undefined && m[2] !== undefined) out.push({ id: m[2], rule: m[1] });
+    if (m?.[1] !== undefined && m[2] !== undefined) out.push({ id: m[2], rule: ruleText(m[1]) });
   }
   return out;
 }
@@ -364,14 +364,16 @@ function extractLastUpdated(block: string): string | null {
 // Lesson lines under the block's Gotchas heading, plus old-format lines
 // ("- gotcha/topic (conf 0.84) — topic") so the first sync after upgrading
 // shows them leaving.
+// Lines read back from the file are printed in the diff, and the file may not
+// be one vir wrote: sanitize them like the lessons they're compared against.
 function parseEntries(block: string): Entry[] {
   const out: Entry[] = [];
   let inGotchas = false;
   for (const line of block.split("\n")) {
     if (line.startsWith("## ")) inGotchas = line === "## Gotchas (from vir)";
     const legacy = line.match(/^- ([a-z]+\/[a-z0-9-]+) \(conf [\d.]+\)\s*—\s*(.+)$/i);
-    if (legacy?.[1] !== undefined) out.push({ lesson: line.slice(2) });
-    else if (inGotchas && line.startsWith("- ")) out.push({ lesson: line.slice(2) });
+    if (legacy?.[1] !== undefined) out.push({ lesson: ruleText(line.slice(2)) });
+    else if (inGotchas && line.startsWith("- ")) out.push({ lesson: ruleText(line.slice(2)) });
   }
   return out;
 }

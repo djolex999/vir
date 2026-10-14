@@ -170,6 +170,18 @@ describe("VIR block contents", () => {
     expect(plan?.diff.added).toEqual([]);
   });
 
+  it("strips terminal escapes from lines read back out of an existing block", () => {
+    writeFileSync(
+      projectPath(),
+      `# growthq\n${VIR_START}\n## Gotchas (from vir)\n\n- \u001b[2J\u001b]8;;http://x\u0007Hidden\u202e text\n${VIR_END}\n`,
+    );
+    note(1, "gotcha", 0.95, learned("**Something growthq-only and specific.**"));
+
+    const removed = planUpdates(cfg, db).find((p) => p.target === projectPath())?.diff.removed ?? [];
+    expect(removed).toHaveLength(1);
+    expect(removed[0]?.lesson).not.toMatch(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e]/);
+  });
+
   it("diffs by lesson: a rerun is unchanged, a reworded lesson is one out and one in", () => {
     note(1, "gotcha", 0.95, learned("**First wording of this lesson here.**"));
     const first = planUpdates(cfg, db).find((p) => p.target === projectPath());
