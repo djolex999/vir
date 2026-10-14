@@ -683,6 +683,10 @@ export async function runPipeline(
     // The retitle call reads the finished note (~540 words) plus its prompt.
     const RETITLE_INPUT_TOKENS = 900;
     const RETITLE_OUTPUT_TOKENS = 40;
+    // Gotchas also get a lesson call over the note. The category isn't known
+    // before classify, so every session is charged for it: an upper bound.
+    const LESSON_INPUT_TOKENS = 950;
+    const LESSON_OUTPUT_TOKENS = 50;
     const CHARS_PER_TOKEN = 3;
     let totalCost = 0;
     let estimated = 0;
@@ -746,6 +750,14 @@ export async function runPipeline(
               classifyModel,
               RETITLE_INPUT_TOKENS,
               RETITLE_OUTPUT_TOKENS,
+              cfg.pricing,
+              cfg.kieTopUpTier,
+            ) +
+            computeCost(
+              cfg.provider,
+              classifyModel,
+              LESSON_INPUT_TOKENS,
+              LESSON_OUTPUT_TOKENS,
               cfg.pricing,
               cfg.kieTopUpTier,
             );

@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import type { Config } from "../config.js";
+import { ruleText } from "../connect/text.js";
 import { cosineSimilarity } from "../search/embedder.js";
 import {
   embedNoteWithProvider,
@@ -162,6 +163,9 @@ export class VaultWriter {
       `session_id: ${session.sessionId}`,
       `date: ${session.startedAt ?? new Date().toISOString()}`,
       `confidence: ${classification.confidence}`,
+      // JSON string escaping is valid YAML double-quoted: a model-written
+      // backslash or quote can't break out of the scalar.
+      ...(note.lesson ? [`lesson: ${JSON.stringify(ruleText(note.lesson))}`] : []),
       ...themesLines,
       ...branchesLines,
       // A user's review verdict (set by `vir review`) lives in frontmatter, not
@@ -288,6 +292,7 @@ export class VaultWriter {
         themes: [],
       },
       markdown: row.content,
+      lesson: row.lesson,
     };
     return this.write(parsed, note, "rewrite");
   }

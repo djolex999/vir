@@ -51,6 +51,7 @@ function note(
     project: over.project ?? "vir",
     confidence: over.confidence ?? 0.8,
     content: over.content ?? "some durable lesson body",
+    lesson: null,
   };
 }
 

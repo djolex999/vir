@@ -69,4 +69,7 @@ export interface Classification {
 export interface DistilledNote {
   classification: Classification;
   markdown: string;
+  // One-line rule for CLAUDE.md, gotchas only. Null when not asked for, when
+  // the call failed, or on notes distilled before it existed.
+  lesson?: string | null;
 }

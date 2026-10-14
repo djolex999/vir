@@ -498,6 +498,43 @@ export function parseTitle(text: string): string | null {
   return title;
 }
 
+// The one rule a gotcha teaches, for `vir sync-claude` to write into the
+// project's CLAUDE.md. Read off the finished note like the title, so the
+// blind-tested distill prompt stays byte-for-byte as pinned. The title anchors
+// it: on a 2026-10 run over 44 real gotchas, without it about one in six
+// grab-bag notes yielded a true rule about a side point. Pure, so the text has
+// one home.
+export function buildLessonPrompt(markdown: string, title: string): string {
+  return `State the rule this note teaches, for an agent working in the same project.
+The note is titled "${title}": give the rule behind that title, not a side point.
+Output the rule only: one sentence, at most 160 characters, no quotes, no bullet.
+
+Phrase it as what to do or what holds, with the API, file, flag or value that
+carries it, in backticks. For example: Zod 4 \`toJSONSchema\` needs \`io: "input"\` when schemas contain \`.transform()\`.
+It must stay true after this session: not background about the codebase, not
+what the session did, not a task or the project's status. If the note teaches
+no such rule, output NONE.
+
+Note:
+${markdown}`;
+}
+
+// Longer than the prompt asks for, so a slightly long but good rule survives;
+// anything past it ignored the instruction and the heuristic does better.
+const MAX_LESSON_CHARS = 220;
+
+export function parseLesson(text: string): string | null {
+  const first = text.trim().split("\n")[0] ?? "";
+  const lesson = first
+    .replace(/^(?:[-*]|\d+[.)])\s+/, "")
+    .replace(/^(?:\*\*)?(?:lesson|rule):(?:\*\*)?\s*/i, "")
+    .replace(/^["'“]+|["'”]+$/g, "")
+    .trim();
+  if (lesson.length === 0 || lesson.length > MAX_LESSON_CHARS) return null;
+  if (/^none\.?$/i.test(lesson)) return null;
+  return lesson;
+}
+
 export class Distiller {
   private client: Anthropic | null;
   private cfg: Config;
@@ -619,6 +656,47 @@ ${scrubbedSummary}`;
     return parseTitle(text);
   }
 
+  // One cheap classify-model call over the finished, titled note (cls.topic is
+  // the retitle). Null means the note holds no rule or the reply was unusable.
+  async lesson(
+    session: ParsedSession,
+    markdown: string,
+    cls: Classification,
+  ): Promise<string | null> {
+    const text = await withRateLimitRetry(() =>
+      callLLM(this.cfg, this.client, {
+        prompt: buildLessonPrompt(markdown, cls.topic),
+        model: this.classifyModel,
+        maxTokens: 120,
+        cost: {
+          session: session.sessionId,
+          project: cls.project,
+          stage: "lesson",
+        },
+      }),
+    );
+    return parseLesson(text);
+  }
+
+  // Only gotchas reach CLAUDE.md, so only they pay for the call. Same failure
+  // policy as titleFor: a null lesson falls back to extractLesson at sync time.
+  private async lessonFor(
+    session: ParsedSession,
+    markdown: string,
+    cls: Classification,
+  ): Promise<string | null> {
+    if (cls.category !== "gotcha") return null;
+    try {
+      return await this.lesson(session, markdown, cls);
+    } catch (err) {
+      if (err instanceof SubscriptionLimitError) throw err;
+      console.warn(
+        `[vir] lesson failed for ${sessionSuffix(session.sessionId)}, sync-claude will extract one: ${(err as Error).message}`,
+      );
+      return null;
+    }
+  }
+
   // The distill has already been paid for, so a failed naming call keeps
   // classify's topic rather than discarding the note. A subscription limit is
   // the exception: the run loop has to see it and halt.
@@ -651,7 +729,9 @@ ${scrubbedSummary}`;
     const model = this.modelFor(cls, estimateTokens(scrubbedContent));
     const md = await this.distill(session, scrubbedContent, cls, model);
     const topic = await this.titleFor(session, md, cls);
-    return { classification: { ...cls, topic }, markdown: md };
+    const titled = { ...cls, topic };
+    const lesson = await this.lessonFor(session, md, titled);
+    return { classification: titled, markdown: md, lesson };
   }
 }
 

@@ -8,10 +8,12 @@ import {
   KieTimeoutError,
   kieResponseError,
   maybeAnthropicClient,
+  buildLessonPrompt,
   buildTitlePrompt,
   ClassifyParseError,
   Distiller,
   parseClassification,
+  parseLesson,
   parseTitle,
   selectDistillModel,
 } from "./distiller.js";
@@ -378,6 +380,9 @@ describe("the note is titled from the finished note, not from classify", () => {
     override async retitle(): Promise<string | null> {
       return this.title();
     }
+    override async lesson(): Promise<string | null> {
+      return null;
+    }
   }
 
   it("uses the retitle as the topic and keeps everything else from classify", async () => {
@@ -437,6 +442,121 @@ describe("the note is titled from the finished note, not from classify", () => {
     const p = buildTitlePrompt("## Summary\n\nJEZGRO cleared the trademark search.");
     expect(p).toContain("JEZGRO cleared the trademark search.");
     expect(p).toContain("single most important claim");
+  });
+});
+
+describe("gotchas get a one-line lesson read off the finished note", () => {
+  const cfg = {
+    provider: "claude-cli",
+    models: { classify: "claude-haiku-4-5-20251001", distill: "claude-sonnet-4-6" },
+  } as unknown as Config;
+
+  const session = {
+    sessionId: "abc12345",
+    projectSlug: "demo",
+    rawSummary: "",
+  } as unknown as Parameters<Distiller["run"]>[0];
+
+  const gotcha: Classification = {
+    category: "gotcha",
+    topic: "t",
+    project: "demo",
+    confidence: 0.9,
+    themes: [],
+  };
+
+  class StubDistiller extends Distiller {
+    lessonCalls = 0;
+    lessonTopic = "";
+    constructor(
+      private readonly cls: Classification,
+      private readonly answer: () => Promise<string | null>,
+    ) {
+      super(cfg);
+    }
+    override async classify(): Promise<Classification> {
+      return this.cls;
+    }
+    override async distill(): Promise<string> {
+      return "## Summary\n\nBody.";
+    }
+    override async retitle(): Promise<string | null> {
+      return "a-title";
+    }
+    override async lesson(
+      _session: Parameters<Distiller["lesson"]>[0],
+      _markdown: string,
+      cls: Classification,
+    ): Promise<string | null> {
+      this.lessonCalls += 1;
+      this.lessonTopic = cls.topic;
+      return this.answer();
+    }
+  }
+
+  it("carries the lesson on a gotcha note", async () => {
+    const d = new StubDistiller(gotcha, async () => "Pin the npm version CI uses.");
+    expect((await d.run(session, "", ""))?.lesson).toBe("Pin the npm version CI uses.");
+  });
+
+  // Only gotchas reach CLAUDE.md, so other categories don't pay for the call.
+  it("skips the call for other categories", async () => {
+    const d = new StubDistiller({ ...gotcha, category: "pattern" }, async () => "x");
+    const note = await d.run(session, "", "");
+    expect(note?.lesson).toBeNull();
+    expect(d.lessonCalls).toBe(0);
+  });
+
+  it("keeps the note with no lesson when the call fails", async () => {
+    const d = new StubDistiller(gotcha, async () => {
+      throw new ClaudeCliError("boom", 1, 500);
+    });
+    const note = await d.run(session, "", "");
+    expect(note?.markdown).toBe("## Summary\n\nBody.");
+    expect(note?.lesson).toBeNull();
+  });
+
+  it("lets a subscription limit through", async () => {
+    const d = new StubDistiller(gotcha, async () => {
+      throw new ClaudeCliLimitError("session", null);
+    });
+    await expect(d.run(session, "", "")).rejects.toThrow(ClaudeCliLimitError);
+  });
+
+  it("parseLesson takes the first line and strips wrappers", () => {
+    expect(parseLesson('"Zod 4 toJSONSchema needs io: \\"input\\" with .transform()."\n')).toBe(
+      'Zod 4 toJSONSchema needs io: \\"input\\" with .transform().',
+    );
+    expect(parseLesson("- Lesson: Pin the npm version CI uses.\nBecause it drifts.")).toBe(
+      "Pin the npm version CI uses.",
+    );
+    expect(parseLesson("**Rule:** Verify webhook signatures first.")).toBe(
+      "Verify webhook signatures first.",
+    );
+  });
+
+  it("parseLesson rejects NONE, an empty answer, or a ramble", () => {
+    expect(parseLesson("NONE")).toBeNull();
+    expect(parseLesson("None.")).toBeNull();
+    expect(parseLesson("  \n")).toBeNull();
+    expect(parseLesson("word ".repeat(60))).toBeNull();
+  });
+
+  it("the lesson prompt carries the title and note body and asks for one lasting rule", () => {
+    const p = buildLessonPrompt("## Summary\n\nJEZGRO cleared the trademark search.", "jezgro-trademark-cleared");
+    expect(p).toContain('The note is titled "jezgro-trademark-cleared"');
+    expect(p).toContain("JEZGRO cleared the trademark search.");
+    expect(p).toContain("one sentence, at most 160 characters");
+    expect(p).toContain("Zod 4 `toJSONSchema` needs `io: \"input\"`");
+    expect(p).toContain("not a task or the project's status");
+    expect(p).toContain("output NONE");
+  });
+
+  // The title anchors the rule, so the call must see the retitle, not classify's guess.
+  it("asks for the lesson with the retitled topic", async () => {
+    const d = new StubDistiller(gotcha, async () => "x");
+    await d.run(session, "", "");
+    expect(d.lessonTopic).toBe("a-title");
   });
 });
 

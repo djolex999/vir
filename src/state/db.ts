@@ -172,6 +172,8 @@ export interface DistilledRow {
   project: string;
   confidence: number;
   content: string;
+  // Distill-time one-line rule (gotchas only); null on older notes.
+  lesson: string | null;
 }
 
 export interface AuditRecordInput {
@@ -303,6 +305,13 @@ const ADDED_COLUMNS: Array<{ name: string; ddl: string }> = [
     ddl: "ALTER TABLE sessions ADD COLUMN audit_content_hash TEXT",
   },
   { name: "audited_at", ddl: "ALTER TABLE sessions ADD COLUMN audited_at TEXT" },
+  {
+    // The gotcha's one-line rule for `vir sync-claude`, written at distill
+    // time. NULL for notes distilled before it; those fall back to
+    // extractLesson. Never backfilled: that would be a paid re-distill.
+    name: "lesson",
+    ddl: "ALTER TABLE sessions ADD COLUMN lesson TEXT",
+  },
 ];
 
 // After this many consecutive failed distills, `vir run` stops retrying the
@@ -913,6 +922,7 @@ export class StateDb {
     startedAt?: string | null;
     skipReason?: SkipReason | null;
     entrypoint?: string | null;
+    lesson?: string | null;
   }): void {
     this.db
       .prepare(
@@ -920,13 +930,15 @@ export class StateDb {
         // distill (or any later record without a reason) must CLEAR a stale
         // project-pending/excluded stamp, never preserve it. entrypoint IS
         // COALESCEd — it's a fact about the transcript, not run state, so a
-        // caller that doesn't know it must not wipe it.
+        // caller that doesn't know it must not wipe it. lesson belongs to the
+        // content: a record carrying new content replaces it (a null clears a
+        // stale one), a record without content keeps it.
         `INSERT INTO sessions (
            path, hash, processed_at, skipped, note_paths, error,
            content, category, topic, project, confidence, started_at,
-           skip_reason, entrypoint
+           skip_reason, entrypoint, lesson
          )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(path) DO UPDATE SET
            hash = excluded.hash,
            processed_at = excluded.processed_at,
@@ -935,6 +947,8 @@ export class StateDb {
            error = excluded.error,
            skip_reason = excluded.skip_reason,
            entrypoint = COALESCE(excluded.entrypoint, sessions.entrypoint),
+           lesson = CASE WHEN excluded.content IS NOT NULL
+                         THEN excluded.lesson ELSE sessions.lesson END,
            content = COALESCE(excluded.content, sessions.content),
            category = COALESCE(excluded.category, sessions.category),
            topic = COALESCE(excluded.topic, sessions.topic),
@@ -958,6 +972,7 @@ export class StateDb {
         opts.startedAt ?? null,
         opts.skipReason ?? null,
         opts.entrypoint ?? null,
+        opts.lesson ?? null,
       );
   }
 
@@ -978,9 +993,12 @@ export class StateDb {
   }
 
   listDistilled(): DistilledRow[] {
+    // The MCP server opens the DB read-only and skips migrations, so a DB from
+    // before the lesson column must still list.
+    const lesson = this.columnsOf("sessions").has("lesson") ? "lesson" : "NULL AS lesson";
     const rows = this.db
       .prepare(
-        `SELECT path, content, category, topic, project, confidence, started_at
+        `SELECT path, content, category, topic, project, confidence, started_at, ${lesson}
          FROM sessions
          WHERE skipped = 0
            AND error IS NULL
@@ -997,6 +1015,7 @@ export class StateDb {
       project: string | null;
       confidence: number | null;
       started_at: string | null;
+      lesson: string | null;
     }>;
     return rows.map((r) => ({
       path: r.path,
@@ -1007,6 +1026,7 @@ export class StateDb {
       project: r.project ?? "",
       confidence: r.confidence ?? 0,
       content: r.content,
+      lesson: r.lesson,
     }));
   }
 

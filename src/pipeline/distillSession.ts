@@ -148,6 +148,7 @@ export async function distillOneSession(
     confidence: note.classification.confidence,
     startedAt: parsed.startedAt,
     entrypoint: parsed.entrypoint,
+    lesson: note.lesson ?? null,
   });
   deps.writer.flushPendingEmbeddings();
   return { kind: "distilled", note, written };

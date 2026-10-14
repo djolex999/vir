@@ -37,11 +37,11 @@ Checked against a copy of the real DB: most lessons read as real lessons. The re
 from notes whose early points are background or audit findings, not gotchas
 ("Codebase structure: 304 TypeScript source files…"). The ceiling is the note, not the
 extractor; the durable fix is a one-line `lesson:` written at distill time, with
-`extractLesson` as the fallback for old notes (follow-up, not done).
+`extractLesson` as the fallback for old notes (done, see Change 3).
 
 Tests: src/claude/updater.block.test.ts.
 
-## Change 2: global ~/.claude/CLAUDE.md (6.6 KB → 1.8 KB, applied 2026-10-09; backup at ~/.claude/CLAUDE.md.bak)
+## Change 2: global ~/.claude/CLAUDE.md (6.6 KB → ~1.8 KB, proposed)
 
 Kept: who the user is, stack defaults, non-default code style (named exports, no barrels,
 error-handling layer), ask-first rules, the "done means verified" bar.
@@ -49,6 +49,26 @@ Removed: planning/communication rules the model follows by default, the tasks/le
 self-improvement loop (auto-memory, `learn`, `context-sync` cover it), the project-layout
 tree (the `new-project` skill owns it), the Active projects table (stale, duplicates
 per-project files), and the slug-list VIR block.
+
+## Change 3: distill-time lesson (src/pipeline/distiller.ts)
+
+- After `retitle`, a gotcha gets one more call on the classify model over the finished
+  note (`buildLessonPrompt`, stage `lesson` in cost.log): one sentence, ≤ 160 chars,
+  phrased as the rule, or `NONE`. `parseLesson` strips wrappers and rejects NONE,
+  empty and > 220 chars. Other categories skip the call: only gotchas reach CLAUDE.md.
+- Not folded into the distill prompt: that text is byte-pinned to the blind-tested
+  `eval/distill/COMBINED.md`, and its output is the note. Not folded into classify:
+  classify sees the raw summary, before the note exists (the reason titles moved to
+  the finished note). Same failure policy as `retitle`: a failed call keeps the note
+  with no lesson; a subscription limit still halts the run.
+- Stored as `lesson:` in frontmatter (JSON-escaped scalar) and the nullable `lesson`
+  column. `record()` replaces it whenever it writes content (a re-distill without a
+  lesson clears the stale one) and keeps it otherwise; `rewriteRow` carries it over.
+  `listDistilled` selects `NULL AS lesson` on a read-only pre-migration DB.
+- `selectTopEntries` uses the stored lesson (`ruleText` + clip), else `extractLesson`.
+  No backfill: old notes keep the heuristic until they're re-distilled for other reasons.
+- `vir run --dry-run` charges every session for the lesson call (category is unknown
+  before classify), so the estimate is an upper bound.
 
 ## Review
 
