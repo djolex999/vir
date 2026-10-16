@@ -11,6 +11,7 @@ const row = (topic: string, content: string): DistilledRow => ({
   project: "vir",
   confidence: 0.9,
   content,
+  lesson: null,
 });
 
 describe("buildAuditPrompt", () => {

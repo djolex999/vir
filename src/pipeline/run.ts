@@ -687,6 +687,10 @@ export async function runPipeline(
     // MAX_THINKING_TOKENS=0). On Opus/Sonnet/Haiku 5.5 thinking can't be
     // turned off, so real claude-cli output can run well above these numbers.
     // Their dollar estimate is 0 regardless (subscription quota).
+    // Gotchas also get a lesson call over the note. The category isn't known
+    // before classify, so every session is charged for it: an upper bound.
+    const LESSON_INPUT_TOKENS = 950;
+    const LESSON_OUTPUT_TOKENS = 50;
     const CHARS_PER_TOKEN = 3;
     let totalCost = 0;
     let estimated = 0;
@@ -750,6 +754,14 @@ export async function runPipeline(
               classifyModel,
               RETITLE_INPUT_TOKENS,
               RETITLE_OUTPUT_TOKENS,
+              cfg.pricing,
+              cfg.kieTopUpTier,
+            ) +
+            computeCost(
+              cfg.provider,
+              classifyModel,
+              LESSON_INPUT_TOKENS,
+              LESSON_OUTPUT_TOKENS,
               cfg.pricing,
               cfg.kieTopUpTier,
             );

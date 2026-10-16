@@ -56,7 +56,7 @@ import * as ui from "./ui/display.js";
 import { VaultWriter } from "./pipeline/writer.js";
 import { withPipelineLock } from "./cli/guards.js";
 import { cmdConnect } from "./cli/connect.js";
-import { runSyncClaude } from "./cli/syncClaude.js";
+import { runLessonBackfill, runSyncClaude } from "./cli/syncClaude.js";
 import { insightCounts, renderInsightsLine } from "./cli/insightsStatus.js";
 import { cmdReviewInsights } from "./cli/reviewInsights.js";
 import { runDoctor, runDoctorJson } from "./diagnostics/doctor.js";
@@ -529,13 +529,32 @@ program
   .option("--global", "Only update ~/.claude/CLAUDE.md (and ~/.codex/AGENTS.md)")
   .option("--no-agents", "Leave AGENTS.md files alone")
   .option("--agents-only", "Only update AGENTS.md files (already-promoted rules, no rule prompts)")
+  .option(
+    "--backfill-lessons",
+    "First write a one-line lesson for older gotchas that have none (one paid classify call each)",
+  )
+  .option("--yes", "Skip the cost confirmation for --backfill-lessons")
   .action(
     runAction(async (
       projectArg: string | undefined,
-      opts: { dryRun?: boolean; force?: boolean; global?: boolean; agents?: boolean; agentsOnly?: boolean },
+      opts: {
+        dryRun?: boolean;
+        force?: boolean;
+        global?: boolean;
+        agents?: boolean;
+        agentsOnly?: boolean;
+        backfillLessons?: boolean;
+        yes?: boolean;
+      },
     ) => {
       if (opts.agentsOnly === true && opts.agents === false) {
         throw new Error("--agents-only and --no-agents contradict each other");
+      }
+      if (opts.backfillLessons === true && opts.dryRun === true) {
+        throw new Error("--backfill-lessons writes lessons to the DB; run it without --dry-run");
+      }
+      if (opts.backfillLessons === true && opts.global === true) {
+        throw new Error("--backfill-lessons is for project gotchas; the global file gets none");
       }
       const cfg = loadConfig();
       const db = new StateDb();
@@ -544,6 +563,9 @@ program
           `sync-claude${opts.dryRun ? "  --dry-run" : opts.force ? "  --force" : ""}`,
         );
         ui.blank();
+        if (opts.backfillLessons === true) {
+          await runLessonBackfill(cfg, db, new Distiller(cfg), { project: projectArg, yes: opts.yes });
+        }
         await runSyncClaude(
           cfg,
           db,

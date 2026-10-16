@@ -37,7 +37,7 @@ Checked against a copy of the real DB: most lessons read as real lessons. The re
 from notes whose early points are background or audit findings, not gotchas
 ("Codebase structure: 304 TypeScript source files…"). The ceiling is the note, not the
 extractor; the durable fix is a one-line `lesson:` written at distill time, with
-`extractLesson` as the fallback for old notes (follow-up, not done).
+`extractLesson` as the fallback for old notes (done, see Change 4).
 
 Tests: src/claude/updater.block.test.ts.
 
@@ -86,3 +86,35 @@ tracking; `/sync` keeps the file).
 
 Follow-ups from review: `/shipped` and built-md's update mode describe the same append
 step twice; codebase-architect Phase 6 calls `present_files`, which Claude Code doesn't have.
+
+## Change 4: distill-time lesson (src/pipeline/distiller.ts)
+
+- After `retitle`, a gotcha gets one more call on the classify model over the finished
+  note (`buildLessonPrompt`, stage `lesson` in cost.log): one sentence, ≤ 160 chars,
+  phrased as the rule, or `NONE`. `parseLesson` strips wrappers and rejects NONE,
+  empty and > 220 chars. Other categories skip the call: only gotchas reach CLAUDE.md.
+- Not folded into the distill prompt: that text is byte-pinned to the blind-tested
+  `eval/distill/COMBINED.md`, and its output is the note. Not folded into classify:
+  classify sees the raw summary, before the note exists (the reason titles moved to
+  the finished note). Same failure policy as `retitle`: a failed call keeps the note
+  with no lesson; a subscription limit still halts the run.
+- Stored as `lesson:` in frontmatter (JSON-escaped scalar) and the nullable `lesson`
+  column. `record()` replaces it whenever it writes content (a re-distill without a
+  lesson clears the stale one) and keeps it otherwise; `rewriteRow` carries it over.
+  `listDistilled` selects `NULL AS lesson` on a read-only pre-migration DB.
+- `selectTopEntries` uses the stored lesson (`ruleText` + clip), else `extractLesson`.
+  Old notes keep the heuristic unless `vir sync-claude --backfill-lessons` runs: one
+  lesson call per gotcha with `lesson IS NULL` over the stored note and title, behind
+  `confirmPaidStep` and the pipeline lock, DB only (the note file gets `lesson:` on its
+  next rewrite). NONE stores "" so it isn't re-asked; a failure stays NULL; a
+  subscription limit stops it. Not a re-distill.
+- Eval (2026-10-09/14, a copy of the real DB, the 44 gotchas sync-claude would pick):
+  the first prompt beat the heuristic on ~24 of 42 answered but drifted to a side rule
+  on ~7 grab-bag notes. The shipped prompt passes the title (the retitle) and asks for
+  code in backticks and a rule that stays true. On Haiku 5.5: 0 errors, 4–11 s a call,
+  the drift cases on topic, 5 NONE (those fall back to `extractLesson`; 3 of them had a
+  usable rule, so NONE is a bit eager), 2 task-shaped answers left. 6 of 39 came back
+  wrapped in backticks; `parseLesson` strips a pair that closes after the final
+  punctuation, which a real code span doesn't.
+- `vir run --dry-run` charges every session for the lesson call (category is unknown
+  before classify), so the estimate is an upper bound.

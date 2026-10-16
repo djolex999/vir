@@ -209,12 +209,20 @@ function selectTopEntries(rows: DistilledRow[]): Entry[] {
     .sort((a, b) => b.confidence - a.confidence || (b.startedAt ?? "").localeCompare(a.startedAt ?? ""));
   for (const r of sorted) {
     if (out.length >= TOP_GOTCHAS) break;
-    const lesson = extractLesson(r.content, r.topic);
+    const lesson = lessonOf(r);
     if (lesson.length === 0 || seen.has(lesson)) continue;
     seen.add(lesson);
     out.push({ lesson });
   }
   return out;
+}
+
+// The distiller's lesson when the note has one; notes from before it (or whose
+// lesson call failed) fall back to reading one out of the body. The stored text
+// is model-written, so it gets the same one-line sanitizing and clip.
+function lessonOf(r: DistilledRow): string {
+  const stored = r.lesson === null ? "" : ruleText(r.lesson);
+  return stored.length > 0 ? clip(stored) : extractLesson(r.content, r.topic);
 }
 
 // Words that mark a point as a gotcha rather than background ("Codebase
@@ -336,7 +344,7 @@ function parseRules(block: string): RuleEntry[] {
   const out: RuleEntry[] = [];
   for (const line of block.split("\n")) {
     const m = line.match(/^- rule: (.+) <!-- vir-rule:([A-Za-z0-9-]+) -->$/);
-    if (m?.[1] !== undefined && m[2] !== undefined) out.push({ id: m[2], rule: m[1] });
+    if (m?.[1] !== undefined && m[2] !== undefined) out.push({ id: m[2], rule: ruleText(m[1]) });
   }
   return out;
 }
@@ -356,14 +364,16 @@ function extractLastUpdated(block: string): string | null {
 // Lesson lines under the block's Gotchas heading, plus old-format lines
 // ("- gotcha/topic (conf 0.84) — topic") so the first sync after upgrading
 // shows them leaving.
+// Lines read back from the file are printed in the diff, and the file may not
+// be one vir wrote: sanitize them like the lessons they're compared against.
 function parseEntries(block: string): Entry[] {
   const out: Entry[] = [];
   let inGotchas = false;
   for (const line of block.split("\n")) {
     if (line.startsWith("## ")) inGotchas = line === "## Gotchas (from vir)";
     const legacy = line.match(/^- ([a-z]+\/[a-z0-9-]+) \(conf [\d.]+\)\s*—\s*(.+)$/i);
-    if (legacy?.[1] !== undefined) out.push({ lesson: line.slice(2) });
-    else if (inGotchas && line.startsWith("- ")) out.push({ lesson: line.slice(2) });
+    if (legacy?.[1] !== undefined) out.push({ lesson: ruleText(line.slice(2)) });
+    else if (inGotchas && line.startsWith("- ")) out.push({ lesson: ruleText(line.slice(2)) });
   }
   return out;
 }

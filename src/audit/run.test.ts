@@ -135,6 +135,7 @@ describe("noteIsVerified", () => {
     project: "vir",
     confidence: 0.9,
     content: "body",
+    lesson: null,
   });
 
   it("is true when the note's frontmatter has verified: true", () => {

@@ -93,6 +93,7 @@ function rowFor(sessionId: string, topic: string): DistilledRow {
     project: "demo",
     confidence: 0.9,
     content: "## Summary\n\nbody",
+    lesson: null,
   };
 }
 

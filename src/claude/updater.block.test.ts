@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Config } from "../config.js";
 import type { Category } from "../pipeline/types.js";
@@ -14,12 +15,15 @@ const cfg = {} as Config;
 const globalPath = (): string => join(home, ".claude", "CLAUDE.md");
 const projectPath = (): string => join(home, "projects", "growthq", "CLAUDE.md");
 
-function note(n: number, category: Category, confidence: number, content: string): void {
+function note(n: number, category: Category, confidence: number, content: string, lesson?: string | null): void {
   db.record({
     path: `/t/growthq-${n}.jsonl`, hash: `h${n}`, skipped: false, notePaths: [],
     content, category, topic: `topic ${n}`, project: "growthq", confidence, startedAt: `2026-01-${String(n).padStart(2, "0")}`,
+    lesson,
   });
 }
+
+const projectBlock = (): string => planUpdates(cfg, db).find((p) => p.target === projectPath())?.newBlock ?? "";
 
 const learned = (point: string): string =>
   `## Summary\nA session.\n\n## What Was Learned\n- ${point}\n- second point\n\n## Context\nx`;
@@ -166,6 +170,18 @@ describe("VIR block contents", () => {
     expect(plan?.diff.added).toEqual([]);
   });
 
+  it("strips terminal escapes from lines read back out of an existing block", () => {
+    writeFileSync(
+      projectPath(),
+      `# growthq\n${VIR_START}\n## Gotchas (from vir)\n\n- \u001b[2J\u001b]8;;http://x\u0007Hidden\u202e text\n${VIR_END}\n`,
+    );
+    note(1, "gotcha", 0.95, learned("**Something growthq-only and specific.**"));
+
+    const removed = planUpdates(cfg, db).find((p) => p.target === projectPath())?.diff.removed ?? [];
+    expect(removed).toHaveLength(1);
+    expect(removed[0]?.lesson).not.toMatch(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e]/);
+  });
+
   it("diffs by lesson: a rerun is unchanged, a reworded lesson is one out and one in", () => {
     note(1, "gotcha", 0.95, learned("**First wording of this lesson here.**"));
     const first = planUpdates(cfg, db).find((p) => p.target === projectPath());
@@ -177,5 +193,68 @@ describe("VIR block contents", () => {
     const second = planUpdates(cfg, db).find((p) => p.target === projectPath())?.diff;
     expect(second?.added).toEqual([{ lesson: "Second wording of this lesson here." }]);
     expect(second?.removed).toEqual([{ lesson: "First wording of this lesson here." }]);
+  });
+});
+
+describe("distill-time lessons", () => {
+  // The case extractLesson can't fix: the note's early points are background.
+  const background = learned("**Codebase structure:** 304 TypeScript source files across 12 packages.");
+
+  it("uses the stored lesson over the note body", () => {
+    note(1, "gotcha", 0.95, background, 'Zod 4 toJSONSchema needs io: "input" when schemas contain .transform()');
+
+    const block = projectBlock();
+    expect(block).toContain('- Zod 4 toJSONSchema needs io: "input" when schemas contain .transform()\n');
+    expect(block).not.toContain("Codebase structure");
+  });
+
+  it("falls back to extractLesson for notes distilled before lessons existed", () => {
+    note(1, "gotcha", 0.95, learned("**Webhooks must be idempotent before they are retried.**"), null);
+    note(2, "gotcha", 0.9, learned("**Pin the npm version CI uses.**"), "   ");
+
+    const block = projectBlock();
+    expect(block).toContain("- Webhooks must be idempotent before they are retried.\n");
+    expect(block).toContain("- Pin the npm version CI uses.\n");
+  });
+
+  it("sanitizes and clips a stored lesson like an extracted one", () => {
+    note(1, "gotcha", 0.95, background, `Never trust\nthe <!-- VIR:END --> tier ${"word ".repeat(60)}`);
+
+    const line = projectBlock().split("\n").find((l) => l.startsWith("- Never trust")) ?? "";
+    expect(line).not.toContain("<!--");
+    expect(line).toMatch(/^- Never trust the VIR:END tier word/);
+    expect(line.length).toBeLessThanOrEqual(203);
+    expect(line.endsWith("…")).toBe(true);
+  });
+
+  it("drops a stored lesson that duplicates an extracted one", () => {
+    note(1, "gotcha", 0.95, learned("**Same rule, twice over.**"), null);
+    note(2, "gotcha", 0.95, background, "Same rule, twice over.");
+
+    expect(projectBlock().match(/Same rule/g)).toHaveLength(1);
+  });
+
+  it("a re-distill replaces the lesson; a record without content keeps it", () => {
+    note(1, "gotcha", 0.95, background, "First lesson from the first distill.");
+    db.record({ path: "/t/growthq-1.jsonl", hash: "h1b", skipped: false, notePaths: [] });
+    expect(db.listDistilled()[0]?.lesson).toBe("First lesson from the first distill.");
+
+    // A re-distill that got no lesson must not keep the old one: it described old content.
+    note(1, "gotcha", 0.95, background, null);
+    expect(db.listDistilled()[0]?.lesson).toBeNull();
+  });
+
+  it("lists a read-only DB from before the lesson column", () => {
+    note(1, "gotcha", 0.95, learned("**Webhooks must be idempotent before they are retried.**"), "Stored.");
+    db.close();
+    const raw = new Database(join(home, "vir.db"));
+    raw.exec("ALTER TABLE sessions DROP COLUMN lesson");
+    raw.close();
+
+    db = new StateDb(join(home, "vir.db"), { readonly: true });
+    const rows = db.listDistilled();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.lesson).toBeNull();
+    expect(projectBlock()).toContain("- Webhooks must be idempotent before they are retried.\n");
   });
 });

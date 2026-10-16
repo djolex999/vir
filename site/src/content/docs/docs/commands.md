@@ -62,7 +62,7 @@ description: Every vir subcommand with what it costs.
 
 | Command | Cost | |
 | --- | --- | --- |
-| `vir sync-claude [project]` | free | Diff, confirm, write between VIR markers in CLAUDE.md and existing AGENTS.md; accepted rules get their own y/n each. `--dry-run`, `--force`, `--global`, `--no-agents`, `--agents-only` |
+| `vir sync-claude [project]` | free | Diff, confirm, write between VIR markers in CLAUDE.md and existing AGENTS.md; accepted rules get their own y/n each. `--dry-run`, `--force`, `--global`, `--no-agents`, `--agents-only`. `--backfill-lessons` (cheap, asks first; `--yes`) writes a lesson for older gotchas first |
 | `vir schedule install` / `uninstall` | free | Daemon. `--run-now` |
 | `vir status` | free | Knowledge base breakdown + daemon state |
 | `vir doctor` | cheap | 13–20 install/config checks. `--json` |

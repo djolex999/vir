@@ -112,7 +112,7 @@ There is no status column. A session's state is derived from `skipped`, `skip_re
 Rules worth knowing:
 
 - **Verdicts are split across storage.** Review approval (`verified: true`) lives only in note frontmatter. Rejection lives in the file's location (`.rejected/`) plus `rejected_at`. Audit verdicts live only in the DB and never gate serving.
-- **Read-only consumers skip migrations.** The MCP server and doctor open the DB read-only, so they guard with `columnsOf`, `servingGate` and `sqlite_master` probes. Only `pruned_at`/`rejected_at` and the table existence checks are guarded. `listDistilled`, `getEmbeddings` and `listDistillFailures` name later-migrated columns without a guard, so they would throw on a pre-migration DB.
+- **Read-only consumers skip migrations.** The MCP server and doctor open the DB read-only, so they guard with `columnsOf`, `servingGate` and `sqlite_master` probes. Only `pruned_at`/`rejected_at`, `lesson` and the table existence checks are guarded. `listDistilled` (apart from `lesson`), `getEmbeddings` and `listDistillFailures` name later-migrated columns without a guard, so they would throw on a pre-migration DB.
 - **Articles and PDFs retry up to 3 times (0.23.1).** An error is recorded with the hash and bumps `attempts`. `isArticleProcessed`/`isPdfProcessed` treat an errored row as unprocessed until it has failed 3 times on the same bytes; a changed file starts over.
 
 ## 7. Data Flow

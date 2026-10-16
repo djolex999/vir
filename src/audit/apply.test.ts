@@ -139,7 +139,7 @@ describe("applyAuditRejects", () => {
 describe("previewRejects", () => {
   const row = (id: string, project = "app"): DistilledRow => ({
     path: `/p/${id}.jsonl`, sessionId: id, startedAt: null, category: "gotcha",
-    topic: `t-${id}`, project, confidence: 0.9, content: "c",
+    topic: `t-${id}`, project, confidence: 0.9, content: "c", lesson: null,
   });
   const audit = (id: string, verdict: AuditRow["verdict"] = "reject", fresh = true): AuditRow => ({
     path: `/p/${id}.jsonl`, sessionId: id, verdict, reason: "", mergeInto: null, auditedAt: "x", fresh,

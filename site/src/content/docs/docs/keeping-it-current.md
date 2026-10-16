@@ -31,7 +31,10 @@ vir sync-claude <project>    # one project
 vir sync-claude --global     # only ~/.claude/CLAUDE.md (and ~/.codex/AGENTS.md)
 vir sync-claude --no-agents  # leave AGENTS.md files alone
 vir sync-claude --agents-only # only AGENTS.md
+vir sync-claude --backfill-lessons  # first write lessons for older gotchas (paid, asks first)
 ```
+
+Each gotcha's line is the lesson the distiller wrote for it: one sentence, phrased as the rule. Gotchas distilled before that existed fall back to a line read out of the note, which is sometimes background rather than the gotcha. `--backfill-lessons` fixes those without re-distilling: one cheap classify-model call per gotcha that has no lesson yet, after a cost prompt (`--yes` skips it). A note where the model finds no rule keeps its extracted line and isn't asked again.
 
 vir writes only between `<!-- VIR:START -->` and `<!-- VIR:END -->` markers. The rest of the file is preserved byte-for-byte; if there's no block yet, one is appended. Nothing is written without you seeing the diff, unless you pass `--force`.
 

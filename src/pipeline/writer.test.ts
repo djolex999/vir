@@ -128,6 +128,31 @@ describe("VaultWriter write modes", () => {
     expect(index).toContain("test topic");
   });
 
+  it("writes the lesson into frontmatter as an escaped one-line scalar", async () => {
+    const writer = new VaultWriter(makeCfg(vault), null);
+    const [notePath] = await writer.write(makeSession(), {
+      ...makeNote([], "test topic", "gotcha"),
+      lesson: 'Zod 4 needs io: "input"\nwith a \\ in it',
+    });
+    expect(readFileSync(notePath!, "utf8")).toContain(
+      'lesson: "Zod 4 needs io: \\"input\\" with a \\\\ in it"\n',
+    );
+  });
+
+  it("writes no lesson line when the note has none, and keeps it on a rewrite", async () => {
+    const writer = new VaultWriter(makeCfg(vault), null);
+    const [notePath] = await writer.write(makeSession(), makeNote());
+    expect(readFileSync(notePath!, "utf8")).not.toContain("lesson:");
+
+    const session = makeSession();
+    const [rewritten] = await writer.rewriteRow({
+      path: session.path, sessionId: session.sessionId, startedAt: session.startedAt,
+      category: "gotcha", topic: "test topic", project: "demo", confidence: 0.9,
+      content: "## Summary\n\nbody text", lesson: "Pin the npm version CI uses.",
+    });
+    expect(readFileSync(rewritten!, "utf8")).toContain('lesson: "Pin the npm version CI uses."\n');
+  });
+
   it("writes a themes: YAML list when the note carries themes", async () => {
     const writer = new VaultWriter(makeCfg(vault), null);
     const [notePath] = await writer.write(

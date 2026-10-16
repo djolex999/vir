@@ -11,6 +11,7 @@ const row = (sessionId: string, project: string, content: string, startedAt = "2
   project,
   confidence: 0.9,
   content,
+  lesson: null,
 });
 
 describe("batchByProject", () => {

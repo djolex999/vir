@@ -17,6 +17,7 @@ function row(category: DistilledRow["category"], topic: string, content: string)
     project: "vir",
     confidence: 0.8,
     content,
+    lesson: null,
   };
 }
 
