@@ -83,10 +83,22 @@ export function parseJudgeResponse(
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error("judge returned a non-object");
   }
-  const obj = parsed as Record<string, unknown>;
+  const raw = parsed as Record<string, unknown>;
+  // The judge sometimes drops a slug's directory (insights/rules/x → x). Such
+  // a key is mapped back only when exactly one candidate ends in "/<key>";
+  // anything else stays an error, so a grade is never pinned on a guess.
   const expected = new Set(expectedSlugs);
-  for (const k of Object.keys(obj)) {
-    if (!expected.has(k)) throw new Error(`judge graded unknown slug: ${k}`);
+  const obj: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    let slug = k;
+    if (!expected.has(k)) {
+      const matches = expectedSlugs.filter((s) => s.endsWith(`/${k}`));
+      if (matches.length === 0) throw new Error(`judge graded unknown slug: ${k}`);
+      if (matches.length > 1) throw new Error(`judge graded ambiguous slug: ${k}`);
+      slug = matches[0]!;
+    }
+    if (slug in obj) throw new Error(`judge graded twice: ${slug}`);
+    obj[slug] = v;
   }
   const out: Record<string, Grade> = {};
   for (const slug of expectedSlugs) {

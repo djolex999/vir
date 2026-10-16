@@ -6,7 +6,7 @@ import type { LabelRecord, LabelStore, QuerySet } from "../types.js";
 import { labelStoreKey } from "../types.js";
 import { assertPoolMatchesSet, currentLabels } from "./current.js";
 import { contentHash, queryHash, rubricHash } from "./judge.js";
-import { planJudgeCalls } from "./run.js";
+import { applyJudgeResponse, planJudgeCalls } from "./run.js";
 
 const RUBRIC = "rubric v1";
 const RH = rubricHash(RUBRIC);
@@ -91,5 +91,23 @@ describe("planJudgeCalls after a query set rebuild", () => {
     const same = planJudgeCalls(set({ "identifier-1": "old text" }), pool, store([oldLabel]), RUBRIC, root, 1);
     expect(same.skipped).toBe(1);
     expect(same.calls).toHaveLength(0);
+  });
+});
+
+describe("applyJudgeResponse", () => {
+  const call = { queryId: "real-1", queryText: "q", candidates: [{ slug: "insights/rules/r-1", hash: "h1" }, { slug: "gotchas/g-2", hash: "h2" }] };
+
+  it("writes every candidate's grade, keyed by query text, slug and content", () => {
+    const s: LabelStore = { version: 1, labels: {} };
+    expect(applyJudgeResponse(s, call, '{"r-1": 1, "gotchas/g-2": 0}', RH, CREATED)).toEqual({ ok: true });
+    expect(s.labels[labelStoreKey("real-1", queryHash("q"), "insights/rules/r-1", "h1")]?.grade).toBe(1);
+    expect(Object.keys(s.labels)).toHaveLength(2);
+  });
+
+  it("writes nothing and reports why when the response is unusable", () => {
+    const s: LabelStore = { version: 1, labels: {} };
+    const res = applyJudgeResponse(s, call, '{"nope": 1, "gotchas/g-2": 0}', RH, CREATED);
+    expect(res).toEqual({ ok: false, reason: "judge graded unknown slug: nope" });
+    expect(s.labels).toEqual({});
   });
 });
