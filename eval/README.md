@@ -79,7 +79,8 @@ own configuration.
 The run record carries git SHA and dirty flag, K, seed, hashes of the query
 set, label file and rubric, spot-check agreement, per-arm corpus sizes and
 embedding provenance, method split, every per-query number, every
-comparison, and each arm's config snapshot. `eval:diff` waits for a second run.
+comparison, and each arm's config snapshot. Compare two runs with
+`npm run eval:analyze -- diff` (below).
 
 ## Query classes
 
@@ -107,6 +108,46 @@ agreeing with themselves are correlation, not verification.
 `tfidf`, `nomic`, `nomic-mmr`, `bge`, `bge-mmr`. TF-IDF has no MMR arm because
 production applies MMR in the embedding path only. New arms (hybrid, re-rank)
 are `ArmSpec` entries once the retriever exposes them as config.
+
+## Run analysis (`analysis/`, Python)
+
+The one Python piece of Vir. It reads run records and never ranks, labels or
+measures anything itself: the TS harness above stays the only thing that
+calls the retriever. It never ships (a uv project outside `files`) and follows
+the same data rule: it reads `~/.vir/eval/runs/` and writes only to
+`~/.vir/eval/analysis/`.
+
+```
+npm run eval:analyze -- runs                 # list run records
+npm run eval:analyze -- verify [run]         # recompute every stored CI; exit 1 on any mismatch
+npm run eval:analyze -- diff [old] [new]     # default: the two newest runs
+npm run eval:analyze -- report [run]         # summary.md, forest.png, per_query.png
+```
+
+Needs [uv](https://docs.astral.sh/uv/); the first call creates
+`eval/analysis/.venv` (pandas, matplotlib). Dev checks:
+`cd eval/analysis && uv run pytest && uv run pyright` (strict).
+
+- **Same statistics, proven.** `rng.py` and `bootstrap.py` port
+  `rng.ts` and `metrics/bootstrap.ts`. `golden.ts` writes their output on
+  synthetic inputs to `tests/fixtures/bootstrap_golden.json`. `golden.test.ts`
+  (vitest, in CI) fails when the TS code drifts from the fixture, and
+  `test_parity.py` fails when the Python drifts from it. Regenerate with
+  `VIR_UPDATE_GOLDEN=1 npx vitest run eval/analysis`. `verify` goes further:
+  it reproduces every CI in a real run record bit for bit, including the
+  shared-RNG draw order across comparisons.
+- **diff** subtracts per query (new − old) for every arm in both runs, per class
+  and metric, with the same paired bootstrap, seeded from the newer run. It
+  refuses runs whose `queriesHash`, `labelsHash`, `rubricHash` or `k` differ,
+  because those numbers measure different things. It warns about dirty trees and
+  one-sided arms, and lists config keys that changed per arm.
+- **report** plots the CIs the run already stores (it recomputes nothing) and the
+  per-query nDCG delta against the baseline, so you can see whether a mean
+  comes from one query or from many.
+- **n ≥ 2 to call a difference.** `pairedBootstrapCI` returns
+  `lo = hi = meanDiff` at n = 1, so a single query "excludes zero". Analysis
+  never reports that as detectable. Classes under 20 queries are flagged
+  report-only.
 
 ## Distill prompt A/B (`eval/distill/`)
 

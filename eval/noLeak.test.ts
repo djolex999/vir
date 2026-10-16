@@ -36,15 +36,26 @@ describe("eval data never lands in the repo", () => {
     const forbidden = tracked.filter(
       (p) =>
         /^eval\/(data|dist|homes|runs)\//.test(p) ||
-        /\.(db|jsonl)$/.test(p) ||
+        /^eval\/analysis\/\.venv\//.test(p) ||
+        /\.(db|jsonl|png|csv|parquet)$/.test(p) ||
         /(queries|labels|pool|spotcheck)\.json$/.test(p),
     );
     expect(forbidden).toEqual([]);
   });
 
-  it(".gitignore excludes eval/dist and eval/data", () => {
+  it(".gitignore excludes eval/dist, eval/data and the analysis venv", () => {
     const ignore = readFileSync(join(REPO_ROOT, ".gitignore"), "utf8");
     expect(ignore).toMatch(/^eval\/dist\/$/m);
     expect(ignore).toMatch(/^eval\/data\/$/m);
+    expect(ignore).toMatch(/^eval\/analysis\/\.venv\/$/m);
+  });
+
+  it("the only committed analysis fixture is the synthetic bootstrap golden", () => {
+    // eval/analysis/tests/fixtures is for numbers generated from code
+    // (golden.ts), never for anything copied out of ~/.vir/eval.
+    const fixtures = execFileSync("git", ["ls-files", "eval/analysis/tests/fixtures"], { cwd: REPO_ROOT, encoding: "utf8" })
+      .split("\n")
+      .filter(Boolean);
+    expect(fixtures.filter((p) => p !== "eval/analysis/tests/fixtures/bootstrap_golden.json")).toEqual([]);
   });
 });

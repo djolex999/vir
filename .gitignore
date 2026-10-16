@@ -21,6 +21,9 @@ docs-*.jpeg
 # retrieval eval harness: code lives in eval/, data never does
 eval/dist/
 eval/data/
+eval/analysis/.venv/
+eval/analysis/**/__pycache__/
+eval/analysis/.pytest_cache/
 
 # Local-only Codex fixture (your real prompts): npm run fixture:codex
 src/sources/codex/fixtures/
