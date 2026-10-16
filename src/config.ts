@@ -128,7 +128,7 @@ export const ConfigSchema = z
       ),
     models: z
       .object({
-        classify: z.string().default("claude-haiku-4-5-20251001"),
+        classify: z.string().default("claude-haiku-5-5"),
         // The "smart" model — used for decision-heavy / large sessions under
         // hybrid routing, and for every session when distillFast is unset.
         distill: z.string().default("claude-sonnet-5"),
@@ -140,7 +140,7 @@ export const ConfigSchema = z
         distillThreshold: z.number().positive().optional(),
       })
       .default({
-        classify: "claude-haiku-4-5-20251001",
+        classify: "claude-haiku-5-5",
         distill: "claude-sonnet-5",
       }),
     // Per-provider, per-model price overrides ($/1M tokens). Optional and
