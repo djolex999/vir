@@ -1,7 +1,40 @@
 import { appendCostRecord } from "../src/cost/log.js";
-import { callClaudeCli } from "../src/pipeline/claudeCli.js";
+import { ClaudeCliError, callClaudeCli } from "../src/pipeline/claudeCli.js";
 
 export const EVAL_MODEL = "claude-sonnet-5";
+
+// The claude CLI intermittently exits 1 with "No messages returned from query"
+// and no JSON envelope (seen in daemon.log since 2026-10; the same prompt
+// succeeds on a re-run). Production leaves every ClaudeCliError to the next
+// daemon pass. The harness has no next pass: `queries` loses every call made
+// before the crash, and `label` aborts a long run. Only this exact signature is
+// retried; a limit (ClaudeCliLimitError) or any other failure throws at once,
+// so a misread limit can never enter a retry chain.
+const TRANSIENT_RETRY_DELAYS_MS = [5_000, 15_000, 45_000];
+
+export function isTransientCliError(err: unknown): boolean {
+  return (
+    err instanceof ClaudeCliError &&
+    err.message.startsWith("claude -p produced no parseable JSON envelope") &&
+    err.message.includes("No messages returned from query")
+  );
+}
+
+export async function withTransientCliRetry<T>(
+  fn: () => Promise<T>,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<T> {
+  for (const delay of TRANSIENT_RETRY_DELAYS_MS) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isTransientCliError(err)) throw err;
+      process.stderr.write(`claude -p returned no messages; retrying in ${delay / 1000}s\n`);
+      await sleep(delay);
+    }
+  }
+  return await fn();
+}
 
 // Every harness LLM call goes through the production claude-cli path (real
 // HOME, real auth) and lands in ~/.vir/cost.log under an `eval-*` stage with
@@ -18,7 +51,7 @@ export async function callJudge(
   session: string,
   model: string = EVAL_MODEL,
 ): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
-  const res = await callClaudeCli({ prompt, model });
+  const res = await withTransientCliRetry(() => callClaudeCli({ prompt, model }));
   // Input is always the chars/4 estimate: the claude -p envelope reports the
   // prompt-cache tokens in separate fields that parseCliEnvelope drops, so its
   // `input_tokens` is ~2 for a 3k-token prompt (todo.md, 2026-09-12). Output
