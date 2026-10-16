@@ -117,15 +117,20 @@ export const ConfigSchema = z
     // Max LLM calls one `vir connect` run may make (one per candidate rule).
     connectMaxCandidates: z.number().int().positive().default(10),
     // MMR diversity weight for `vir query` / `vir_query` retrieval. Applied in
-    // the embedding path only (TF-IDF is too sparse to benefit).
+    // the embedding path only (TF-IDF is too sparse to benefit). Default 0
+    // since 0.27.0: on the 2026-10-16 retrieval eval, MMR at 0.3 lowered
+    // nDCG@8 for both nomic (-0.089) and bge (-0.079), and under nomic it
+    // rewarded off-topic outliers for being dissimilar.
     retrievalDiversity: z
       .number()
       .min(0)
       .max(1)
-      .default(0.3)
+      .default(0)
       .describe(
-        "MMR diversity parameter. 0.0 = pure relevance, 1.0 = pure diversity. Default 0.3 favors relevance with moderate diversity.",
+        "MMR diversity parameter. 0.0 = pure relevance (default), 1.0 = pure diversity.",
       ),
+    // Schema migrations applied (migrateConfigJson). Absent = before 0.27.0.
+    configVersion: z.number().int().nonnegative().optional(),
     models: z
       .object({
         classify: z.string().default("claude-haiku-4-5-20251001"),
@@ -238,6 +243,44 @@ export function configExists(): boolean {
   return existsSync(CONFIG_PATH);
 }
 
+// Bumped when a stored value must change meaning on upgrade. saveConfig
+// persists every defaulted field, so a changed default alone never reaches an
+// existing install: the old default is already written into its config.json.
+export const CONFIG_VERSION = 1;
+
+// Pure: brings a decoded config.json up to CONFIG_VERSION. Each step runs once;
+// the stamped version keeps a value the user sets afterwards from being
+// migrated again.
+export function migrateConfigJson(raw: Record<string, unknown>): {
+  json: Record<string, unknown>;
+  changed: boolean;
+} {
+  const from = typeof raw["configVersion"] === "number" ? raw["configVersion"] : 0;
+  if (from >= CONFIG_VERSION) return { json: raw, changed: false };
+  const json: Record<string, unknown> = { ...raw };
+  // v1 (0.27.0): 0.3 was the persisted MMR default, not a choice. A user who
+  // picked exactly 0.3 is reset once; the changelog says so.
+  if (from < 1 && json["retrievalDiversity"] === 0.3) json["retrievalDiversity"] = 0;
+  json["configVersion"] = CONFIG_VERSION;
+  return { json, changed: true };
+}
+
+function writeConfigFile(json: unknown): void {
+  // config.json contains API keys — owner read/write only, from the first
+  // byte. Writing in place created the file with the default umask (often
+  // 0644) and left an existing file's wider mode in place until the chmod.
+  // A 0600 temp file renamed over it is never readable by anyone else.
+  const tmp = `${CONFIG_PATH}.${process.pid}.tmp`;
+  try {
+    writeFileSync(tmp, JSON.stringify(json, null, 2), { mode: 0o600 });
+    chmodSync(tmp, 0o600);
+    renameSync(tmp, CONFIG_PATH);
+  } catch (err) {
+    rmSync(tmp, { force: true });
+    throw err;
+  }
+}
+
 export function loadConfig(): Config {
   if (!existsSync(CONFIG_PATH)) {
     throw new Error(
@@ -251,8 +294,17 @@ export function loadConfig(): Config {
   } catch {
     // ignore — a failed chmod must never block loading config
   }
-  const raw = readFileSync(CONFIG_PATH, "utf8");
-  const parsed = ConfigSchema.parse(JSON.parse(raw));
+  const decoded = JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as Record<string, unknown>;
+  const { json, changed } = migrateConfigJson(decoded);
+  if (changed) {
+    try {
+      // The user's own file shape, plus the migration — no defaults filled in.
+      writeConfigFile(json);
+    } catch {
+      // A read-only config still loads migrated; the migration reruns next load.
+    }
+  }
+  const parsed = ConfigSchema.parse(json);
   return {
     ...parsed,
     vaultPath: expandHome(parsed.vaultPath),
@@ -274,17 +326,6 @@ export function saveConfig(cfg: Config): void {
   if (!existsSync(dirname(CONFIG_PATH))) {
     mkdirSync(dirname(CONFIG_PATH), { recursive: true });
   }
-  // config.json contains API keys — owner read/write only, from the first
-  // byte. Writing in place created the file with the default umask (often
-  // 0644) and left an existing file's wider mode in place until the chmod.
-  // A 0600 temp file renamed over it is never readable by anyone else.
-  const tmp = `${CONFIG_PATH}.${process.pid}.tmp`;
-  try {
-    writeFileSync(tmp, JSON.stringify(cfg, null, 2), { mode: 0o600 });
-    chmodSync(tmp, 0o600);
-    renameSync(tmp, CONFIG_PATH);
-  } catch (err) {
-    rmSync(tmp, { force: true });
-    throw err;
-  }
+  // A config written by this build is current by definition.
+  writeConfigFile({ ...cfg, configVersion: CONFIG_VERSION });
 }

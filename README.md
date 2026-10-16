@@ -23,7 +23,7 @@ developer-tools, mcp, local-first, cross-platform, llm-wiki
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/v/@djolex999/vir-cli?color=7c6af7&label=npm" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/dw/@djolex999/vir-cli?color=4fd1a0" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee" alt="license"></a>
-  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1318%20passing-22c55e" alt="tests"></a>
+  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1353%20passing-22c55e" alt="tests"></a>
   <a href="#project-status"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey" alt="platforms"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-c084fc" alt="mcp"></a>
   <a href="#"><img src="https://img.shields.io/badge/local--first-yes-f59e0b" alt="local-first"></a>
@@ -570,8 +570,11 @@ Every stored vector records the model that produced it. Vectors from
 different models are never compared; if you switch providers,
 `vir embed --force` re-embeds the index after telling you what it costs.
 Falls back to keyword search automatically when no provider is available,
-and says so: `via tfidf (no provider)`. MMR reranking balances relevance
-against diversity, tunable via `retrievalDiversity` (default 0.3).
+and says so: `via tfidf (no provider)`. Results rank by pure relevance by
+default; `retrievalDiversity` (0..1) turns on MMR reranking, which trades
+relevance for diversity. A verified note gets a small boost only when it
+already ranks near the top, so it wins near-ties without displacing more
+relevant notes.
 
 ## Config reference
 
@@ -593,7 +596,7 @@ Located at `~/.vir/config.json`.
 | `agentTranscripts`  | `exclude`                   | Headless SDK agent transcripts: `exclude` \| `include`     |
 | `projects`          | (unset)                     | Per-project `include`/`exclude` map; absent = undecided    |
 | `filterToolCalls`   | `moderate`                  | Tool-output filtering: `aggressive` \| `moderate` \| `off` |
-| `retrievalDiversity`| `0.3`                       | MMR diversity (0..1)                                       |
+| `retrievalDiversity`| `0`                         | MMR diversity (0..1); 0 = pure relevance                   |
 | `logQueries`        | `true`                      | Log retrievals to `~/.vir/queries.jsonl`; `false` = off    |
 | `embeddingProvider` | (unset)                     | `ollama` \| `local` \| `none`; unset = auto-detect         |
 | `models.classify`   | `claude-haiku-4-5-20251001` | Classify model                                             |

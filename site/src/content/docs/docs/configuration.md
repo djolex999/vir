@@ -30,7 +30,7 @@ description: Every key in ~/.vir/config.json.
 | `pdfsDir` | — | Folder of PDFs. Unset = off (recommended; see Inputs) |
 | `distillPdfs` | `true` | Gate for the PDF phase when `pdfsDir` is set |
 | `embeddingProvider` | — | `ollama` \| `local` \| `none`. Unset = auto-detect |
-| `retrievalDiversity` | `0.3` | MMR diversity weight, 0–1 |
+| `retrievalDiversity` | `0` | MMR diversity weight, 0–1; 0 = pure relevance |
 | `logQueries` | `true` | Append retrievals to `~/.vir/queries.jsonl` |
 | `connectMaxCandidates` | `10` | Most LLM calls one `vir connect` run may make (one per candidate rule) |
 | `notifications` | `true` | Desktop notifications from the daemon |

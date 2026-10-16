@@ -71,6 +71,9 @@ export function buildInitConfig(
     logQueries: existing?.logQueries,
     // Wizard-silent connect-pass knob.
     connectMaxCandidates: existing?.connectMaxCandidates,
+    // Migration marker: saveConfig stamps the current version anyway; carried
+    // so a built config never reads as pre-migration.
+    configVersion: existing?.configVersion,
     projects: { ...existing?.projects, ...a.projects },
     notifications: existing?.notifications,
     workflowTranscripts: existing?.workflowTranscripts,
