@@ -13,17 +13,11 @@
   <img src="docs/graph.png" width="900" alt="Obsidian graph view of a vault distilled by vir: session notes, articles, PDFs, and topic pages, cross-linked">
 </p>
 
-<!--
-GitHub topics (add manually: repo → About → ⚙ → Topics):
-claude, claude-code, ai-memory, obsidian, knowledge-base, llm,
-developer-tools, mcp, local-first, cross-platform, llm-wiki
--->
-
 <p align="center">
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/v/@djolex999/vir-cli?color=7c6af7&label=npm" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/dw/@djolex999/vir-cli?color=4fd1a0" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee" alt="license"></a>
-  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1322%20passing-22c55e" alt="tests"></a>
+  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1325%20passing-22c55e" alt="tests"></a>
   <a href="#project-status"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey" alt="platforms"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-c084fc" alt="mcp"></a>
   <a href="#"><img src="https://img.shields.io/badge/local--first-yes-f59e0b" alt="local-first"></a>
@@ -37,9 +31,10 @@ vault stays yours.
 
 ## Two numbers
 
-**396 sessions.** Claude Code prunes transcripts after about 30 days. 396 of my
-distilled sessions now exist nowhere except this vault. The decisions and
-gotchas inside them would otherwise be gone.
+**396 sessions.** Claude Code deletes transcripts after 30 days by default. You
+can raise `cleanupPeriodDays`, but a folder of JSONL isn't something you can
+read or search. 396 of my distilled sessions now exist only as notes in this
+vault. The decisions and gotchas inside them would otherwise be gone.
 
 **1,386 transcripts, 410 notes.** Of the 1,386 transcripts vir has read on my
 machine, 562 were subagent runs, workflow phases, or sidechains — skipped by
@@ -54,6 +49,7 @@ Numbers from my machine, September 2026. Yours will differ. Website:
 ```bash
 npm install -g @djolex999/vir-cli
 vir init
+vir run --dry-run   # per-session cost estimate, no model calls
 vir run
 ```
 
@@ -61,6 +57,34 @@ vir run
 folder. `vir run` does one pass
 over your sessions and writes notes. When you like the output,
 `vir schedule install` registers a daemon that keeps the vault current.
+
+**No API key needed:** pick `claude-cli` in `vir init` and vir distills
+through your Claude Code subscription (it uses your usage limits, not
+dollars). With an Anthropic API key, my 226-session backfill would cost
+about $25 on Haiku and $75 on Sonnet (the default hybrid lands between);
+`vir run` asks before spending on more than 20 sessions. Details in [Cost](#cost).
+
+macOS is stable, Linux is experimental, Windows isn't supported yet
+([platform support](#platform-support)).
+
+<p align="center">
+  <img src="assets/demo.gif" width="800" alt="vir distilling Claude Code sessions into notes in an Obsidian vault">
+</p>
+
+## What leaves your machine
+
+- **Session text goes to the provider you pick, nowhere else.** That's Anthropic's API,
+  your own Claude Code or Codex subscription, or Kie.ai (a third-party proxy,
+  meant for test runs). API keys, bearer tokens, absolute paths and email
+  addresses are scrubbed before sending.
+- **Everything else stays local.** The vault is plain markdown on your disk, and the
+  state, logs and embeddings live in `~/.vir/`.
+- **There is no vir server, no account and no telemetry.** Uninstall it and the vault is
+  still yours.
+- **You choose what's read.** `vir projects exclude <name>` keeps a project out for good,
+  and subagent and workflow transcripts are skipped by default.
+
+Full breakdown: [virwiki.dev/docs/privacy](https://virwiki.dev/docs/privacy).
 
 ## Supported agents
 
@@ -114,10 +138,6 @@ exposes the vault to Claude Code or Codex mid-session, so the agent consults
 past decisions instead of rediscovering them. `vir sync-claude` feeds the best
 notes back into your CLAUDE.md files, and into AGENTS.md files that already
 exist (`~/.codex/AGENTS.md`, project roots), with a diff and your confirmation.
-
-<p align="center">
-  <img src="assets/demo.gif" width="800" alt="vir distilling Claude Code sessions into notes in an Obsidian vault">
-</p>
 
 New in 0.25: `vir connect` finds a lesson you keep re-learning across sessions
 and proposes it as a rule, quoting each note it came from. You review it, and
