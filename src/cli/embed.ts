@@ -7,6 +7,7 @@ import {
   resolveEmbeddingProvider,
 } from "../search/provider.js";
 import { runEmbedSetup } from "./embedSetup.js";
+import { insightEmbedTargets, insightEmbeddingText } from "../connect/embed.js";
 import { StateDb } from "../state/db.js";
 import * as ui from "../ui/display.js";
 import { VaultWriter } from "../pipeline/writer.js";
@@ -43,6 +44,8 @@ export async function embedCommand(
       ...db.getTopicEmbeddings(root, cfg.topicsDir),
       ...db.getPdfEmbeddings(),
     ];
+    // Accepted rules are left out of this count: like the `vir run` sweep,
+    // this command re-embeds an off-model rule without --force (below).
     // Crossing a model boundary is an index invalidation, not a gap fill —
     // it needs --force AND explicit consent, with the cost stated first.
     // Without --force, mismatched rows stay excluded from vector search
@@ -127,11 +130,16 @@ export async function embedCommand(
           }))
         : db.listPdfEmbeddingTargets();
 
+    // Accepted connect-pass rules are served by search too, so a model switch
+    // must carry them over like every other layer.
+    const insightTargets = insightEmbedTargets(db, provider.modelName, opts.force === true);
+
     const total =
       target.length +
       topicTargets.length +
       articleTargets.length +
-      pdfTargets.length;
+      pdfTargets.length +
+      insightTargets.length;
     if (total === 0) {
       ui.row(ui.success(ui.CHECK), ui.text("all notes already embedded"));
       return;
@@ -208,6 +216,16 @@ export async function embedCommand(
         continue;
       }
       db.storePdfEmbedding(p.path, vec, provenance);
+      embedded += 1;
+      sp.text = ui.dim(`embedding notes (${embedded}/${total})`);
+    }
+    for (const r of insightTargets) {
+      const vec = await embedNoteWithProvider(provider, insightEmbeddingText(r));
+      if (!vec) {
+        errors += 1;
+        continue;
+      }
+      db.setInsightEmbedding(r.id, vec, provenance);
       embedded += 1;
       sp.text = ui.dim(`embedding notes (${embedded}/${total})`);
     }

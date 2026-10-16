@@ -37,6 +37,27 @@ export async function embedLessons(
   return out;
 }
 
+// What every path embeds for a rule: accept time, the sweep, and `vir embed`.
+export function insightEmbeddingText(t: { rule: string; why: string }): string {
+  return `${t.rule}\n${t.why}`;
+}
+
+// Accepted rules `vir embed` should (re-)embed under `model`: with force,
+// every accepted rule; otherwise those with no vector or another model's.
+// A model switch through `vir embed --force` previously skipped rules, so they
+// dropped out of search until the next `vir run` sweep.
+export function insightEmbedTargets(
+  db: StateDb,
+  model: string,
+  force: boolean,
+): Array<{ id: string; rule: string; why: string }> {
+  if (!force) return db.listInsightEmbeddingTargets(model);
+  return db
+    .listInsights()
+    .filter((i) => i.status === "accepted")
+    .map((i) => ({ id: i.id, rule: i.rule, why: i.why }));
+}
+
 // Self-heal for accepted rules: embedded at accept time, but a provider outage
 // then, or a later model switch, would leave them out of embedding search.
 // Best-effort — a failed embed is retried on the next sweep. Returns the count.
@@ -45,7 +66,7 @@ export async function backfillInsightEmbeddings(db: StateDb, provider: Embedding
   for (const t of db.listInsightEmbeddingTargets(provider.modelName)) {
     let vec: number[];
     try {
-      vec = (await provider.embedDoc(`${t.rule}\n${t.why}`)).embedding;
+      vec = (await provider.embedDoc(insightEmbeddingText(t))).embedding;
     } catch {
       continue;
     }
