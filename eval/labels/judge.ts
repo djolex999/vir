@@ -17,6 +17,11 @@ export function contentHash(raw: string): string {
   return sha12(raw);
 }
 
+// Identifies the query a label was judged for; ids alone are positional.
+export function queryHash(text: string): string {
+  return sha12(text);
+}
+
 // A label is keyed by note slug AND content hash: a re-distilled or hand-edited
 // note gets no credit for a grade given to its previous text.
 export function labelKey(slug: string, hash: string): string {

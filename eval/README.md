@@ -98,10 +98,16 @@ DB row in a category dir, so every arm can reach them.
 
 TREC-style pooling: the union of each arm's top-20 per query. Graded 0/1/2 by
 `claude-sonnet-5` against `labels/rubric.md`, at most 10 candidates per call in
-seeded-shuffled order. A label is keyed by `queryId | slug @ sha256(content)[:12]`
-and carries the rubric hash: an edited note or rubric invalidates it, and a
-re-run judges only what changed. The spot-check is the anchor: model labels
-agreeing with themselves are correlation, not verification.
+seeded-shuffled order. A label is keyed by
+`queryId # sha256(query text)[:12] | slug @ sha256(content)[:12]` and carries
+the rubric hash: an edited note or rubric invalidates it, and a re-run judges
+only what changed. Query ids are positional (`identifier-3`), so the query-text
+hash is what stops a rebuilt set from inheriting grades judged for different
+text. Every reader of the store (`label`, `run`, `show`, `spotcheck`) goes
+through `labels/current.ts`. Labels written before the hash existed count only
+if they post-date the set's `createdAt`. `label` and `show` refuse a pool built
+from another query set. The spot-check is the anchor: model labels agreeing
+with themselves are correlation, not verification.
 
 ## Arms
 

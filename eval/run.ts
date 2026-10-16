@@ -8,6 +8,7 @@ import { vaultRoot } from "../src/search/retriever.js";
 import { ARMS, type ArmSpec } from "./arms.js";
 import { agreement } from "./labels/agreement.js";
 import { rubricHash, type Grade } from "./labels/judge.js";
+import { currentLabels } from "./labels/current.js";
 import { readLabelStore, readQuerySet, readRubric } from "./labels/run.js";
 import { mean, pairedBootstrapCI, type BootstrapCI } from "./metrics/bootstrap.js";
 import { contaminationAtK, isAgentDerived } from "./metrics/contamination.js";
@@ -171,9 +172,11 @@ export async function runBaseline(opts: { seed: number; arms?: readonly ArmSpec[
   const rubric = readRubric();
   const classOf = new Map(set.queries.map((q) => [q.id, q.class] as const));
 
-  // grades[queryId] = slug → grade, over every judged pair for that query.
+  // grades[queryId] = slug → grade, over every pair judged for this query's
+  // current text under the current rubric.
+  const labels = currentLabels(store, set, rubricHash(rubric));
   const grades = new Map<string, Map<string, Grade>>();
-  for (const l of Object.values(store.labels)) {
+  for (const l of labels) {
     let m = grades.get(l.queryId);
     if (!m) {
       m = new Map();
@@ -283,7 +286,7 @@ export async function runBaseline(opts: { seed: number; arms?: readonly ArmSpec[
       labelsHash: sha12(readFileSync(EVAL_LABELS_PATH, "utf8")),
       rubricHash: rubricHash(rubric),
       queryCount: set.queries.length,
-      labelCount: Object.keys(store.labels).length,
+      labelCount: labels.length,
     },
     spotcheck: spot,
     arms: reports,
