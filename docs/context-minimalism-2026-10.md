@@ -67,3 +67,22 @@ it); kept `.env` as a hard never; kept "stop and re-plan when something breaks";
 "Don't explain basics" instead of the ambiguous "Skip basics"; "Supabase (Postgres)".
 Not applied: the `tasks/todo.md` checklist habit (the built-in todo tool covers in-session
 tracking; `/sync` keeps the file).
+
+## Change 3: skills (2026-10-09)
+
+- `~/.claude/skills/built-md`: added the missing frontmatter (it listed as "SKILL: built-md"
+  and couldn't trigger reliably). Original at `~/.claude/skills-backup/built-md-SKILL.md.bak`.
+- `codebase-architect`: the local copy (Oct, Archify) is a superset of the claude.ai-synced
+  one; remove the claude.ai copy in claude.ai skill settings.
+- `learn`: **not a duplicate.** The claude.ai `learn` is Anthropic's tutoring skill; the
+  local one is the `/learn` correction-capture skill that `new-project` relies on. It was
+  moved out by mistake and restored unchanged after the Fable review caught it.
+- `mattpocock-skills` kept (1.2.3, latest after a marketplace refresh): most of its skills
+  list by name only and run when called, so their per-turn cost is small; only
+  `domain-modeling`, `codebase-design`, `resolving-merge-conflicts` and `grilling` carry
+  a full description.
+- Not done, by choice: scoping the Cloudflare plugin to `growthqLabDoo` / `sterija`,
+  dropping the superpowers SessionStart hook.
+
+Follow-ups from review: `/shipped` and built-md's update mode describe the same append
+step twice; codebase-architect Phase 6 calls `present_files`, which Claude Code doesn't have.
