@@ -37,11 +37,11 @@ Checked against a copy of the real DB: most lessons read as real lessons. The re
 from notes whose early points are background or audit findings, not gotchas
 ("Codebase structure: 304 TypeScript source files…"). The ceiling is the note, not the
 extractor; the durable fix is a one-line `lesson:` written at distill time, with
-`extractLesson` as the fallback for old notes (done, see Change 3).
+`extractLesson` as the fallback for old notes (done, see Change 4).
 
 Tests: src/claude/updater.block.test.ts.
 
-## Change 2: global ~/.claude/CLAUDE.md (6.6 KB → ~1.8 KB, proposed)
+## Change 2: global ~/.claude/CLAUDE.md (6.6 KB → 1.8 KB, applied 2026-10-09; backup at ~/.claude/CLAUDE.md.bak)
 
 Kept: who the user is, stack defaults, non-default code style (named exports, no barrels,
 error-handling layer), ask-first rules, the "done means verified" bar.
@@ -50,7 +50,44 @@ self-improvement loop (auto-memory, `learn`, `context-sync` cover it), the proje
 tree (the `new-project` skill owns it), the Active projects table (stale, duplicates
 per-project files), and the slug-list VIR block.
 
-## Change 3: distill-time lesson (src/pipeline/distiller.ts)
+## Review
+
+Each step reviewed by a fresh Fable 5.1 agent.
+
+Updater (no blockers). Applied: reuse `extractLessonTexts` instead of a second parser;
+mid-sentence bold no longer becomes "Never: trust…"; `e.g.` doesn't end a sentence;
+clipping keeps backticks balanced; dropped the `<!-- vir-note:slug -->` marker (a quarter
+to a third of each line's tokens) and diff on lesson text; pointer only in the global
+block; removed entries print as lessons. Prefer gotcha-cue points over background.
+Deferred: distill-time `lesson:` field (the real fix for weak notes).
+
+Global CLAUDE.md. Applied: restored a session-start pointer to `handoff.md` /
+`tasks/lessons.md` (nothing else reads lessons.md: `learn` and `context-sync` only write
+it); kept `.env` as a hard never; kept "stop and re-plan when something breaks";
+"Don't explain basics" instead of the ambiguous "Skip basics"; "Supabase (Postgres)".
+Not applied: the `tasks/todo.md` checklist habit (the built-in todo tool covers in-session
+tracking; `/sync` keeps the file).
+
+## Change 3: skills (2026-10-09)
+
+- `~/.claude/skills/built-md`: added the missing frontmatter (it listed as "SKILL: built-md"
+  and couldn't trigger reliably). Original at `~/.claude/skills-backup/built-md-SKILL.md.bak`.
+- `codebase-architect`: the local copy (Oct, Archify) is a superset of the claude.ai-synced
+  one; remove the claude.ai copy in claude.ai skill settings.
+- `learn`: **not a duplicate.** The claude.ai `learn` is Anthropic's tutoring skill; the
+  local one is the `/learn` correction-capture skill that `new-project` relies on. It was
+  moved out by mistake and restored unchanged after the Fable review caught it.
+- `mattpocock-skills` kept (1.2.3, latest after a marketplace refresh): most of its skills
+  list by name only and run when called, so their per-turn cost is small; only
+  `domain-modeling`, `codebase-design`, `resolving-merge-conflicts` and `grilling` carry
+  a full description.
+- Not done, by choice: scoping the Cloudflare plugin to `growthqLabDoo` / `sterija`,
+  dropping the superpowers SessionStart hook.
+
+Follow-ups from review: `/shipped` and built-md's update mode describe the same append
+step twice; codebase-architect Phase 6 calls `present_files`, which Claude Code doesn't have.
+
+## Change 4: distill-time lesson (src/pipeline/distiller.ts)
 
 - After `retitle`, a gotcha gets one more call on the classify model over the finished
   note (`buildLessonPrompt`, stage `lesson` in cost.log): one sentence, ≤ 160 chars,
@@ -81,21 +118,3 @@ per-project files), and the slug-list VIR block.
   punctuation, which a real code span doesn't.
 - `vir run --dry-run` charges every session for the lesson call (category is unknown
   before classify), so the estimate is an upper bound.
-
-## Review
-
-Each step reviewed by a fresh Fable 5.1 agent.
-
-Updater (no blockers). Applied: reuse `extractLessonTexts` instead of a second parser;
-mid-sentence bold no longer becomes "Never: trust…"; `e.g.` doesn't end a sentence;
-clipping keeps backticks balanced; dropped the `<!-- vir-note:slug -->` marker (a quarter
-to a third of each line's tokens) and diff on lesson text; pointer only in the global
-block; removed entries print as lessons. Prefer gotcha-cue points over background.
-Deferred: distill-time `lesson:` field (the real fix for weak notes).
-
-Global CLAUDE.md. Applied: restored a session-start pointer to `handoff.md` /
-`tasks/lessons.md` (nothing else reads lessons.md: `learn` and `context-sync` only write
-it); kept `.env` as a hard never; kept "stop and re-plan when something breaks";
-"Don't explain basics" instead of the ambiguous "Skip basics"; "Supabase (Postgres)".
-Not applied: the `tasks/todo.md` checklist habit (the built-in todo tool covers in-session
-tracking; `/sync` keeps the file).
