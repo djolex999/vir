@@ -87,13 +87,15 @@ This skill only **reads** the notes. It never writes them.
   `vir_compose` tool.
 - **Never install vir on your own.** If the user wants it, explain: vir is an
   open-source CLI (github.com/djolex999/vir) that reads their local session
-  transcripts and needs an LLM provider (Anthropic key, Claude Code
-  subscription, or Kie). Then offer the commands for them to run:
+  transcripts (Claude Code and/or Codex) and needs an LLM provider (Anthropic
+  key, Claude Code subscription, ChatGPT plan via the Codex CLI, or Kie). Then
+  offer the commands for them to run:
 
   ```bash
   npm install -g @djolex999/vir-cli
   vir init
-  vir mcp install
+  vir mcp install                 # Claude Code
+  vir mcp install --target codex  # Codex: prints the config block to add
   ```
 
 - For "is vir working?" questions, `vir doctor` is safe and read-only.

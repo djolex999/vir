@@ -45,6 +45,7 @@ export default defineConfig({
         { label: "Keeping it current", slug: "docs/keeping-it-current" },
         { label: "Recurring rules", slug: "docs/recurring-rules" },
         { label: "Any agent", slug: "docs/any-agent" },
+        { label: "Codex", slug: "docs/codex" },
         { label: "Providers and cost", slug: "docs/providers-and-cost" },
         { label: "Configuration", slug: "docs/configuration" },
         { label: "Commands", slug: "docs/commands" },

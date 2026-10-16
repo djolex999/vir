@@ -31,9 +31,9 @@ import {
 } from "../sources/registry.js";
 import { promptProjectDecisions } from "./projectSelect.js";
 import { normalizeModelName } from "../pipeline/distiller.js";
-import { buildInitConfig, DEFAULT_SOURCE_DIRS, defaultAgents } from "./initConfig.js";
+import { buildInitConfig, DEFAULT_SOURCE_DIRS, defaultAgents, mcpSetupFor } from "./initConfig.js";
 import { defaultNotesDir } from "./notesDir.js";
-import { installToClaudeCode } from "../mcp/install.js";
+import { codexInstallSnippet, installToClaudeCode } from "../mcp/install.js";
 import * as ui from "../ui/display.js";
 
 export async function cmdInit(): Promise<void> {
@@ -258,9 +258,10 @@ export async function cmdInit(): Promise<void> {
     provider !== "kie"
       ? [
           {
-            name: "claude-haiku-4-5-20251001  (recommended)",
-            value: "claude-haiku-4-5-20251001",
+            name: "claude-haiku-5-5  (recommended)",
+            value: "claude-haiku-5-5",
           },
+          { name: "claude-haiku-4-5-20251001", value: "claude-haiku-4-5-20251001" },
           { name: "claude-sonnet-4-6", value: "claude-sonnet-4-6" },
         ]
       : [
@@ -289,8 +290,8 @@ export async function cmdInit(): Promise<void> {
           },
           { name: "claude-sonnet-4-6", value: "claude-sonnet-4-6" },
           {
-            name: "claude-haiku-4-5-20251001  (faster, cheaper)",
-            value: "claude-haiku-4-5-20251001",
+            name: "claude-haiku-5-5  (faster, cheaper)",
+            value: "claude-haiku-5-5",
           },
         ]
       : [
@@ -458,12 +459,20 @@ export async function cmdInit(): Promise<void> {
   ui.row(ui.success(ui.CHECK), ui.text(`saved ${CONFIG_PATH}`));
 
   ui.blank();
-  const wantsMcp = await confirm({
-    message: "Register Vir with Claude Code now? (recommended)",
-    default: true,
-  });
-  if (wantsMcp) {
-    await installToClaudeCode("user");
+  const mcp = mcpSetupFor(agents);
+  if (mcp.offerClaude) {
+    const wantsMcp = await confirm({
+      message: "Register Vir with Claude Code now? (recommended)",
+      default: true,
+    });
+    if (wantsMcp) {
+      await installToClaudeCode("user");
+    }
+  }
+  if (mcp.showCodex) {
+    ui.blank();
+    ui.line(ui.dim("  To use your notes from Codex:"));
+    for (const l of codexInstallSnippet().split("\n")) ui.line(ui.dim(`  ${l}`));
   }
 
   if (process.platform === "darwin" && parsed.data.notifications) {

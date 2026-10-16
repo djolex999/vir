@@ -118,7 +118,7 @@ export const ConfigSchema = z
     connectMaxCandidates: z.number().int().positive().default(10),
     // MMR diversity weight for `vir query` / `vir_query` retrieval. Applied in
     // the embedding path only (TF-IDF is too sparse to benefit). Default 0
-    // since 0.27.0: on the 2026-10-16 retrieval eval, MMR at 0.3 lowered
+    // since 0.29.0: on the 2026-10-16 retrieval eval, MMR at 0.3 lowered
     // nDCG@8 for both nomic (-0.089) and bge (-0.079), and under nomic it
     // rewarded off-topic outliers for being dissimilar.
     retrievalDiversity: z
@@ -129,11 +129,11 @@ export const ConfigSchema = z
       .describe(
         "MMR diversity parameter. 0.0 = pure relevance (default), 1.0 = pure diversity.",
       ),
-    // Schema migrations applied (migrateConfigJson). Absent = before 0.27.0.
+    // Schema migrations applied (migrateConfigJson). Absent = before 0.29.0.
     configVersion: z.number().int().nonnegative().optional(),
     models: z
       .object({
-        classify: z.string().default("claude-haiku-4-5-20251001"),
+        classify: z.string().default("claude-haiku-5-5"),
         // The "smart" model — used for decision-heavy / large sessions under
         // hybrid routing, and for every session when distillFast is unset.
         distill: z.string().default("claude-sonnet-5"),
@@ -145,7 +145,7 @@ export const ConfigSchema = z
         distillThreshold: z.number().positive().optional(),
       })
       .default({
-        classify: "claude-haiku-4-5-20251001",
+        classify: "claude-haiku-5-5",
         distill: "claude-sonnet-5",
       }),
     // Per-provider, per-model price overrides ($/1M tokens). Optional and
@@ -258,7 +258,7 @@ export function migrateConfigJson(raw: Record<string, unknown>): {
   const from = typeof raw["configVersion"] === "number" ? raw["configVersion"] : 0;
   if (from >= CONFIG_VERSION) return { json: raw, changed: false };
   const json: Record<string, unknown> = { ...raw };
-  // v1 (0.27.0): 0.3 was the persisted MMR default, not a choice. A user who
+  // v1 (0.29.0): 0.3 was the persisted MMR default, not a choice. A user who
   // picked exactly 0.3 is reset once; the changelog says so.
   if (from < 1 && json["retrievalDiversity"] === 0.3) json["retrievalDiversity"] = 0;
   json["configVersion"] = CONFIG_VERSION;

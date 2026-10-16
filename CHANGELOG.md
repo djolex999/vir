@@ -1,12 +1,29 @@
 # Changelog
 
-## 0.27.0 — 2026-10-17
+## 0.29.0 — 2026-10-17
 
 **Search returns more relevant notes: MMR is off by default, and verified notes can no longer push past better matches.**
 
 - **MMR reranking is off by default (`retrievalDiversity: 0`).** On vir's own retrieval eval (54 judged queries), MMR at 0.3 made results worse for both embedding models: nDCG@8 fell by 0.089 with nomic and 0.079 with bge. Under nomic it also pulled off-topic notes into the top results because they were unlike everything else. Existing installs are migrated once: a stored `0.3` (the old default, which `vir init` wrote into every config) becomes `0`. Any other value is kept, and if you set `0.3` again afterwards it stays. `config.json` gains a `configVersion` field to record the migration.
 - **Verified notes win near-ties instead of jumping the queue.** The +0.2 boost for `verified: true` notes now applies only to notes already in the top 2×K by relevance, in both embedding and keyword search. Before, an accepted connect-pass rule ranked first or second for almost every query, including unrelated ones.
 - **`vir embed` re-embeds accepted connect-pass rules.** `vir embed --force`, the command for switching embedding models, skipped them, so accepted rules dropped out of search until the next `vir run` restored them. Without `--force` it also fills in rules that are missing a vector or have one from another model, as `vir run` does.
+
+## 0.28.0 — 2026-10-16
+
+- **`vir sync-claude` writes lessons, not slugs.** A project's CLAUDE.md gets its top 5 gotchas, each as the one-line lesson from the note (`- Zod 4 toJSONSchema requires io: "input" when schemas contain .transform()`). Confidence scores and slugs are gone from the file. The global CLAUDE.md and AGENTS.md no longer get every project's notes: only one line pointing at `vir_query`, plus your global rules. The first sync after upgrading shows the old lines as removals.
+- **Gotchas get their lesson at distill time.** After titling, a gotcha note gets one more cheap classify-model call that states its rule in one sentence (`lesson:` in frontmatter and a new `lesson` column). `vir sync-claude` uses it, so a note whose first points are background no longer puts that background into CLAUDE.md. Older notes keep the extracted lesson; nothing is re-distilled. Other categories make no extra call.
+- **`vir sync-claude --backfill-lessons`** gives those older gotchas a lesson too: one classify-model call per gotcha without one (asks first with the count; `--yes` skips the prompt), then the usual diff. Notes are not re-distilled or rewritten.
+- **`vir sync-claude` no longer passes terminal escapes through.** Lines read back from an existing VIR block are cleaned before the diff prints them, so a CLAUDE.md you didn't write can't recolor or hide text in your terminal.
+
+## 0.27.0 — 2026-10-14
+
+- **Haiku 5.5 is the default Haiku.** `models.classify`, the `haiku` shorthand (`--force-model haiku`, `--model haiku`), new installs' `distillFast` and the `vir init` pick are now `claude-haiku-5-5` ($0.10/$0.50 per MTok vs $1/$5). Configs that name Haiku 4.5 keep it. Haiku 5.5 thinks by default, which would eat vir's small output caps (a retitle gets 40 tokens), so API calls send `thinking: disabled` and `claude-cli` asks for `--effort low`. A refusal now fails the call with a clear error instead of an empty answer. Kie keeps serving Haiku 4.5.
+- **`claude-cli` calls no longer think, and no longer see your Claude Code setup.** `claude -p` ran Haiku with extended thinking (3812 thinking tokens for a one-sentence answer, 30–75s per classify or retitle, on your quota) and loaded your global CLAUDE.md, skills, plugins and hooks into every prompt, which could leak into notes. Calls now set `MAX_THINKING_TOKENS=0` and pass `--safe-mode`. A one-sentence lesson dropped from 36.9s to 1.3s. Opus, Sonnet and Haiku 5.5 can't turn thinking off, so they still think.
+
+## 0.26.2 — 2026-10-07
+
+- **Codex sessions show a real short id** in `vir run --dry-run`, `vir cost`, `vir reconcile` and the logs (`TRAIN/d8e621fc`, not `TRAIN/rollout-`). Every short id now comes from the same helper as note filenames; a test keeps it that way.
+- **A Codex-only `vir init` no longer offers to register with Claude Code.** It prints the Codex config snippet instead (`codex mcp add vir -- vir mcp`). With both agents ticked you get the Claude Code offer and the snippet.
 
 ## 0.26.1 — 2026-10-07
 

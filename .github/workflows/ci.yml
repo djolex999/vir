@@ -46,12 +46,11 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: site/package-lock.json
-      # `npm install`, not `npm ci`. The lockfile is generated on macOS, where
-      # npm never resolves the wasm sharp variant, so it has no top-level
-      # @emnapi/* entries and `npm ci` on Linux refuses as out-of-sync. npm
-      # won't record them from macOS (--os/--cpu don't help), and Vercel
-      # installs the same way — so this matches what actually deploys.
-      - run: npm install --no-audit --no-fund
+      # `npm ci` so lockfile drift fails here instead of being repaired in
+      # place. Regenerate site/package-lock.json with node 22's bundled npm
+      # (10.x); npm 11 writes a lock npm 10 rejects. Vercel itself runs
+      # `npm install` (no vercel.json), so a drifted lock wouldn't stop a deploy.
+      - run: npm ci --no-audit --no-fund
       - name: typecheck
         run: npm run check
       - name: test

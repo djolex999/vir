@@ -35,6 +35,6 @@ Rules are written to `insights/rules/` with `status: proposed`. Until you accept
 
 `vir review --insights` shows each rule with its evidence. **Accept** makes it searchable (it ranks like a verified note; MCP `type: insight`). **Edit** opens it in `$EDITOR`; only the `**Rule:**` and `**Why:**` lines are kept. **Reject** keeps it out for good: vir remembers a rejection by the sessions behind it, so it survives your notes being rewritten. `vir connect --reconsider <slug>` is the only way back.
 
-Accepting doesn't touch CLAUDE.md. `vir sync-claude` offers each accepted rule as its own hunk, with its sources, and asks `y / n / s`. A rule counts as promoted only after its CLAUDE.md write succeeds. Nothing is ever promoted under `--force`, `--dry-run`, or without a terminal.
+Accepting doesn't touch CLAUDE.md. `vir sync-claude` offers each accepted rule as its own hunk, with its sources, and asks `y / n / s`. A rule counts as promoted only after its CLAUDE.md write succeeds. Rules you approved also go into AGENTS.md files that already exist; AGENTS.md never gets a rule CLAUDE.md didn't. Nothing is ever promoted under `--force`, `--dry-run`, or without a terminal.
 
 When new sessions repeat a rule you already accepted, the next run flags the new evidence for review instead of changing the rule. `vir status` shows how many rules are proposed, accepted, and awaiting CLAUDE.md approval.

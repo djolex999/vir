@@ -1,20 +1,21 @@
 ---
 title: Getting started
-description: Install vir, point it at your vault, and turn months of Claude Code history into notes in one run.
+description: Install vir, point it at your vault, and turn months of Claude Code and Codex history into notes in one run.
 ---
 
-vir reads the transcripts Claude Code already keeps on your disk and writes typed markdown notes into a folder you own. This page gets you from nothing to a populated vault.
+vir reads the transcripts Claude Code and Codex already keep on your disk and writes typed markdown notes into a folder you own. This page gets you from nothing to a populated vault.
 
 ## Prerequisites
 
 - macOS or Linux. Windows is not supported yet.
 - Node.js 20 or newer.
-- Claude Code, with sessions under `~/.claude/projects/`.
+- Claude Code (sessions under `~/.claude/projects/`), Codex (sessions under `~/.codex/sessions/`), or both.
 - A folder for the notes. `vir init` suggests your Obsidian vault if it finds one, otherwise `~/notes`. The output is plain markdown either way; Obsidian is where the graph and the plugin live.
 - One distill provider (you choose during `vir init`):
   - **Anthropic API key** — predictable per-session cost, no effect on your Claude Code limits.
   - **Your Claude Code subscription** (`claude-cli`) — free and keyless; distills consume your Claude Code usage quota.
   - **Kie.ai API key** — a third-party proxy at roughly 28% of Anthropic list price. Used for cheap testing and calibration runs; not recommended for your real vault.
+  - **Your ChatGPT plan** (`codex-cli`, experimental) — keyless, through the Codex CLI; distills consume your Codex usage limits. See [Codex](/docs/codex/).
 
 Semantic search is optional. Without an embedding provider vir falls back to keyword search and says so.
 
@@ -25,7 +26,7 @@ npm install -g @djolex999/vir-cli
 vir init
 ```
 
-`vir init` is an arrow-key wizard: provider, models, vault path. It also shows you every Claude Code project it found, with session counts, and asks which to include. Undecided projects stay visibly undecided — vir never silently includes or excludes.
+`vir init` is an arrow-key wizard: which coding agents you use, provider, models, vault path. It also shows you every project it found, with session counts, and asks which to include. Undecided projects stay visibly undecided — vir never silently includes or excludes.
 
 ## First run
 
@@ -72,5 +73,6 @@ On macOS this loads a launchd agent; on Linux a systemd user timer, or a crontab
 ## Next
 
 - [How it works](/docs/how-it-works/) — what gets filtered, what a note is made of.
-- [Retrieval and MCP](/docs/retrieval/) — ask the vault, or let Claude Code ask it mid-session.
-- [Providers and cost](/docs/providers-and-cost/) — the three providers and what they cost.
+- [Retrieval and MCP](/docs/retrieval/) — ask the vault, or let your agent ask it mid-session.
+- [Providers and cost](/docs/providers-and-cost/) — the four providers and what they cost.
+- [Codex](/docs/codex/) — Codex sessions, the keyless `codex-cli` provider, and Codex over MCP.

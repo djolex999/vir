@@ -9,6 +9,7 @@ description: What leaves your machine, what stays, and what you can turn off.
 
 - `anthropic` → Anthropic's API, under your key and their data policy.
 - `claude-cli` → your own Claude Code subscription, through the `claude` binary, same as an interactive session.
+- `codex-cli` → your own ChatGPT plan, through the `codex` binary (OpenAI), same as an interactive Codex session.
 - `kie` → Kie.ai, a third-party proxy. It's supported for cheap test runs; for a vault you rely on, prefer `anthropic` or `claude-cli` so transcripts go only to Anthropic.
 
 Before sending, vir strips API keys, bearer tokens, absolute filesystem paths, and email addresses. It cannot recognize every secret; if a session contains something you'd never paste into a chat, exclude that project.
@@ -28,11 +29,12 @@ vir has no server, no account, and no telemetry. Nothing phones home. Uninstall 
 
 | Concern | Knob |
 | --- | --- |
+| Which agents are ever read | `claudeProjectsDir` / `codexSessionsDir`: unset one and vir never reads that agent's sessions |
 | Which projects are ever read | `vir projects exclude <name>`, or `--only` / `--exclude-project` per run |
 | Tooling transcripts (subagents, workflows, SDK agents) | Excluded by default |
 | Retrieval logging | `"logQueries": false` |
 | Desktop notifications | `"notifications": false` |
-| What reaches CLAUDE.md | Nothing without a diff and your confirmation (`vir sync-claude`) |
+| What reaches CLAUDE.md / AGENTS.md | Nothing without a diff and your confirmation (`vir sync-claude`) |
 | MCP exposure | Never writes the vault; `vir_query` sends the matched notes to your provider to synthesize, like `vir query`. `vir mcp uninstall` removes it |
 
 ## The website

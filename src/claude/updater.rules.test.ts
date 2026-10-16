@@ -38,7 +38,7 @@ afterEach(() => {
 
 describe("rule entries in the VIR block", () => {
   it("renders a no-rules block byte-identical to before", () => {
-    const entries = [{ slug: "gotcha/x", topic: "x", category: "gotcha", confidence: 0.9, startedAt: null }];
+    const entries = [{ slug: "gotcha/x", lesson: "x" }];
     expect(renderBlock(entries, [])).toBe(renderBlock(entries));
     expect(renderBlock(entries)).not.toContain("Rules (from vir)");
   });

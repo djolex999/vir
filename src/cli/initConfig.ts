@@ -92,7 +92,7 @@ export function buildInitConfig(
               existing?.models?.distillFast ??
               (a.provider === "kie"
                 ? "claude-haiku-4-5"
-                : "claude-haiku-4-5-20251001"),
+                : "claude-haiku-5-5"),
           }),
       ...(existing?.models?.distillThreshold != null
         ? { distillThreshold: existing.models.distillThreshold }
@@ -121,4 +121,12 @@ export function defaultAgents(
   return (["claude-code", "codex"] as const).filter(
     (id) => configured[id] || exists(join(home, ...DEFAULT_SOURCE_DIRS[id])),
   );
+}
+
+// The wizard's MCP step: Claude Code registers through `claude mcp add`;
+// Codex gets the config snippet (vir never edits Codex's config itself).
+export function mcpSetupFor(
+  agents: ReadonlyArray<Exclude<SourceId, "unknown">>,
+): { offerClaude: boolean; showCodex: boolean } {
+  return { offerClaude: agents.includes("claude-code"), showCodex: agents.includes("codex") };
 }

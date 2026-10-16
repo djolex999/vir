@@ -15,7 +15,7 @@ It works with any tool that supports the Agent Skills standard, including Claude
 
 It uses the first of these that works:
 
-1. **The MCP server**, if registered (`vir mcp install`). It calls `vir_query` with `synthesize: false`, so there's no LLM cost; the agent reads the matching notes itself.
+1. **The MCP server**, if registered (`vir mcp install`, or `vir mcp install --target codex` for Codex). It calls `vir_query` with `synthesize: false`, so there's no LLM cost; the agent reads the matching notes itself.
 2. **The CLI**: `vir query "<question>" --json --limit 5`. Retrieval only, no LLM call.
 3. **Your notes folder**, read directly, using the path in `~/.vir/config.json`.
 

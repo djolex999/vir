@@ -1,15 +1,19 @@
 ---
 title: Inputs
-description: Three sources feed one vault — Claude Code sessions, clipped web articles, and PDFs.
+description: Sources that feed one vault — Claude Code and Codex sessions, clipped web articles, and PDFs.
 ---
 
-Each source has its own reader, its own distiller, its own SQLite table, and its own vault folder. All three embed into one vector space, so `vir query` searches across them with a `type` filter.
+Sessions, articles and PDFs each have their own reader, distiller, SQLite table and vault folder. All of them embed into one vector space, so `vir query` searches across them with a `type` filter.
 
 ## Claude Code sessions
 
 The original source, and the one that's retroactive: vir reads whatever is still under `~/.claude/projects/`. Claude Code prunes transcripts after roughly 30 days, so the first run recovers history that's about to disappear.
 
 Sessions run through the full [pipeline](/docs/how-it-works/) and land in `patterns/`, `gotchas/`, `decisions/`, or `tools/`.
+
+## Codex sessions
+
+Since 0.26: set `codexSessionsDir` (`vir init` asks) and vir reads `~/.codex/sessions/` too: the Codex CLI, IDE extension and desktop app. The harness context Codex stores as user messages is stripped, subagent and review threads are skipped, and a project you use from both agents is one project. Codex keeps its rollouts, so there's no pruning deadline; archived threads are not read. Details: [Codex](/docs/codex/).
 
 ## Web articles
 
@@ -40,7 +44,7 @@ vir run --pdfs-only
 
 ```
 vault/vir/
-  patterns/  gotchas/  decisions/  tools/   # sessions
+  patterns/  gotchas/  decisions/  tools/   # sessions (Claude Code and Codex)
   articles/                                 # web clips
   pdfs/                                     # papers
   topics/                                   # vir compose syntheses

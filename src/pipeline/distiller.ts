@@ -14,6 +14,7 @@ import type {
 } from "./types.js";
 import { callCodexCli, CodexCliError } from "./codexCli.js";
 import { isSubscriptionProvider, SubscriptionLimitError } from "./subscription.js";
+import { sessionSuffix } from "./slug.js";
 
 const CATEGORIES: Category[] = ["pattern", "gotcha", "decision", "tool"];
 
@@ -66,8 +67,13 @@ export function maybeAnthropicClient(config: Config): Anthropic | null {
 // "v1messages", etc.) can't corrupt the outgoing model string.
 const KIE_CANONICAL_MODELS = ["claude-haiku-4-5", "claude-sonnet-4-6"] as const;
 
+export const HAIKU_5_5 = "claude-haiku-5-5";
+
 export function normalizeModelName(model: string, provider: string): string {
   if (provider !== "kie") return model;
+  // The `haiku` shorthand and the classify default are Haiku 5.5, which Kie's
+  // endpoint doesn't list: Kie keeps serving Haiku 4.5.
+  if (model.startsWith(HAIKU_5_5)) return "claude-haiku-4-5";
   for (const canonical of KIE_CANONICAL_MODELS) {
     if (model.startsWith(canonical)) return canonical;
   }
@@ -75,11 +81,11 @@ export function normalizeModelName(model: string, provider: string): string {
   return model.replace(/-\d{8}$/, "");
 }
 
-// `--force-model haiku|sonnet` shorthand → full model id. We map to the dated
+// `--force-model haiku|sonnet` shorthand → full model id. We map to the
 // Anthropic ids; normalizeModelName then collapses them for the Kie path. Any
 // other value passes through (already a full id), so a full id still works.
 export function resolveModelShorthand(model: string): string {
-  if (model === "haiku") return "claude-haiku-4-5-20251001";
+  if (model === "haiku") return HAIKU_5_5;
   if (model === "sonnet") return "claude-sonnet-4-6";
   return model;
 }
@@ -229,17 +235,48 @@ export async function callKie(opts: {
   return { text, usage: usageOf(data.usage?.input_tokens, data.usage?.output_tokens) };
 }
 
+// The pinned SDK (0.32) predates the `thinking` request field; the API accepts
+// it and the SDK forwards unknown body fields as-is.
+type MessageParamsWithThinking = Anthropic.MessageCreateParamsNonStreaming & {
+  thinking?: { type: "disabled" };
+};
+
+// Haiku 5.5 thinks unless told not to, and thinking counts against max_tokens:
+// a 40-token retitle or a 5-token probe would end before any text. Every vir
+// prompt was written for a model that doesn't think, so turn it off (the API
+// accepts `disabled` on Haiku 5.5 at its default effort).
+export function buildAnthropicParams(opts: {
+  model: string;
+  maxTokens: number;
+  prompt: string;
+}): MessageParamsWithThinking {
+  return {
+    model: opts.model,
+    max_tokens: opts.maxTokens,
+    messages: [{ role: "user", content: opts.prompt }],
+    ...(opts.model.startsWith(HAIKU_5_5) ? { thinking: { type: "disabled" } } : {}),
+  };
+}
+
+// Haiku 5.5 safety classifiers can decline a request (HTTP 200, no text) and
+// there is no server-side fallback. Fail loudly instead of returning "".
+export class ModelRefusalError extends Error {
+  constructor(model: string) {
+    super(`${model} declined the request (stop_reason: refusal)`);
+    this.name = "ModelRefusalError";
+  }
+}
+
 async function callAnthropic(opts: {
   client: Anthropic;
   model: string;
   maxTokens: number;
   prompt: string;
 }): Promise<LlmResult> {
-  const resp = await opts.client.messages.create({
-    model: opts.model,
-    max_tokens: opts.maxTokens,
-    messages: [{ role: "user", content: opts.prompt }],
-  });
+  const resp = await opts.client.messages.create(buildAnthropicParams(opts));
+  // Widened: the pinned SDK's union has no "refusal" member yet.
+  const stopReason: string | null = resp.stop_reason;
+  if (stopReason === "refusal") throw new ModelRefusalError(opts.model);
   const parts: string[] = [];
   for (const block of resp.content) {
     if (block.type === "text") parts.push(block.text);
@@ -497,6 +534,50 @@ export function parseTitle(text: string): string | null {
   return title;
 }
 
+// The one rule a gotcha teaches, for `vir sync-claude` to write into the
+// project's CLAUDE.md. Read off the finished note like the title, so the
+// blind-tested distill prompt stays byte-for-byte as pinned. The title anchors
+// it: on a 2026-10 run over 44 real gotchas, without it about one in six
+// grab-bag notes yielded a true rule about a side point. Pure, so the text has
+// one home.
+export function buildLessonPrompt(markdown: string, title: string): string {
+  return `State the rule this note teaches, for an agent working in the same project.
+The note is titled "${title}": give the rule behind that title, not a side point.
+Output the rule only: one sentence, at most 160 characters, no quotes, no bullet.
+
+Phrase it as what to do or what holds, with the API, file, flag or value that
+carries it, in backticks. For example: Zod 4 \`toJSONSchema\` needs \`io: "input"\` when schemas contain \`.transform()\`.
+It must stay true after this session: not background about the codebase, not
+what the session did, not a task or the project's status. If the note teaches
+no such rule, output NONE.
+
+Note:
+${markdown}`;
+}
+
+// Longer than the prompt asks for, so a slightly long but good rule survives;
+// anything past it ignored the instruction and the heuristic does better.
+const MAX_LESSON_CHARS = 220;
+
+// Haiku 5.5 sometimes wraps the whole sentence in backticks around its own
+// code spans (6 of 39 on the 2026-10 eval), escaping the inner ones. A real
+// code span doesn't close after sentence punctuation, so `….` marks a wrapper.
+const WRAPPED = /^`(.*[.!?)])`$/;
+
+export function parseLesson(text: string): string | null {
+  const first = text.trim().split("\n")[0] ?? "";
+  const unquoted = first
+    .replace(/^(?:[-*]|\d+[.)])\s+/, "")
+    .replace(/^(?:\*\*)?(?:lesson|rule):(?:\*\*)?\s*/i, "")
+    .replace(/^["'“]+|["'”]+$/g, "")
+    .replace(/\\`/g, "`")
+    .trim();
+  const lesson = unquoted.replace(WRAPPED, "$1").trim();
+  if (lesson.length === 0 || lesson.length > MAX_LESSON_CHARS) return null;
+  if (/^none\.?$/i.test(lesson)) return null;
+  return lesson;
+}
+
 export class Distiller {
   private client: Anthropic | null;
   private cfg: Config;
@@ -618,6 +699,47 @@ ${scrubbedSummary}`;
     return parseTitle(text);
   }
 
+  // One cheap classify-model call over the finished, titled note (cls.topic is
+  // the retitle). Null means the note holds no rule or the reply was unusable.
+  async lesson(
+    session: Pick<ParsedSession, "sessionId">,
+    markdown: string,
+    cls: Classification,
+  ): Promise<string | null> {
+    const text = await withRateLimitRetry(() =>
+      callLLM(this.cfg, this.client, {
+        prompt: buildLessonPrompt(markdown, cls.topic),
+        model: this.classifyModel,
+        maxTokens: 120,
+        cost: {
+          session: session.sessionId,
+          project: cls.project,
+          stage: "lesson",
+        },
+      }),
+    );
+    return parseLesson(text);
+  }
+
+  // Only gotchas reach CLAUDE.md, so only they pay for the call. Same failure
+  // policy as titleFor: a null lesson falls back to extractLesson at sync time.
+  private async lessonFor(
+    session: ParsedSession,
+    markdown: string,
+    cls: Classification,
+  ): Promise<string | null> {
+    if (cls.category !== "gotcha") return null;
+    try {
+      return await this.lesson(session, markdown, cls);
+    } catch (err) {
+      if (err instanceof SubscriptionLimitError) throw err;
+      console.warn(
+        `[vir] lesson failed for ${sessionSuffix(session.sessionId)}, sync-claude will extract one: ${(err as Error).message}`,
+      );
+      return null;
+    }
+  }
+
   // The distill has already been paid for, so a failed naming call keeps
   // classify's topic rather than discarding the note. A subscription limit is
   // the exception: the run loop has to see it and halt.
@@ -631,7 +753,7 @@ ${scrubbedSummary}`;
     } catch (err) {
       if (err instanceof SubscriptionLimitError) throw err;
       console.warn(
-        `[vir] retitle failed for ${session.sessionId.slice(0, 8)}, keeping classify topic: ${(err as Error).message}`,
+        `[vir] retitle failed for ${sessionSuffix(session.sessionId)}, keeping classify topic: ${(err as Error).message}`,
       );
       return cls.topic;
     }
@@ -650,7 +772,9 @@ ${scrubbedSummary}`;
     const model = this.modelFor(cls, estimateTokens(scrubbedContent));
     const md = await this.distill(session, scrubbedContent, cls, model);
     const topic = await this.titleFor(session, md, cls);
-    return { classification: { ...cls, topic }, markdown: md };
+    const titled = { ...cls, topic };
+    const lesson = await this.lessonFor(session, md, titled);
+    return { classification: titled, markdown: md, lesson };
   }
 }
 

@@ -19,6 +19,17 @@ function commandBlock(name: string): string | null {
   return cliSource.slice(start, next === -1 ? undefined : next);
 }
 
+// A subcommand's definition (`vir mcp install`): its .command("sub") call is
+// the first one after the parent's, so `schedule install` can't stand in.
+function subcommandBlock(parent: string, sub: string): string | null {
+  const parentStart = cliSource.search(new RegExp(`\\.command\\("${parent}[ "]`));
+  if (parentStart === -1) return null;
+  const start = cliSource.indexOf(`.command("${sub}"`, parentStart);
+  if (start === -1) return null;
+  const next = cliSource.indexOf(".command(", start + 1);
+  return cliSource.slice(start, next === -1 ? undefined : next);
+}
+
 // Every `vir <command> …` invocation inside inline code or code fences (prose
 // like "if vir is installed" is not an invocation).
 function codeSegments(): string[] {
@@ -28,14 +39,15 @@ function codeSegments(): string[] {
   return [...fences, ...inline];
 }
 
-function invocations(): Array<{ command: string; flags: string[]; text: string }> {
-  const out: Array<{ command: string; flags: string[]; text: string }> = [];
+function invocations(): Array<{ command: string; sub: string | null; flags: string[]; text: string }> {
+  const out: Array<{ command: string; sub: string | null; flags: string[]; text: string }> = [];
   const code = codeSegments().join("\n");
   for (const m of code.matchAll(/(?:^|[\s;&|(])vir ([a-z][a-z-]*)([^\n;&|]*)/gm)) {
     const command = m[1] ?? "";
     const rest = m[2] ?? "";
     const flags = [...rest.matchAll(/(?:^|\s)(--[a-z][a-z-]*)/g)].map((f) => f[1] ?? "");
-    out.push({ command, flags, text: `vir ${command}${rest}` });
+    const sub = /^\s+([a-z][a-z-]*)/.exec(rest)?.[1] ?? null;
+    out.push({ command, sub, flags, text: `vir ${command}${rest}` });
   }
   return out;
 }
@@ -56,8 +68,10 @@ describe("skills/vir/SKILL.md", () => {
     for (const inv of invocations()) {
       const block = commandBlock(inv.command);
       expect(block, `unknown command in: ${inv.text}`).not.toBeNull();
+      const sub = inv.sub === null ? null : subcommandBlock(inv.command, inv.sub);
       for (const flag of inv.flags) {
-        expect(block, `unknown flag ${flag} in: ${inv.text}`).toContain(`"${flag}`);
+        const defined = (block ?? "").includes(`"${flag}`) || (sub ?? "").includes(`"${flag}`);
+        expect(defined, `unknown flag ${flag} in: ${inv.text}`).toBe(true);
       }
     }
   });

@@ -6,16 +6,16 @@ description: The pipeline from transcript to note — filtering, classification,
 ## The loop
 
 ```
-Claude Code sessions → vir → your notes (markdown) → CLAUDE.md → better sessions → …
+coding-agent sessions → vir → your notes (markdown) → CLAUDE.md / AGENTS.md → better sessions → …
 ```
 
-Sessions become notes. `vir sync-claude` feeds the best notes back into your project's CLAUDE.md, with a diff and your confirmation. The next session starts knowing what the last one learned. A daemon keeps the loop turning.
+Sessions become notes. `vir sync-claude` feeds the best notes back into your project's CLAUDE.md (and AGENTS.md, where one exists), with a diff and your confirmation. The next session starts knowing what the last one learned. A daemon keeps the loop turning.
 
 ## The pipeline
 
 Each `vir run` does five things in order:
 
-1. **Scan.** Walk `~/.claude/projects/**/*.jsonl` and hash every file. A session is only reprocessed if its content changed, so reruns are idempotent and free.
+1. **Scan.** Walk `~/.claude/projects/**/*.jsonl` (and `~/.codex/sessions/`, when Codex is on) and hash every file. A session is only reprocessed if its content changed, so reruns are idempotent and free.
 2. **Filter.** Drop what isn't yours before any paid call (details below).
 3. **Scrub.** Strip API keys, bearer tokens, absolute paths, and emails from what's left.
 4. **Classify.** A cheap Haiku call reads the prose of the session and returns `{category, topic, project, confidence, themes}`. Anything at or below `0.6` confidence is dropped here.
@@ -30,13 +30,13 @@ On the author's machine, 2,012 transcripts produced 460 notes. That ratio is the
 | Skipped as | What it is | Reversible? |
 | --- | --- | --- |
 | `workflow-transcript` | Phases of a multi-agent workflow | Yes — `workflowTranscripts: "include"` |
-| `sidechain-transcript` | Subagent runs nested under a session | Yes — same knob |
-| `agent-transcript` | Headless SDK agents (reviewers, verifiers) | Yes — `agentTranscripts: "include"` |
+| `sidechain-transcript` | Subagent runs nested under a session; Codex subagent and review threads | Yes — same knob |
+| `agent-transcript` | Headless SDK agents (reviewers, verifiers); headless `codex exec` runs | Yes — `agentTranscripts: "include"` |
 | `project-excluded` | A project you excluded in `vir projects` | Yes — `vir projects include <name>` |
 | `project-pending` | A project you haven't decided on | Yes — decide |
 | *(no reason)* | Low-signal by heuristic, or classify confidence ≤ 0.6 | No |
 
-Detection is structural — directory shape and the first line's `entrypoint` field — so it costs nothing and runs before the classifier. Flipping a knob re-enters the transcripts on the next run without `--full`.
+Detection is structural — directory shape and the first line's `entrypoint` field for Claude Code, the `session_meta` line's `source` for Codex — so it costs nothing and runs before the classifier. Flipping a knob re-enters the transcripts on the next run without `--full`.
 
 ## Anatomy of a note
 

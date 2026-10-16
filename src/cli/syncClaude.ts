@@ -1,13 +1,17 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename } from "node:path";
+import { backfillLessons, lessonlessGotchas, type LessonSource } from "../claude/backfillLessons.js";
 import { applyPlan, planRules, planUpdates, renderRuleHunk, type PlanItem } from "../claude/updater.js";
 import type { Config } from "../config.js";
 import { writeInsightFile } from "../connect/insightFile.js";
+import { ruleText } from "../connect/text.js";
+import { kebab } from "../pipeline/slug.js";
 import type { InsightRow } from "../connect/types.js";
 import { vaultRoot } from "../search/retriever.js";
 import type { StateDb } from "../state/db.js";
 import * as ui from "../ui/display.js";
+import { confirmPaidStep, withPipelineLock } from "./guards.js";
 
 export interface SyncOptions {
   project?: string;
@@ -34,13 +38,8 @@ function collapseHome(p: string): string {
 export function renderPlanLines(p: PlanItem): string[] {
   if (!p.exists) return [ui.dim(`no ${basename(p.target)} found — would be skipped`)];
   const lines: string[] = [];
-  for (const e of p.diff.added) lines.push(`${ui.success("+")} ${ui.text(e.slug)}`);
-  for (const u of p.diff.upgraded) {
-    lines.push(
-      `${ui.info(ui.UP_ARROW)} ${ui.text(u.slug)}  ${ui.dim(`${u.oldConf.toFixed(2)}${ui.ARROW}${u.newConf.toFixed(2)}`)}`,
-    );
-  }
-  for (const r of p.diff.removed) lines.push(`${ui.warn("-")} ${ui.text(r.slug)}`);
+  for (const e of p.diff.added) lines.push(`${ui.success("+")} ${ui.text(e.lesson)}`);
+  for (const r of p.diff.removed) lines.push(`${ui.warn("-")} ${ui.text(r.lesson)}`);
   for (const r of p.diff.rulesAdded) lines.push(`${ui.success("+")} ${ui.text(`rule: ${r.rule}`)}`);
   for (const r of p.diff.rulesRemoved) lines.push(`${ui.warn("-")} ${ui.text(`rule: ${r.rule}`)}`);
   if (p.diff.unchanged.length > 0) {
@@ -74,6 +73,51 @@ async function askUntil(io: SyncIo, question: string, valid: (a: string) => bool
     if (i < tries - 1) io.print("please answer with one of the listed letters");
   }
   return answer;
+}
+
+// `--backfill-lessons`: a lesson for each in-scope gotcha distilled before the
+// lesson call existed, so the sync that follows can use it. One paid call per
+// note, behind the paid-step confirm and the pipeline lock (it writes the DB).
+// Not a re-distill: the note itself is untouched.
+export async function runLessonBackfill(
+  cfg: Config,
+  db: StateDb,
+  source: LessonSource,
+  opts: {
+    project?: string;
+    yes?: boolean;
+    interactive?: boolean;
+    ask?: (message: string) => Promise<boolean>;
+    lockPath?: string;
+  },
+): Promise<void> {
+  const rows = lessonlessGotchas(db, opts.project);
+  if (rows.length === 0) {
+    ui.line(ui.dim("  every gotcha in scope already has a lesson"));
+    ui.blank();
+    return;
+  }
+  const proceed = await confirmPaidStep(
+    `backfill makes ${rows.length} paid call(s) with ${cfg.models.classify}, one per gotcha without a lesson`,
+    { yes: opts.yes, interactive: opts.interactive, ask: opts.ask },
+  );
+  if (!proceed) return;
+  await withPipelineLock(async () => {
+    const result = await backfillLessons(db, source, rows, (row, lesson, error) => {
+      const label = ui.dim(`${kebab(row.project)}/${row.topic}`);
+      if (error !== null) ui.row(ui.errorColor(ui.CROSS), label, ui.dim(error.message));
+      else if (lesson === null) ui.row(ui.dim("–"), label, ui.dim("no rule found, keeps the extracted line"));
+      else ui.row(ui.success(ui.CHECK), label, ui.text(ruleText(lesson)));
+    });
+    ui.line(
+      ui.dim(`  ${result.written} written, ${result.none} without a rule, ${result.failed} failed (retried next run)`),
+    );
+    if (result.stoppedBy !== null) {
+      ui.row(ui.warn(ui.WARN_GLYPH), ui.text(`stopped: ${result.stoppedBy.message}`));
+      process.exitCode = 1;
+    }
+    ui.blank();
+  }, opts.lockPath);
 }
 
 // Update the VIR blocks in CLAUDE.md files. Connect-pass rules are promoted

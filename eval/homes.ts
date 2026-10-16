@@ -13,7 +13,7 @@ const PATH_KEYS = ["vaultPath", "claudeProjectsDir", "articlesDir", "pdfsDir"] a
 // and the query log is off so an arm can never write telemetry anywhere.
 // The MMR arms measure the setting production shipped through 0.26 (0.3), a
 // constant: copying the live value would silently turn them into non-MMR arms
-// once a config is migrated to 0.27.0's default of 0.
+// once a config is migrated to 0.29.0's default of 0.
 export const MMR_ARM_DIVERSITY = 0.3;
 
 export function buildArmConfig(raw: Record<string, unknown>, arm: ArmSpec): Record<string, unknown> {

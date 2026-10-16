@@ -285,7 +285,7 @@ describe("provider codex-cli (ChatGPT subscription, no credential)", () => {
   });
 });
 
-describe("config migration to version 1 (0.27.0: MMR off by default)", () => {
+describe("config migration to version 1 (0.29.0: MMR off by default)", () => {
   it("turns the old persisted default 0.3 into 0 and stamps the version", () => {
     const { json, changed } = cfg.migrateConfigJson({ retrievalDiversity: 0.3 });
     expect(changed).toBe(true);

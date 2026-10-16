@@ -23,7 +23,7 @@ developer-tools, mcp, local-first, cross-platform, llm-wiki
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/v/@djolex999/vir-cli?color=7c6af7&label=npm" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/@djolex999/vir-cli"><img src="https://img.shields.io/npm/dw/@djolex999/vir-cli?color=4fd1a0" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee" alt="license"></a>
-  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1353%20passing-22c55e" alt="tests"></a>
+  <a href="#project-status"><img src="https://img.shields.io/badge/tests-1411%20passing-22c55e" alt="tests"></a>
   <a href="#project-status"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey" alt="platforms"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-c084fc" alt="mcp"></a>
   <a href="#"><img src="https://img.shields.io/badge/local--first-yes-f59e0b" alt="local-first"></a>
@@ -197,8 +197,9 @@ worse results, not better."_ Fair. Vir addresses it in layers:
   approve, edit, or reject each one. Verified notes get a ranking boost in
   retrieval (in `vir query` and the MCP server). Rejected notes move to `.rejected/`,
   recoverable, not deleted.
-- **MMR-diverse retrieval.** Queries return notes covering different aspects
-  of the topic, not 5 similar duplicates.
+- **Measured retrieval.** Ranking defaults are set by a retrieval eval over
+  judged queries, not by feel: pure relevance by default, with MMR diversity
+  (`retrievalDiversity`) available when you want it.
 - **Recurring lessons become rules, only with your yes.** `vir connect` looks
   for a lesson you've written down in at least 3 sessions over at least a
   week (by embedding each "What Was Learned" item), and has the model state it
@@ -476,7 +477,7 @@ with your distro, init system, and Node version.
 | `vir prune`                 | free  | Dry run: agent-derived notes to demote    |
 | `vir prune --apply`         | free  | Demote them to `.rejected/` (never deletes) |
 | `vir prune --restore`       | free  | Put every pruned note back, exactly       |
-| `vir sync-claude`           | free  | Inject top knowledge into CLAUDE.md (and existing AGENTS.md; `--no-agents`, `--agents-only`) |
+| `vir sync-claude`           | free  | Inject top knowledge into CLAUDE.md (and existing AGENTS.md; `--no-agents`, `--agents-only`; `--backfill-lessons` is a cheap paid step for older gotchas) |
 | `vir embed`                 | free  | Generate embeddings for semantic search   |
 | `vir embed --setup`         | free  | Install the local embedding provider (no Ollama needed) |
 | `vir schedule install`      | free  | Register the background daemon            |
@@ -599,7 +600,7 @@ Located at `~/.vir/config.json`.
 | `retrievalDiversity`| `0`                         | MMR diversity (0..1); 0 = pure relevance                   |
 | `logQueries`        | `true`                      | Log retrievals to `~/.vir/queries.jsonl`; `false` = off    |
 | `embeddingProvider` | (unset)                     | `ollama` \| `local` \| `none`; unset = auto-detect         |
-| `models.classify`   | `claude-haiku-4-5-20251001` | Classify model                                             |
+| `models.classify`   | `claude-haiku-5-5`          | Classify model (Kie keeps Haiku 4.5)                       |
 | `models.distill`    | `claude-sonnet-5`           | Distill model for decision-heavy and large sessions        |
 | `models.distillFast`| (unset)                     | Cheap model for routine sessions; set → hybrid routing on  |
 | `models.distillThreshold` | `100000`              | Input-token ceiling above which `distill` is forced        |

@@ -62,6 +62,7 @@ import { sweepEmbeddings } from "./embeddingSweep.js";
 import { backfillInsightEmbeddings } from "../connect/embed.js";
 import { resolveEmbeddingProvider } from "../search/provider.js";
 import { isSubscriptionProvider } from "./subscription.js";
+import { sessionSuffix } from "./slug.js";
 
 export interface RunOptions {
   full?: boolean;
@@ -682,6 +683,14 @@ export async function runPipeline(
     // The retitle call reads the finished note (~540 words) plus its prompt.
     const RETITLE_INPUT_TOKENS = 900;
     const RETITLE_OUTPUT_TOKENS = 40;
+    // Output figures assume no thinking (SDK path, and claude-cli since it sets
+    // MAX_THINKING_TOKENS=0). On Opus/Sonnet/Haiku 5.5 thinking can't be
+    // turned off, so real claude-cli output can run well above these numbers.
+    // Their dollar estimate is 0 regardless (subscription quota).
+    // Gotchas also get a lesson call over the note. The category isn't known
+    // before classify, so every session is charged for it: an upper bound.
+    const LESSON_INPUT_TOKENS = 950;
+    const LESSON_OUTPUT_TOKENS = 50;
     const CHARS_PER_TOKEN = 3;
     let totalCost = 0;
     let estimated = 0;
@@ -747,11 +756,19 @@ export async function runPipeline(
               RETITLE_OUTPUT_TOKENS,
               cfg.pricing,
               cfg.kieTopUpTier,
+            ) +
+            computeCost(
+              cfg.provider,
+              classifyModel,
+              LESSON_INPUT_TOKENS,
+              LESSON_OUTPUT_TOKENS,
+              cfg.pricing,
+              cfg.kieTopUpTier,
             );
       totalCost += cost;
       estimated += 1;
       if (interactive) {
-        const label = `${parsed.projectSlug}/${parsed.sessionId.slice(0, 8)}`;
+        const label = `${parsed.projectSlug}/${sessionSuffix(parsed.sessionId)}`;
         ui.line(
           `  ${label.padEnd(42)} ${ui.dim(`${(classifyIn + distillIn).toLocaleString()} in`)}  ${ui.warn(ui.formatUsd(cost))}`,
         );
@@ -1024,7 +1041,7 @@ export async function runPipeline(
         ui.categoryRow(note.classification.category, note.classification.topic);
       }
       fileLog(
-        `distilled ${parsed.sessionId.slice(0, 8)} → ${note.classification.category}/${note.classification.topic}`,
+        `distilled ${sessionSuffix(parsed.sessionId)} → ${note.classification.category}/${note.classification.topic}`,
       );
       if (note.classification.confidence >= 0.8 && cfg.notifications !== false) {
         notify(

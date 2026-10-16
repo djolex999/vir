@@ -24,6 +24,7 @@ import {
 } from "../state/db.js";
 import * as ui from "../ui/display.js";
 import { isSubscriptionProvider } from "../pipeline/subscription.js";
+import { sessionSuffix } from "../pipeline/slug.js";
 
 export interface ReconcileOptions {
   dryRun?: boolean;
@@ -319,7 +320,7 @@ export async function runReconcile(
     );
 
     for (const r of rows) {
-      const id = r.sessionId.slice(0, 8);
+      const id = sessionSuffix(r.sessionId);
       const marker = r.hadCostRecord ? ui.warn("$") : ui.dim(" ");
       const est = r.missing
         ? "transcript gone"
@@ -444,7 +445,7 @@ export async function runReconcile(
         }
         ui.row(
           ui.errorColor(ui.CROSS),
-          ui.text(`retry failed: ${deriveSessionId(t.path).slice(0, 8)} — ${msg}`),
+          ui.text(`retry failed: ${sessionSuffix(deriveSessionId(t.path))} — ${msg}`),
         );
       }
     }
