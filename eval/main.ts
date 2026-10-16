@@ -21,9 +21,18 @@ function opt(name: string): string | undefined {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
+function countOpt(name: string): number | undefined {
+  const raw = opt(name);
+  if (raw === undefined) return undefined;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isInteger(n) || n < 1 || String(n) !== raw) throw new Error(`--${name} needs a positive integer, got ${JSON.stringify(raw)}`);
+  return n;
+}
+
 const USAGE = `usage: npm run eval -- <command> [--seed N] [--dry-run]
 
   queries     build ~/.vir/eval/queries.json (real / identifier / conceptual / garbage)
+              [--identifier N] [--conceptual N] (default 12 each)
   homes       prepare one isolated HOME per arm (config + db copy; bge install + re-embed)
               [--arm <id>] [--refresh]
   pool        run every arm at top-${20} and write the pooled candidate lists
@@ -42,7 +51,7 @@ async function main(): Promise<void> {
   const dryRun = flag("dry-run");
   switch (cmd) {
     case "queries":
-      await buildQuerySet({ seed, dryRun });
+      await buildQuerySet({ seed, dryRun, identifierCount: countOpt("identifier"), conceptualCount: countOpt("conceptual") });
       return;
     case "homes": {
       const armId = opt("arm");

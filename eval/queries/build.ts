@@ -22,8 +22,8 @@ import { selectRealQueries } from "./real.js";
 export const REAL_CUTOFF = "2026-09-11T20:00:00Z";
 export const NEAR_DUP_THRESHOLD = 0.6;
 export const RARE_TITLE_RATIO = 0.05;
-const IDENTIFIER_COUNT = 12;
-const CONCEPTUAL_COUNT = 12;
+export const DEFAULT_IDENTIFIER_COUNT = 12;
+export const DEFAULT_CONCEPTUAL_COUNT = 12;
 const CANDIDATES_PER_NOTE = 3;
 const CATEGORY_DIRS = ["decisions/", "gotchas/", "patterns/", "tools/"];
 
@@ -38,6 +38,8 @@ function noteBody(raw: string, maxChars: number): string {
 export interface BuildOpts {
   seed: number;
   dryRun: boolean;
+  identifierCount?: number;
+  conceptualCount?: number;
 }
 
 // One seeded stream per class, so a change to one generator never reshuffles
@@ -49,6 +51,8 @@ const SALT_IDENTIFIER = 0x1d1d1d;
 export async function buildQuerySet(opts: BuildOpts): Promise<QuerySet> {
   const cfg = loadConfig();
   const previous = readPrevious();
+  const IDENTIFIER_COUNT = opts.identifierCount ?? DEFAULT_IDENTIFIER_COUNT;
+  const CONCEPTUAL_COUNT = opts.conceptualCount ?? DEFAULT_CONCEPTUAL_COUNT;
 
   // ---- real -------------------------------------------------------------
   const real = selectRealQueries(readQueryLog(), REAL_CUTOFF, NEAR_DUP_THRESHOLD);
