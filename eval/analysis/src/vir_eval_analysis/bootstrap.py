@@ -38,7 +38,8 @@ def paired_bootstrap_ci(diffs: Sequence[float], rounds: int, rng: Rng) -> Bootst
         return {"n": 0, "meanDiff": math.nan, "lo": math.nan, "hi": math.nan, "crossesZero": True}
     mean_diff = _left_sum(diffs) / n
     if n == 1:
-        return {"n": n, "meanDiff": mean_diff, "lo": mean_diff, "hi": mean_diff, "crossesZero": mean_diff == 0}
+        # One query: a point, not an interval; never a detectable difference.
+        return {"n": n, "meanDiff": mean_diff, "lo": mean_diff, "hi": mean_diff, "crossesZero": True}
     means: list[float] = []
     for _ in range(rounds):
         total = 0.0
@@ -60,7 +61,7 @@ class CIVerdict(TypedDict):
 def is_detectable(ci: CIVerdict) -> bool:
     """A CI that excludes zero on at least two queries.
 
-    pairedBootstrapCI returns lo = hi = meanDiff at n = 1, so its crossesZero
-    is False for any nonzero single difference: one query, not evidence.
+    pairedBootstrapCI sets crossesZero at n = 1 itself; the n check also
+    covers run records written before that fix, which stored False there.
     """
     return ci["n"] >= 2 and not ci["crossesZero"]

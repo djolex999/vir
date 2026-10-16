@@ -144,9 +144,10 @@ Needs [uv](https://docs.astral.sh/uv/); the first call creates
 - **report** plots the CIs the run already stores (it recomputes nothing) and the
   per-query nDCG delta against the baseline, so you can see whether a mean
   comes from one query or from many.
-- **n ≥ 2 to call a difference.** `pairedBootstrapCI` returns
-  `lo = hi = meanDiff` at n = 1, so a single query "excludes zero". Analysis
-  never reports that as detectable. Classes under 20 queries are flagged
+- **n ≥ 2 to call a difference.** At n = 1 `pairedBootstrapCI` returns the
+  point `lo = hi = meanDiff` and marks it `crossesZero` (one query is not
+  evidence). Run records written before that fix stored `false` there, so
+  analysis also checks n itself. Classes under 20 queries are flagged
   report-only.
 
 ## Distill prompt A/B (`eval/distill/`)

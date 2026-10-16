@@ -39,8 +39,11 @@ def test_write_report_writes_under_given_root_with_ts_slug(tmp_path: Path) -> No
 
 
 def test_single_query_difference_is_not_reported_as_detectable() -> None:
-    # two_arm_record's identifier class has one query: TS marks its CI as not
-    # crossing zero (lo = hi = meanDiff), which is not evidence.
+    # The bootstrap now marks n = 1 as crossing zero; records written before
+    # that fix stored False there, and analysis must still not report them.
     r = two_arm_record()
-    assert any(c["ci"]["n"] == 1 and not c["ci"]["crossesZero"] for c in r["comparisons"])
+    singles = [c for c in r["comparisons"] if c["ci"]["n"] == 1]
+    assert singles and all(c["ci"]["crossesZero"] for c in singles)
+    for c in singles:
+        c["ci"]["crossesZero"] = False  # legacy record
     assert "identifier" not in summary_markdown(r).split("## detectable")[1]
