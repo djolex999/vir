@@ -1,0 +1,34 @@
+[project]
+name = "vir-eval-analysis"
+version = "0.1.0"
+description = "Post-run analysis of Vir retrieval eval records. Local only; never shipped."
+requires-python = ">=3.12"
+classifiers = ["Private :: Do Not Upload"]
+dependencies = [
+    "matplotlib>=3.11.2",
+    "pandas>=3.0.6",
+]
+
+[project.scripts]
+vir-eval-analysis = "vir_eval_analysis.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.31,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pandas-stubs>=3.0.5.260914",
+    "pyright>=1.1.414",
+    "pytest>=9.1.1",
+]
+
+[tool.pyright]
+include = ["src", "tests"]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

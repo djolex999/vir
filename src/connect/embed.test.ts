@@ -78,3 +78,34 @@ describe("backfillInsightEmbeddings", () => {
     expect(await backfillInsightEmbeddings(db, provider)).toBe(0);
   });
 });
+
+describe("insightEmbedTargets (vir embed)", () => {
+  const OTHER = "3f9a1c2e-0000-4000-8000-000000000001";
+
+  it("without force: accepted rules with no vector or another model's vector", async () => {
+    const { insightEmbedTargets } = await import("./embed.js");
+    const { sampleInsight } = await import("./testFixtures.js");
+    db.upsertInsight(sampleInsight({ status: "accepted" }));
+    db.upsertInsight(sampleInsight({ id: OTHER, slug: "other-rule-3f9a1c2f", status: "proposed" }));
+    expect(insightEmbedTargets(db, "bge-small-en-v1.5", false).map((t) => t.id)).toEqual([sampleInsight().id]);
+
+    db.setInsightEmbedding(sampleInsight().id, [1, 0], { model: "nomic-embed-text", dim: 2 });
+    // Model switch: a nomic vector is a target under bge, not under nomic.
+    expect(insightEmbedTargets(db, "bge-small-en-v1.5", false)).toHaveLength(1);
+    expect(insightEmbedTargets(db, "nomic-embed-text", false)).toEqual([]);
+  });
+
+  it("with force: every accepted rule, even one already on the active model", async () => {
+    const { insightEmbedTargets } = await import("./embed.js");
+    const { sampleInsight } = await import("./testFixtures.js");
+    db.upsertInsight(sampleInsight({ status: "accepted" }));
+    db.upsertInsight(sampleInsight({ id: OTHER, slug: "other-rule-3f9a1c2f", status: "rejected" }));
+    db.setInsightEmbedding(sampleInsight().id, [1, 0], { model: "nomic-embed-text", dim: 2 });
+    expect(insightEmbedTargets(db, "nomic-embed-text", true).map((t) => t.id)).toEqual([sampleInsight().id]);
+  });
+
+  it("embeds the same text the accept-time and sweep paths embed", async () => {
+    const { insightEmbeddingText } = await import("./embed.js");
+    expect(insightEmbeddingText({ rule: "Use proxy.ts", why: "middleware is deprecated" })).toBe("Use proxy.ts\nmiddleware is deprecated");
+  });
+});

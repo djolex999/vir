@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.29.0 — 2026-10-17
+
+**Search returns more relevant notes: MMR is off by default, and verified notes can no longer push past better matches.**
+
+- **MMR reranking is off by default (`retrievalDiversity: 0`).** On vir's own retrieval eval (54 judged queries), MMR at 0.3 made results worse for both embedding models: nDCG@8 fell by 0.089 with nomic and 0.079 with bge. Under nomic it also pulled off-topic notes into the top results because they were unlike everything else. Existing installs are migrated once: a stored `0.3` (the old default, which `vir init` wrote into every config) becomes `0`. Any other value is kept, and if you set `0.3` again afterwards it stays. `config.json` gains a `configVersion` field to record the migration.
+- **Verified notes win near-ties instead of jumping the queue.** The +0.2 boost for `verified: true` notes now applies only to notes already in the top 2×K by relevance, in both embedding and keyword search. Before, an accepted connect-pass rule ranked first or second for almost every query, including unrelated ones.
+- **`vir embed` re-embeds accepted connect-pass rules.** `vir embed --force`, the command for switching embedding models, skipped them, so accepted rules dropped out of search until the next `vir run` restored them. Without `--force` it also fills in rules that are missing a vector or have one from another model, as `vir run` does.
+
 ## 0.28.0 — 2026-10-16
 
 - **`vir sync-claude` writes lessons, not slugs.** A project's CLAUDE.md gets its top 5 gotchas, each as the one-line lesson from the note (`- Zod 4 toJSONSchema requires io: "input" when schemas contain .transform()`). Confidence scores and slugs are gone from the file. The global CLAUDE.md and AGENTS.md no longer get every project's notes: only one line pointing at `vir_query`, plus your global rules. The first sync after upgrading shows the old lines as removals.

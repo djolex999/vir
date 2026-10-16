@@ -30,7 +30,9 @@ export function pairedBootstrapCI(diffs: readonly number[], rounds: number, rng:
   const n = diffs.length;
   if (n === 0) return { n: 0, meanDiff: Number.NaN, lo: Number.NaN, hi: Number.NaN, crossesZero: true };
   const meanDiff = diffs.reduce((a, b) => a + b, 0) / n;
-  if (n === 1) return { n, meanDiff, lo: meanDiff, hi: meanDiff, crossesZero: meanDiff === 0 };
+  // One query has no spread to resample: the interval is a point, not
+  // evidence, so it never counts as a detectable difference.
+  if (n === 1) return { n, meanDiff, lo: meanDiff, hi: meanDiff, crossesZero: true };
   const means: number[] = [];
   for (let r = 0; r < rounds; r += 1) {
     let sum = 0;

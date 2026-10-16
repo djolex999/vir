@@ -83,3 +83,27 @@ describe("parseJudgeResponse", () => {
     ).toThrow(/grade/);
   });
 });
+
+describe("parseJudgeResponse: shortened slugs", () => {
+  const slugs = ["insights/rules/paddle-tax-70c62d63", "gotchas/redis-reconnect-1a2b3c4d"];
+
+  it("maps a slug the judge shortened to its directory-less form when exactly one candidate matches", () => {
+    const out = parseJudgeResponse('{"paddle-tax-70c62d63": 0, "gotchas/redis-reconnect-1a2b3c4d": 2}', slugs);
+    expect(out).toEqual({ "insights/rules/paddle-tax-70c62d63": 0, "gotchas/redis-reconnect-1a2b3c4d": 2 });
+  });
+
+  it("still rejects a key that matches no candidate", () => {
+    expect(() => parseJudgeResponse('{"paddle-tax": 0, "gotchas/redis-reconnect-1a2b3c4d": 2}', slugs)).toThrow(/unknown slug: paddle-tax/);
+  });
+
+  it("rejects a shortened key that would match two candidates", () => {
+    const twins = ["gotchas/same-name-1a2b3c4d", "patterns/same-name-1a2b3c4d"];
+    expect(() => parseJudgeResponse('{"same-name-1a2b3c4d": 1}', twins)).toThrow(/ambiguous slug: same-name-1a2b3c4d/);
+  });
+
+  it("rejects a shortened key that collides with a full key for the same candidate", () => {
+    expect(() =>
+      parseJudgeResponse('{"paddle-tax-70c62d63": 0, "insights/rules/paddle-tax-70c62d63": 1, "gotchas/redis-reconnect-1a2b3c4d": 2}', slugs),
+    ).toThrow(/graded twice: insights\/rules\/paddle-tax-70c62d63/);
+  });
+});

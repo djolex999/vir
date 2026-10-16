@@ -284,3 +284,59 @@ describe("provider codex-cli (ChatGPT subscription, no credential)", () => {
     ).toBe(true);
   });
 });
+
+describe("config migration to version 1 (0.29.0: MMR off by default)", () => {
+  it("turns the old persisted default 0.3 into 0 and stamps the version", () => {
+    const { json, changed } = cfg.migrateConfigJson({ retrievalDiversity: 0.3 });
+    expect(changed).toBe(true);
+    expect(json).toEqual({ retrievalDiversity: 0, configVersion: cfg.CONFIG_VERSION });
+  });
+
+  it("keeps any other explicit value and still stamps the version", () => {
+    expect(cfg.migrateConfigJson({ retrievalDiversity: 0.5 }).json).toEqual({ retrievalDiversity: 0.5, configVersion: 1 });
+    expect(cfg.migrateConfigJson({}).json).toEqual({ configVersion: 1 });
+  });
+
+  it("never touches a config already at the current version", () => {
+    const raw = { retrievalDiversity: 0.3, configVersion: cfg.CONFIG_VERSION };
+    const { json, changed } = cfg.migrateConfigJson(raw);
+    expect(changed).toBe(false);
+    expect(json).toEqual(raw);
+  });
+
+  it("does not mutate its input", () => {
+    const raw = { retrievalDiversity: 0.3 };
+    cfg.migrateConfigJson(raw);
+    expect(raw).toEqual({ retrievalDiversity: 0.3 });
+  });
+
+  it("loadConfig migrates once and writes it back, so a later deliberate 0.3 sticks", () => {
+    cfg.ensureVirDir();
+    const path = join(tmpHome, ".vir", "config.json");
+    const legacy = { ...sampleConfig(), retrievalDiversity: 0.3 };
+    writeFileSync(path, JSON.stringify(legacy), { mode: 0o600 });
+
+    expect(cfg.loadConfig().retrievalDiversity).toBe(0);
+    const onDisk = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+    expect(onDisk["configVersion"]).toBe(cfg.CONFIG_VERSION);
+    expect(onDisk["retrievalDiversity"]).toBe(0);
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+
+    writeFileSync(path, JSON.stringify({ ...onDisk, retrievalDiversity: 0.3 }), { mode: 0o600 });
+    expect(cfg.loadConfig().retrievalDiversity).toBe(0.3);
+  });
+
+  it("a config with no retrievalDiversity gets the new default 0", () => {
+    cfg.ensureVirDir();
+    const path = join(tmpHome, ".vir", "config.json");
+    const { retrievalDiversity: _drop, ...rest } = sampleConfig();
+    writeFileSync(path, JSON.stringify(rest), { mode: 0o600 });
+    expect(cfg.loadConfig().retrievalDiversity).toBe(0);
+  });
+
+  it("saveConfig stamps the current version", () => {
+    cfg.saveConfig(sampleConfig());
+    const onDisk = JSON.parse(readFileSync(join(tmpHome, ".vir", "config.json"), "utf8")) as Record<string, unknown>;
+    expect(onDisk["configVersion"]).toBe(cfg.CONFIG_VERSION);
+  });
+});

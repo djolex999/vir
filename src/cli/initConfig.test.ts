@@ -40,6 +40,7 @@ const SURVIVAL_SAMPLE: Record<string, unknown> = {
   retrievalDiversity: 0.9,
   logQueries: false,
   connectMaxCandidates: 4,
+  configVersion: 1,
   models: {
     classify: "claude-haiku-4-5",
     distill: "claude-sonnet-4-6",

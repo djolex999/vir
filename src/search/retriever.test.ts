@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadIndex, mmrRerank, partitionByEmbeddingModel, search, searchTfIdf, searchWithOutcome, type ScoredCandidate } from "./retriever.js";
+import { boostVerifiedInWindow, loadIndex, mmrRerank, partitionByEmbeddingModel, search, searchTfIdf, searchWithOutcome, type ScoredCandidate } from "./retriever.js";
 import type { Config } from "../config.js";
 import type { EmbeddingRow, StateDb } from "../state/db.js";
 
@@ -551,5 +551,109 @@ describe("connect-pass insights in retrieval", () => {
     writeFileSync(join(rules, "dupe.md"), "---\nstatus: accepted\nstatus: rejected\n---\n**Rule:** y\n");
     const rels = loadIndex({ vaultPath: vault, outputDir: "vir" } as unknown as Config).map((d) => d.relPath);
     expect(rels).toEqual([]);
+  });
+});
+
+describe("verified boost is windowed to the top 2×K by raw relevance", () => {
+  const tmps: string[] = [];
+  afterEach(() => {
+    vi.clearAllMocks();
+    for (const p of tmps) rmSync(p, { recursive: true, force: true });
+    tmps.length = 0;
+  });
+
+  it("boostVerifiedInWindow boosts verified items inside the window only", () => {
+    const items = [
+      { id: "a", score: 0.9, verified: false },
+      { id: "b", score: 0.8, verified: true },
+      { id: "c", score: 0.7, verified: false },
+      { id: "d", score: 0.6, verified: true },
+    ];
+    const out = boostVerifiedInWindow(items, 2, 0.2);
+    expect(out.find((x) => x.id === "b")?.score).toBeCloseTo(1.0);
+    expect(out.find((x) => x.id === "d")?.score).toBe(0.6);
+    expect(out.find((x) => x.id === "a")?.score).toBe(0.9);
+  });
+
+  it("windows by raw rank whatever the input order, and leaves the input untouched", () => {
+    const items = [
+      { id: "low", score: 0.1, verified: true },
+      { id: "high", score: 0.9, verified: false },
+    ];
+    const out = boostVerifiedInWindow(items, 1, 0.2);
+    expect(out.find((x) => x.id === "low")?.score).toBe(0.1);
+    expect(items[0]?.score).toBe(0.1);
+  });
+
+  // Query vector is [1, 0, 0] (embed mock), so a row at [c, sqrt(1-c²), 0]
+  // has cosine c with the query.
+  function rowAt(dir: string, name: string, cosine: number, verified: boolean): EmbeddingRow {
+    const filePath = join(dir, `${name}.md`);
+    writeFileSync(filePath, `---\nverified: ${verified}\n---\nbody of ${name}\n`);
+    return {
+      sessionId: name, topic: name, category: "pattern", project: "",
+      filePath, embedding: [cosine, Math.sqrt(1 - cosine * cosine), 0],
+      embeddingModel: "nomic-embed-text", embeddingDim: 768,
+    };
+  }
+
+  async function topTitles(rows: EmbeddingRow[], vault: string, topK: number): Promise<string[]> {
+    const db = {
+      getEmbeddings: () => rows,
+      getArticleEmbeddings: () => [],
+      getTopicEmbeddings: () => [],
+      getPdfEmbeddings: () => [],
+      getInsightEmbeddings: () => [],
+    } as unknown as StateDb;
+    const cfg = { vaultPath: vault, outputDir: "vir", topicsDir: "topics", retrievalDiversity: 0 } as unknown as Config;
+    return (await search(cfg, db, "q", topK)).map((h) => h.filePath.slice(h.filePath.lastIndexOf("/") + 1, -3));
+  }
+
+  it("a weakly related verified note can no longer jump the whole result list", async () => {
+    const vault = mkdtempSync(join(tmpdir(), "vir-boost-"));
+    tmps.push(vault);
+    const rows = Array.from({ length: 10 }, (_, i) => rowAt(vault, `u${i}`, 0.6 - i * 0.01, false));
+    // Raw rank 11 of 11: outside the 2×3 window. Unwindowed, 0.45 + 0.2 = 0.65
+    // would have put it first.
+    rows.push(rowAt(vault, "verified-far", 0.45, true));
+    expect(await topTitles(rows, vault, 3)).toEqual(["u0", "u1", "u2"]);
+  });
+
+  it("a verified note just outside the top K still wins its near-tie", async () => {
+    const vault = mkdtempSync(join(tmpdir(), "vir-boost-"));
+    tmps.push(vault);
+    const rows = Array.from({ length: 10 }, (_, i) => rowAt(vault, `u${i}`, 0.6 - i * 0.01, false));
+    // Raw rank 5 of 11: inside the 2×3 window, boosted to 0.765.
+    rows.push(rowAt(vault, "verified-near", 0.565, true));
+    expect((await topTitles(rows, vault, 3))[0]).toBe("verified-near");
+  });
+});
+
+describe("TF-IDF verified boost is windowed too", () => {
+  const tmps: string[] = [];
+  afterEach(() => {
+    for (const p of tmps) rmSync(p, { recursive: true, force: true });
+    tmps.length = 0;
+  });
+
+  it("a verified note with a passing lexical match stays out of a top-2", () => {
+    const vault = mkdtempSync(join(tmpdir(), "vir-tfidf-boost-"));
+    tmps.push(vault);
+    const dir = join(vault, "vir", "patterns");
+    mkdirSync(dir, { recursive: true });
+    for (let i = 0; i < 6; i += 1) {
+      const pad = Array.from({ length: 18 }, (_, j) => `pad${i}x${j}`).join(" ");
+      writeFileSync(join(dir, `redis-${i}.md`), `---\nverified: false\n---\nredis ${pad}\n`);
+    }
+    // One "redis" among many words: the weakest raw match (rank 7 of 7), so
+    // outside the 2×2 window. TF-IDF scores are ~0.05, and an unwindowed +0.2
+    // put it first.
+    const filler = Array.from({ length: 200 }, (_, i) => `word${i}`).join(" ");
+    writeFileSync(join(dir, "verified-rule.md"), `---\nverified: true\n---\nredis ${filler}\n`);
+    const cfg = { vaultPath: vault, outputDir: "vir" } as unknown as Config;
+
+    const hits = searchTfIdf(loadIndex(cfg), "redis", 2);
+    expect(hits.map((h) => h.relPath)).not.toContain("patterns/verified-rule.md");
+    expect(hits).toHaveLength(2);
   });
 });

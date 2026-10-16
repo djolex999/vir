@@ -58,6 +58,24 @@ export interface ScoredCandidate {
 // above unverified auto-distillations of comparable relevance. Applied before
 // the topK slice in both the embedding and TF-IDF paths.
 const VERIFIED_BOOST = 0.2;
+// The boost breaks near-ties; it must not carry a weakly related note past
+// everything else. Only candidates already in the top
+// VERIFIED_WINDOW_FACTOR × topK by raw score are eligible for it.
+const VERIFIED_WINDOW_FACTOR = 2;
+
+// Returns a copy, sorted by raw score, with `boost` added to verified items
+// inside the top `window`. A flat boost on every candidate let one accepted
+// rule rank 1–2 for nearly every nomic query (cosines cluster high, so +0.2
+// outweighs real relevance differences), garbage queries included.
+export function boostVerifiedInWindow<T extends { score: number; verified: boolean }>(
+  items: readonly T[],
+  window: number,
+  boost: number = VERIFIED_BOOST,
+): T[] {
+  return [...items]
+    .sort((a, b) => b.score - a.score)
+    .map((it, i) => (it.verified && i < window ? { ...it, score: it.score + boost } : it));
+}
 
 // Cheap frontmatter check — true only when the YAML block has `verified: true`.
 // Exported so the query log records per-hit verified status without a second
@@ -94,8 +112,9 @@ export interface SearchOutcome {
   provider: { name: string; model: string; dim: number } | null;
 }
 
-// Verified notes get +VERIFIED_BOOST, pushing human-approved knowledge to the
-// top of results over unverified auto-distillations of similar relevance.
+// Verified notes get +VERIFIED_BOOST when they already rank in the top
+// 2×topK, pushing human-approved knowledge above unverified auto-distillations
+// of similar relevance.
 export async function search(
   cfg: Config,
   db: StateDb,
@@ -217,7 +236,7 @@ async function searchByEmbedding(
   // unverified one just outside the window. Reads are bounded to docs above the
   // cosine floor (a personal-scale vault), and the content is reused for hits.
   const minScore = thresholdsFor(provider.modelName).minEmbeddingScore;
-  const enriched: Array<{ row: (typeof rows)[number]; content: string; score: number }> = [];
+  const raw: Array<{ row: (typeof rows)[number]; content: string; score: number; verified: boolean }> = [];
   for (const r of rows) {
     const s = cosineSimilarity(queryVec, r.embedding);
     if (s < minScore) continue;
@@ -228,9 +247,9 @@ async function searchByEmbedding(
       content = "";
     }
     if (content.length === 0) continue;
-    const score = isVerified(content) ? s + VERIFIED_BOOST : s;
-    enriched.push({ row: r, content, score });
+    raw.push({ row: r, content, score: s, verified: isVerified(content) });
   }
+  const enriched = boostVerifiedInWindow(raw, VERIFIED_WINDOW_FACTOR * topK);
 
   // MMR reranks the relevance-sorted pool to balance relevance against diversity
   // so results cover different facets of the query, not 5 near-duplicates. The
@@ -388,7 +407,7 @@ export function searchTfIdf(
     dfMap.set(term, df);
   }
 
-  const scored: ScoredDoc[] = [];
+  const scored: Array<ScoredDoc & { verified: boolean }> = [];
   for (const d of docs) {
     let score = 0;
     for (const term of queryTokens) {
@@ -405,21 +424,15 @@ export function searchTfIdf(
       const tfNorm = tf / Math.max(1, d.tokens.length);
       score += tfNorm * idf;
     }
-    if (score > 0) {
-      // Boost only docs that already match the query (score > 0) so a verified
-      // note can't surface on zero lexical overlap.
-      if (isVerified(d.raw)) score += VERIFIED_BOOST;
-      scored.push({
-        relPath: d.relPath,
-        title: d.title,
-        raw: d.raw,
-        score: Math.round(score * 10000) / 10000,
-      });
-    }
+    // Only docs that already match the query (score > 0) are candidates, so a
+    // verified note can't surface on zero lexical overlap.
+    if (score > 0) scored.push({ relPath: d.relPath, title: d.title, raw: d.raw, score, verified: isVerified(d.raw) });
   }
 
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, topK);
+  return boostVerifiedInWindow(scored, VERIFIED_WINDOW_FACTOR * topK)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK)
+    .map(({ relPath, title, raw, score }) => ({ relPath, title, raw, score: Math.round(score * 10000) / 10000 }));
 }
 
 function walk(dir: string, acc: string[]): void {

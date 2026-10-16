@@ -46,6 +46,14 @@ describe("pairedBootstrapCI", () => {
     expect(one.hi).toBe(0.4);
     expect(pairedBootstrapCI([], 300, makeRng(9)).n).toBe(0);
   });
+
+  it("n = 1 is never a detectable difference, however large the single diff", () => {
+    // One query cannot be resampled into an interval; lo = hi = meanDiff is a
+    // point, not evidence, so the verdict must stay "no detectable difference".
+    expect(pairedBootstrapCI([0.4], 300, makeRng(9)).crossesZero).toBe(true);
+    expect(pairedBootstrapCI([-0.9], 300, makeRng(9)).crossesZero).toBe(true);
+    expect(pairedBootstrapCI([0], 300, makeRng(9)).crossesZero).toBe(true);
+  });
 });
 
 describe("mean", () => {

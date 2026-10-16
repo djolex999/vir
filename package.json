@@ -1,6 +1,6 @@
 {
   "name": "@djolex999/vir-cli",
-  "version": "0.28.0",
+  "version": "0.29.0",
   "description": "An LLM Wiki for Claude Code, in your Obsidian vault.",
   "author": "Djordje Marković <djordje@growthq.rs>",
   "license": "MIT",
@@ -48,6 +48,7 @@
     "eval:build": "tsc -p eval/tsconfig.json",
     "eval": "npm run eval:build --silent && node eval/dist/eval/main.js",
     "eval:spotcheck": "npm run eval --silent -- spotcheck",
+    "eval:analyze": "uv run --project eval/analysis --quiet vir-eval-analysis",
     "distill:ab": "npm run eval:build --silent && node eval/dist/eval/distill/main.js",
     "distill:grade": "npm run eval:build --silent && node eval/dist/eval/distill/main.js grade",
     "distill:quick": "npm run eval:build --silent && node eval/dist/eval/distill/main.js quick"

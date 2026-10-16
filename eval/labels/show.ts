@@ -1,14 +1,16 @@
 import { makeRng, sample } from "../rng.js";
 import type { LabelRecord, QueryClass } from "../types.js";
-import { readLabelStore, readPool, readQuerySet } from "./run.js";
+import { currentLabels } from "./current.js";
+import { rubricHash } from "./judge.js";
+import { readLabelStore, readPool, readQuerySet, readRubric } from "./run.js";
 
 // Renders labeled queries for a human: per query, every judged candidate with
 // its grade and which arms ranked it where. `--per-class N` samples N queries
 // from each class (seeded); default shows everything labeled.
 export function showLabels(opts: { perClass: number | null; seed: number }): string {
   const set = readQuerySet();
-  const pool = readPool();
-  const labels = Object.values(readLabelStore().labels);
+  const pool = readPool(set);
+  const labels = currentLabels(readLabelStore(), set, rubricHash(readRubric()));
   const byQuery = new Map<string, LabelRecord[]>();
   for (const l of labels) {
     const arr = byQuery.get(l.queryId) ?? [];

@@ -25,7 +25,7 @@ sources 2  ·  via embedding  ·  searched 460
 
 `--limit <n>` controls how many notes are retrieved (default 8). `--json` returns the machine-readable form the Obsidian plugin consumes.
 
-Verified notes (approved in `vir review`) get a flat ranking boost. Results are reranked for diversity (MMR, `retrievalDiversity`, default 0.3) so you get five different angles instead of five near-duplicates.
+Verified notes (approved in `vir review`) get a ranking boost when they already rank near the top, so they win near-ties without displacing more relevant notes. Results rank by pure relevance by default; set `retrievalDiversity` (0–1) to rerank for diversity with MMR. It was on at 0.3 until 0.29.0, when vir's retrieval eval showed it lowered result quality for both embedding models.
 
 ## Search providers
 

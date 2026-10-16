@@ -43,8 +43,6 @@ export interface PrepareOpts {
 export async function prepareHomes(opts: PrepareOpts = {}): Promise<void> {
   if (!existsSync(CLI_JS)) throw new Error(`${CLI_JS} missing — run \`npm run build\` first`);
   const rawCfg = JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as Record<string, unknown>;
-  const liveDiversity =
-    typeof rawCfg["retrievalDiversity"] === "number" ? rawCfg["retrievalDiversity"] : 0.3;
 
   for (const arm of opts.arms ?? ARMS) {
     const home = armHome(arm);
@@ -54,7 +52,7 @@ export async function prepareHomes(opts: PrepareOpts = {}): Promise<void> {
     mkdirSync(virDir, { recursive: true });
 
     if (opts.refresh || !existsSync(cfgPath)) {
-      writeFileSync(cfgPath, JSON.stringify(buildArmConfig(rawCfg, arm, liveDiversity), null, 2));
+      writeFileSync(cfgPath, JSON.stringify(buildArmConfig(rawCfg, arm), null, 2));
       chmodSync(cfgPath, 0o600);
       log(`[${arm.id}] config written → ${cfgPath}`);
     }

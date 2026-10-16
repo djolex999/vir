@@ -16,8 +16,11 @@ import {
   estimateTokens,
   noteExcerpt,
   parseJudgeResponse,
+  queryHash,
   rubricHash,
+  type Grade,
 } from "./judge.js";
+import { assertPoolMatchesSet, currentLabels } from "./current.js";
 import { buildPool, type PoolEntry } from "./pool.js";
 
 export const POOL_K = 20;
@@ -86,11 +89,13 @@ export async function buildAndWritePool(): Promise<PoolEntry[]> {
   return pool;
 }
 
-export function readPool(): PoolEntry[] {
+export function readPool(set: QuerySet): PoolEntry[] {
   if (!existsSync(EVAL_POOL_PATH)) {
     throw new Error(`no pool at ${EVAL_POOL_PATH} — run \`npm run eval -- pool\``);
   }
-  return (JSON.parse(readFileSync(EVAL_POOL_PATH, "utf8")) as { pool: PoolEntry[] }).pool;
+  const file = JSON.parse(readFileSync(EVAL_POOL_PATH, "utf8")) as { setCreatedAt?: string; pool: PoolEntry[] };
+  assertPoolMatchesSet(file, set);
+  return file.pool;
 }
 
 interface JudgeCall {
@@ -113,6 +118,7 @@ export function planJudgeCalls(
 ): { calls: JudgeCall[]; skipped: number; missingNotes: string[] } {
   const rh = rubricHash(rubric);
   const byId = new Map(set.queries.map((q) => [q.id, q] as const));
+  const judged = new Set(currentLabels(store, set, rh).map((l) => `${l.queryId}|${l.slug}@${l.contentHash}`));
   const calls: JudgeCall[] = [];
   let skipped = 0;
   const missingNotes: string[] = [];
@@ -143,8 +149,7 @@ export function planJudgeCalls(
         missingNotes.push(c.slug);
         continue;
       }
-      const existing = store.labels[labelStoreKey(q.id, c.slug, note.hash)];
-      if (existing && existing.rubricHash === rh) {
+      if (judged.has(`${q.id}|${c.slug}@${note.hash}`)) {
         skipped += 1;
         continue;
       }
@@ -176,11 +181,45 @@ function hashSeed(s: string): number {
   return h >>> 0;
 }
 
+// Writes one judge call's grades into the store. A response the parser
+// rejects (malformed JSON, a slug that matches no candidate, a missing grade)
+// writes nothing and is reported, so one bad answer cannot end a long run;
+// its pairs stay unlabeled and the next `label` run retries them.
+export function applyJudgeResponse(
+  store: LabelStore,
+  call: Pick<JudgeCall, "queryId" | "queryText" | "candidates">,
+  text: string,
+  rh: string,
+  ts: string,
+): { ok: true } | { ok: false; reason: string } {
+  let grades: Record<string, Grade>;
+  try {
+    grades = parseJudgeResponse(text, call.candidates.map((c) => c.slug));
+  } catch (err) {
+    return { ok: false, reason: (err as Error).message };
+  }
+  const qh = queryHash(call.queryText);
+  for (const c of call.candidates) {
+    const rec: LabelRecord = {
+      queryId: call.queryId,
+      queryHash: qh,
+      slug: c.slug,
+      contentHash: c.hash,
+      grade: grades[c.slug]!,
+      model: EVAL_MODEL,
+      rubricHash: rh,
+      ts,
+    };
+    store.labels[labelStoreKey(call.queryId, qh, c.slug, c.hash)] = rec;
+  }
+  return { ok: true };
+}
+
 export async function labelPool(opts: { seed: number; dryRun: boolean }): Promise<void> {
   const cfg = loadConfig();
   const root = vaultRoot(cfg);
   const set = readQuerySet();
-  const pool = readPool();
+  const pool = readPool(set);
   const store = readLabelStore();
   const rubric = readRubric();
   const rh = rubricHash(rubric);
@@ -205,27 +244,25 @@ export async function labelPool(opts: { seed: number; dryRun: boolean }): Promis
   if (opts.dryRun || calls.length === 0) return;
 
   let done = 0;
+  const failed: string[] = [];
   await mapLimit(calls, JUDGE_CONCURRENCY, async (call) => {
+    // A claude-cli failure (a limit included) propagates and halts the run.
     const res = await callJudge("eval-label", call.prompt, call.queryId);
-    const grades = parseJudgeResponse(res.text, call.candidates.map((c) => c.slug));
-    const ts = new Date().toISOString();
-    for (const c of call.candidates) {
-      const rec: LabelRecord = {
-        queryId: call.queryId,
-        slug: c.slug,
-        contentHash: c.hash,
-        grade: grades[c.slug]!,
-        model: EVAL_MODEL,
-        rubricHash: rh,
-        ts,
-      };
-      store.labels[labelStoreKey(call.queryId, c.slug, c.hash)] = rec;
-    }
+    const applied = applyJudgeResponse(store, call, res.text, rh, new Date().toISOString());
     done += 1;
+    if (!applied.ok) {
+      failed.push(`${call.queryId}: ${applied.reason}`);
+      log(`  [${done}/${calls.length}] ${call.queryId} SKIPPED: ${applied.reason}`);
+      return;
+    }
     // Persist after every call: a limit wall mid-run must not lose the labels
     // already paid for.
     writeLabelStore(store);
     log(`  [${done}/${calls.length}] ${call.queryId} (${call.candidates.length} notes, ${res.inputTokens} in / ${res.outputTokens} out)`);
   });
+  if (failed.length > 0) {
+    log(`${failed.length} call(s) returned an unusable response and were skipped; their pairs stay unlabeled. Re-run \`label\` to retry them.`);
+    process.exitCode = 1;
+  }
   log(`labels: ${Object.keys(store.labels).length} total → ${EVAL_LABELS_PATH}`);
 }

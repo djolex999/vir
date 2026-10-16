@@ -57,6 +57,9 @@ export interface ArmRunOutput {
 
 export interface LabelRecord {
   queryId: string;
+  // sha256(query text)[:12]. Absent on labels written before it existed;
+  // labels/current.ts decides whether those still apply.
+  queryHash?: string;
   slug: string;
   contentHash: string;
   grade: Grade;
@@ -67,12 +70,13 @@ export interface LabelRecord {
 
 export interface LabelStore {
   version: 1;
-  // key: `${queryId}|${slug}@${contentHash}`
+  // key: `${queryId}#${queryHash}|${slug}@${contentHash}` (older entries: `${queryId}|${slug}@${contentHash}`)
   labels: Record<string, LabelRecord>;
 }
 
 export interface SpotcheckPair {
   queryId: string;
+  queryHash?: string;
   slug: string;
   contentHash: string;
   human: Grade;
@@ -86,6 +90,6 @@ export interface SpotcheckStore {
   pairs: SpotcheckPair[];
 }
 
-export function labelStoreKey(queryId: string, slug: string, contentHash: string): string {
-  return `${queryId}|${slug}@${contentHash}`;
+export function labelStoreKey(queryId: string, queryHash: string, slug: string, contentHash: string): string {
+  return `${queryId}#${queryHash}|${slug}@${contentHash}`;
 }

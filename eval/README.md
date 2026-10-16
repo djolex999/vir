@@ -79,7 +79,8 @@ own configuration.
 The run record carries git SHA and dirty flag, K, seed, hashes of the query
 set, label file and rubric, spot-check agreement, per-arm corpus sizes and
 embedding provenance, method split, every per-query number, every
-comparison, and each arm's config snapshot. `eval:diff` waits for a second run.
+comparison, and each arm's config snapshot. Compare two runs with
+`npm run eval:analyze -- diff` (below).
 
 ## Query classes
 
@@ -97,16 +98,63 @@ DB row in a category dir, so every arm can reach them.
 
 TREC-style pooling: the union of each arm's top-20 per query. Graded 0/1/2 by
 `claude-sonnet-5` against `labels/rubric.md`, at most 10 candidates per call in
-seeded-shuffled order. A label is keyed by `queryId | slug @ sha256(content)[:12]`
-and carries the rubric hash: an edited note or rubric invalidates it, and a
-re-run judges only what changed. The spot-check is the anchor: model labels
-agreeing with themselves are correlation, not verification.
+seeded-shuffled order. A label is keyed by
+`queryId # sha256(query text)[:12] | slug @ sha256(content)[:12]` and carries
+the rubric hash: an edited note or rubric invalidates it, and a re-run judges
+only what changed. Query ids are positional (`identifier-3`), so the query-text
+hash is what stops a rebuilt set from inheriting grades judged for different
+text. Every reader of the store (`label`, `run`, `show`, `spotcheck`) goes
+through `labels/current.ts`. Labels written before the hash existed count only
+if they post-date the set's `createdAt`. `label` and `show` refuse a pool built
+from another query set. The spot-check is the anchor: model labels agreeing
+with themselves are correlation, not verification.
 
 ## Arms
 
 `tfidf`, `nomic`, `nomic-mmr`, `bge`, `bge-mmr`. TF-IDF has no MMR arm because
 production applies MMR in the embedding path only. New arms (hybrid, re-rank)
 are `ArmSpec` entries once the retriever exposes them as config.
+
+## Run analysis (`analysis/`, Python)
+
+The one Python piece of Vir. It reads run records and never ranks, labels or
+measures anything itself: the TS harness above stays the only thing that
+calls the retriever. It never ships (a uv project outside `files`) and follows
+the same data rule: it reads `~/.vir/eval/runs/` and writes only to
+`~/.vir/eval/analysis/`.
+
+```
+npm run eval:analyze -- runs                 # list run records
+npm run eval:analyze -- verify [run]         # recompute every stored CI; exit 1 on any mismatch
+npm run eval:analyze -- diff [old] [new]     # default: the two newest runs
+npm run eval:analyze -- report [run]         # summary.md, forest.png, per_query.png
+```
+
+Needs [uv](https://docs.astral.sh/uv/); the first call creates
+`eval/analysis/.venv` (pandas, matplotlib). Dev checks:
+`cd eval/analysis && uv run pytest && uv run pyright` (strict).
+
+- **Same statistics, proven.** `rng.py` and `bootstrap.py` port
+  `rng.ts` and `metrics/bootstrap.ts`. `golden.ts` writes their output on
+  synthetic inputs to `tests/fixtures/bootstrap_golden.json`. `golden.test.ts`
+  (vitest, in CI) fails when the TS code drifts from the fixture, and
+  `test_parity.py` fails when the Python drifts from it. Regenerate with
+  `VIR_UPDATE_GOLDEN=1 npx vitest run eval/analysis`. `verify` goes further:
+  it reproduces every CI in a real run record bit for bit, including the
+  shared-RNG draw order across comparisons.
+- **diff** subtracts per query (new − old) for every arm in both runs, per class
+  and metric, with the same paired bootstrap, seeded from the newer run. It
+  refuses runs whose `queriesHash`, `labelsHash`, `rubricHash` or `k` differ,
+  because those numbers measure different things. It warns about dirty trees and
+  one-sided arms, and lists config keys that changed per arm.
+- **report** plots the CIs the run already stores (it recomputes nothing) and the
+  per-query nDCG delta against the baseline, so you can see whether a mean
+  comes from one query or from many.
+- **n ≥ 2 to call a difference.** At n = 1 `pairedBootstrapCI` returns the
+  point `lo = hi = meanDiff` and marks it `crossesZero` (one query is not
+  evidence). Run records written before that fix stored `false` there, so
+  analysis also checks n itself. Classes under 20 queries are flagged
+  report-only.
 
 ## Distill prompt A/B (`eval/distill/`)
 
