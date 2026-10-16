@@ -3,6 +3,13 @@ title: Changelog
 description: Every vir release, newest first. Mirrors CHANGELOG.md in the repo.
 ---
 
+## 0.28.0 — 2026-10-16
+
+- **`vir sync-claude` writes lessons, not slugs.** A project's CLAUDE.md gets its top 5 gotchas, each as the one-line lesson from the note (`- Zod 4 toJSONSchema requires io: "input" when schemas contain .transform()`). Confidence scores and slugs are gone from the file. The global CLAUDE.md and AGENTS.md no longer get every project's notes: only one line pointing at `vir_query`, plus your global rules. The first sync after upgrading shows the old lines as removals.
+- **Gotchas get their lesson at distill time.** After titling, a gotcha note gets one more cheap classify-model call that states its rule in one sentence (`lesson:` in frontmatter and a new `lesson` column). `vir sync-claude` uses it, so a note whose first points are background no longer puts that background into CLAUDE.md. Older notes keep the extracted lesson; nothing is re-distilled. Other categories make no extra call.
+- **`vir sync-claude --backfill-lessons`** gives those older gotchas a lesson too: one classify-model call per gotcha without one (asks first with the count; `--yes` skips the prompt), then the usual diff. Notes are not re-distilled or rewritten.
+- **`vir sync-claude` no longer passes terminal escapes through.** Lines read back from an existing VIR block are cleaned before the diff prints them, so a CLAUDE.md you didn't write can't recolor or hide text in your terminal.
+
 ## 0.27.0 — 2026-10-14
 
 - **Haiku 5.5 is the default Haiku.** `models.classify`, the `haiku` shorthand (`--force-model haiku`, `--model haiku`), new installs' `distillFast` and the `vir init` pick are now `claude-haiku-5-5` ($0.10/$0.50 per MTok vs $1/$5). Configs that name Haiku 4.5 keep it. Haiku 5.5 thinks by default, which would eat vir's small output caps (a retitle gets 40 tokens), so API calls send `thinking: disabled` and `claude-cli` asks for `--effort low`. A refusal now fails the call with a clear error instead of an empty answer. Kie keeps serving Haiku 4.5.
