@@ -5,6 +5,10 @@
   "author": "Djordje Marković <djordje@growthq.rs>",
   "license": "MIT",
   "homepage": "https://github.com/djolex999/vir",
+  "funding": {
+    "type": "individual",
+    "url": "https://ko-fi.com/djmarkovic"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/djolex999/vir.git"

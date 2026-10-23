@@ -28,6 +28,7 @@ developer-tools, mcp, local-first, cross-platform, llm-wiki
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-c084fc" alt="mcp"></a>
   <a href="#"><img src="https://img.shields.io/badge/local--first-yes-f59e0b" alt="local-first"></a>
   <a href="https://github.com/djolex999/vir"><img src="https://img.shields.io/github/stars/djolex999/vir?style=social" alt="stars"></a>
+  <a href="https://ko-fi.com/djmarkovic"><img src="https://img.shields.io/badge/Ko--fi-support%20vir-FF5E5B?logo=ko-fi&logoColor=white" alt="Support vir on Ko-fi"></a>
 </p>
 
 That graph is my vault. Every node is a plain markdown file that vir wrote by
@@ -713,6 +714,9 @@ matters, and deposits it somewhere permanent.
 
 Inspired by Andrej Karpathy's LLM Wiki pattern and Uros Pesic's KB Brain
 concept.
+
+If vir saves you time, [a coffee on Ko-fi](https://ko-fi.com/djmarkovic) keeps it
+maintained and in step with Claude Code and Codex releases.
 
 [GitHub](https://github.com/djolex999) ·
 [LinkedIn](https://www.linkedin.com/in/djmarkovic/) ·
