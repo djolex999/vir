@@ -22,5 +22,6 @@ A daily record of what happened per project, built from Claude Code transcripts.
 
 - Claude Code only. Codex sessions are not read yet.
 - Commits come from Bash output of `git commit`. Merges, rebases, cherry-picks and commits made outside an agent session are not seen.
+- `git commit -q` prints nothing to read, so a quiet commit is missed.
 - A task appears only on days it was touched. Carrying it forward is M2.
 - `--tz` is not stored, so the time zone must be passed each run on a machine set to another zone.

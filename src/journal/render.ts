@@ -1,4 +1,4 @@
-import { makeSlug } from "../pipeline/slug.js";
+import { makeSlug, sessionSuffix } from "../pipeline/slug.js";
 import type { JournalEvent, TaskStatus } from "./events.js";
 
 export interface JournalSession {
@@ -36,10 +36,6 @@ export function dayOf(iso: string, timeZone: string): string | null {
     month: "2-digit",
     day: "2-digit",
   }).format(d);
-}
-
-export function shortSession(sessionId: string): string {
-  return sessionId.slice(0, 8);
 }
 
 interface TaskState {
@@ -121,7 +117,7 @@ export function buildDay(
     }
 
     const tasks = replayTasks(s, day, timeZone);
-    const short = shortSession(s.sessionId);
+    const short = sessionSuffix(s.sessionId);
     for (const [id, t] of tasks) {
       if (!t.touched) continue;
       const pointer = `(task ${short}#${id})`;

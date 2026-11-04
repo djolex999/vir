@@ -34,7 +34,10 @@ export function ingestJournal(cfg: Config, db: StateDb): IngestSummary {
       const parsed = parseJournalFile(s.path);
       // Agent-internal transcripts did real commits, but their tasks are the
       // agent's own bookkeeping, not the user's work items.
-      const human = source.category(s.path) === "session" && source.agentEntrypoint(s.path) === null;
+      // The same two knobs `vir run` uses decide what counts as agent-internal.
+      const human =
+        (cfg.workflowTranscripts === "include" || source.category(s.path) === "session") &&
+        (cfg.agentTranscripts === "include" || source.agentEntrypoint(s.path) === null);
       const events: JournalEvent[] = human
         ? parsed.events
         : parsed.events.filter((e) => e.kind === "commit");
