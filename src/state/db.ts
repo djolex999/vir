@@ -1,3 +1,5 @@
+import type { JournalEvent } from "../journal/events.js";
+import type { DecisionNote, JournalSession } from "../journal/render.js";
 import Database from "better-sqlite3";
 import { dirname, join } from "node:path";
 import { existsSync, mkdirSync, renameSync } from "node:fs";
@@ -444,6 +446,22 @@ export class StateDb {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS journal_sessions (
+        path TEXT PRIMARY KEY,
+        hash TEXT NOT NULL,
+        project TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        started_at TEXT,
+        ended_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS journal_events (
+        path TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        at TEXT NOT NULL,
+        data TEXT NOT NULL,
+        PRIMARY KEY (path, seq)
+      );
       CREATE TABLE IF NOT EXISTS lesson_embeddings (
         content_hash TEXT NOT NULL,
         model TEXT NOT NULL,
@@ -695,6 +713,57 @@ export class StateDb {
            AND (content IS NULL OR content = '')${gate}`,
       )
       .all() as Array<{ path: string; processed_at: string }>;
+  }
+
+  journalSessionHash(path: string): string | null {
+    const row = this.db
+      .prepare("SELECT hash FROM journal_sessions WHERE path = ?")
+      .get(path) as { hash: string } | undefined;
+    return row?.hash ?? null;
+  }
+
+  // A transcript only grows or changes as a whole, so its events are replaced
+  // together: a crash mid-write must not leave half a session behind.
+  replaceJournalSession(s: Omit<JournalSession, "events"> & { hash: string; events: JournalEvent[] }): void {
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM journal_events WHERE path = ?").run(s.path);
+      this.db
+        .prepare(
+          `INSERT OR REPLACE INTO journal_sessions (path, hash, project, session_id, started_at, ended_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(s.path, s.hash, s.project, s.sessionId, s.startedAt, s.endedAt);
+      const insert = this.db.prepare(
+        "INSERT INTO journal_events (path, seq, kind, at, data) VALUES (?, ?, ?, ?, ?)",
+      );
+      s.events.forEach((e, seq) => insert.run(s.path, seq, e.kind, e.at, JSON.stringify(e)));
+    })();
+  }
+
+  listJournalSessions(): JournalSession[] {
+    const sessions = this.db
+      .prepare(
+        `SELECT path, project, session_id AS sessionId, started_at AS startedAt, ended_at AS endedAt
+         FROM journal_sessions ORDER BY COALESCE(started_at, ''), path`,
+      )
+      .all() as Array<Omit<JournalSession, "events">>;
+    const events = new Map<string, JournalEvent[]>();
+    const rows = this.db
+      .prepare("SELECT path, data FROM journal_events ORDER BY path, seq")
+      .all() as Array<{ path: string; data: string }>;
+    for (const r of rows) {
+      const list = events.get(r.path) ?? [];
+      list.push(JSON.parse(r.data) as JournalEvent);
+      events.set(r.path, list);
+    }
+    return sessions.map((s) => ({ ...s, events: events.get(s.path) ?? [] }));
+  }
+
+  // Live decision notes only: a pruned or archived note has no file to link to.
+  listJournalDecisions(): DecisionNote[] {
+    return this.listAllNoteRows()
+      .filter((r) => r.category === "decision" && r.pruned_at === null)
+      .map((r) => ({ path: r.path, topic: r.topic }));
   }
 
   listAllNoteRows(): Array<{
