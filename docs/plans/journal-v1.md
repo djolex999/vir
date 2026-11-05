@@ -12,7 +12,7 @@ A daily record of what happened per project, built from Claude Code transcripts.
 
 ## Milestones
 
-- **M0, done:** raw `jsonl` to typed events (`src/journal/events.ts`), covering TaskCreate, TaskUpdate, TodoWrite and git commit output.
+- **M0, done:** raw `jsonl` to typed events (`src/journal/events.ts`), covering TaskCreate, TaskUpdate, TodoWrite, the desktop app's `update_plan` (with `wrap_up` checking off the step in progress) and git commit output.
 - **M1, done:** `journal_sessions` and `journal_events` tables, the daily file, and `vir journal`.
 - **M2:** open loops carried across sessions.
 - **M3:** `vir brief` on SessionStart from a JSON cache, and `vir hooks install`.

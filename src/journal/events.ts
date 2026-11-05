@@ -24,6 +24,16 @@ const GIT_COMMIT_RE = /\bgit\b[^\n;&|]*\bcommit\b/;
 // `[main a1b2c3d] msg`, `[main (root-commit) a1b2c3d] msg`, `[detached HEAD a1b2c3d] msg`
 const COMMIT_OUTPUT_RE = /^\[(.+?)(?: \(root-commit\))? ([0-9a-f]{7,40})\] (.+)$/gm;
 const STATUSES = new Set<string>(["pending", "in_progress", "completed", "deleted"]);
+// The Claude desktop app's task list. Same snapshot shape as TodoWrite
+// (`items` replaces the list), plus step ops on the current list:
+// `advance`, `done: [n]`, `start: n`, all 1-based.
+const UPDATE_PLAN = "mcp__ccd_turn__update_plan";
+// Its wrap-up checks off the step still in progress.
+const WRAP_UP = "mcp__ccd_turn__wrap_up";
+// A refused call (missing scope, a hook veto) can come back without is_error,
+// so a plan op only counts when the result says it took.
+const PLAN_OK_RE = /^Plan (shown|updated)\b/;
+const WRAP_UP_OK_RE = /^(Shown in the next-step box|Nothing is pending)\b/;
 
 interface PendingCall {
   name: string;
@@ -69,14 +79,26 @@ export function parseJournalLines(raw: string): JournalEvent[] {
   // Older Claude Code sends the whole list on every TodoWrite; diff the
   // snapshots into the same events TaskCreate/TaskUpdate produce.
   const todos = new Map<string, { status: TaskStatus }>();
+  // update_plan's step numbers index the list as last sent.
+  let planOrder: string[] = [];
 
-  const applyTodos = (input: Record<string, unknown>, at: string): void => {
-    if (!Array.isArray(input.todos)) return;
+  const setStatus = (taskId: string | undefined, status: TaskStatus, at: string): void => {
+    const t = taskId === undefined ? undefined : todos.get(taskId);
+    if (taskId === undefined || !t || t.status === status) return;
+    events.push({ kind: "task_updated", at, taskId, status });
+    t.status = status;
+  };
+
+  // Returns the snapshot's task ids in list order.
+  const applyTodos = (list: unknown, at: string): string[] => {
+    if (!Array.isArray(list)) return [];
+    const order: string[] = [];
     const seen = new Set<string>();
-    for (const item of input.todos as unknown[]) {
+    for (const item of list as unknown[]) {
       if (!isRecord(item) || typeof item.content !== "string") continue;
       const subject = cleanLine(item.content);
       const taskId = todoId(subject);
+      order.push(taskId);
       seen.add(taskId);
       const status = asStatus(item.status) ?? "pending";
       const prev = todos.get(taskId);
@@ -95,6 +117,32 @@ export function parseJournalLines(raw: string): JournalEvent[] {
       events.push({ kind: "task_updated", at, taskId, status: "deleted" });
       t.status = "deleted";
     }
+    return order;
+  };
+
+  const inProgress = (): string | undefined =>
+    planOrder.find((id) => todos.get(id)?.status === "in_progress");
+
+  const applyPlan = (input: Record<string, unknown>, at: string): void => {
+    // A new list replaces the old one; step ops in the same call would index
+    // an ambiguous list, so they are not applied.
+    if (Array.isArray(input.items)) {
+      planOrder = applyTodos(input.items, at);
+      return;
+    }
+    const step = (n: unknown): string | undefined =>
+      typeof n === "number" && Number.isInteger(n) && n >= 1 ? planOrder[n - 1] : undefined;
+    if (input.advance === true) {
+      const current = inProgress();
+      setStatus(current, "completed", at);
+      const from = current === undefined ? 0 : planOrder.indexOf(current) + 1;
+      const next = [...planOrder.slice(from), ...planOrder.slice(0, from)].find(
+        (id) => todos.get(id)?.status === "pending",
+      );
+      setStatus(next, "in_progress", at);
+    }
+    if (Array.isArray(input.done)) for (const n of input.done as unknown[]) setStatus(step(n), "completed", at);
+    if (input.start !== undefined) setStatus(step(input.start), "in_progress", at);
   };
 
   for (const line of raw.split("\n")) {
@@ -162,7 +210,11 @@ export function parseJournalLines(raw: string): JournalEvent[] {
           ...(addBlockedBy.length > 0 ? { addBlockedBy } : {}),
         });
       } else if (call.name === "TodoWrite") {
-        applyTodos(call.input, at);
+        applyTodos(call.input.todos, at);
+      } else if (call.name === UPDATE_PLAN) {
+        if (PLAN_OK_RE.test(resultText(result).trim())) applyPlan(call.input, at);
+      } else if (call.name === WRAP_UP) {
+        if (WRAP_UP_OK_RE.test(resultText(result).trim())) setStatus(inProgress(), "completed", at);
       }
     }
   }

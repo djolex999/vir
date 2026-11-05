@@ -7,6 +7,10 @@ import { parseJournalFile, type JournalEvent } from "./events.js";
 import { buildDay, dayOf, renderDay, type JournalSession } from "./render.js";
 
 export const JOURNAL_SUBDIR = "journal";
+// Bump when parseJournalLines starts reading something new: the stored hash
+// carries it, so transcripts already ingested are parsed again.
+// 2: the desktop app's update_plan and wrap_up.
+const PARSER_VERSION = 2;
 
 export interface IngestSummary {
   scanned: number;
@@ -30,7 +34,8 @@ export function ingestJournal(cfg: Config, db: StateDb): IngestSummary {
         summary.skippedExcluded += 1;
         continue;
       }
-      if (db.journalSessionHash(s.path) === s.hash) continue;
+      const hash = `v${PARSER_VERSION}:${s.hash}`;
+      if (db.journalSessionHash(s.path) === hash) continue;
       const parsed = parseJournalFile(s.path);
       // Agent-internal transcripts did real commits, but their tasks are the
       // agent's own bookkeeping, not the user's work items.
@@ -44,7 +49,7 @@ export function ingestJournal(cfg: Config, db: StateDb): IngestSummary {
       if (!human && events.length === 0) continue;
       db.replaceJournalSession({
         path: s.path,
-        hash: s.hash,
+        hash,
         project,
         sessionId: basename(s.path).replace(/\.jsonl$/, ""),
         startedAt: parsed.startedAt,

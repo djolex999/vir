@@ -92,6 +92,80 @@ describe("parseJournalLines", () => {
     ]);
   });
 
+  describe("the desktop app's update_plan", () => {
+    const PLAN = "mcp__ccd_turn__update_plan";
+    const text = (t: string): object[] => [{ type: "text", text: t }];
+    const steps = (events: ReturnType<typeof parse>) =>
+      events.map((e) => [e.kind, e.kind === "commit" ? "" : e.kind === "task_updated" ? e.status : e.subject]);
+
+    it("reads a plan, advance, done/start and the wrap-up that checks off the last step", () => {
+      const events = parse([
+        use("a", PLAN, {
+          scope: "first_task",
+          items: [
+            { content: "Read code", status: "in_progress" },
+            { content: "Fix bug", status: "pending" },
+            { content: "Write docs", status: "pending" },
+            { content: "Run tests", status: "pending" },
+          ],
+        }),
+        result("a", text("Plan shown (4 steps).")),
+        use("b", PLAN, { advance: true }),
+        result("b", text("Plan updated: step 2 of 4 is in progress.")),
+        use("c", PLAN, { done: [2], start: 4 }),
+        result("c", text("Plan updated: step 4 of 4 is in progress.")),
+        use("d", "mcp__ccd_turn__wrap_up", { recap: "Fixed." }),
+        result("d", text("Shown in the next-step box. Your closing message is your answer.")),
+      ]);
+      expect(steps(events)).toEqual([
+        ["task_created", "Read code"],
+        ["task_updated", "in_progress"],
+        ["task_created", "Fix bug"],
+        ["task_created", "Write docs"],
+        ["task_created", "Run tests"],
+        ["task_updated", "completed"], // advance: Read code
+        ["task_updated", "in_progress"], // advance: Fix bug
+        ["task_updated", "completed"], // done [2]: Fix bug
+        ["task_updated", "in_progress"], // start 4: Run tests
+        ["task_updated", "completed"], // wrap_up: Run tests
+      ]);
+      // Write docs was never started, so the wrap-up does not mark it done.
+      const docs = events.find((e) => e.kind === "task_created" && e.subject === "Write docs");
+      const docsId = docs?.kind === "task_created" ? docs.taskId : "";
+      expect(events.filter((e) => e.kind === "task_updated" && e.taskId === docsId)).toEqual([]);
+    });
+
+    it("a new plan drops unfinished steps of the old one", () => {
+      const events = parse([
+        use("a", PLAN, { scope: "first_task", items: [{ content: "Old", status: "in_progress" }] }),
+        result("a", text("Plan shown (1 steps).")),
+        use("b", PLAN, { scope: "new_task", items: [{ content: "New", status: "in_progress" }] }),
+        result("b", text("Plan shown (1 steps).")),
+      ]);
+      expect(steps(events)).toEqual([
+        ["task_created", "Old"],
+        ["task_updated", "in_progress"],
+        ["task_created", "New"],
+        ["task_updated", "in_progress"],
+        ["task_updated", "deleted"],
+      ]);
+    });
+
+    it("ignores a refused call, a hook error and a wrap-up with no plan", () => {
+      const events = parse([
+        use("a", PLAN, { items: [{ content: "No scope", status: "in_progress" }] }),
+        result("a", text('items also needs "scope": "first_task", "continuation" or "new_task".')),
+        use("b", PLAN, { scope: "first_task", items: [{ content: "Hooked", status: "in_progress" }] }),
+        result("b", "PreToolUse:mcp__ccd_turn__update_plan hook error: Not shown", {}, true),
+        use("c", "mcp__ccd_turn__wrap_up", { recap: "x" }),
+        result("c", text("Nothing is pending, so the app draws no box.")),
+        use("d", PLAN, { advance: true }),
+        result("d", text("Plan updated: no step is in progress.")),
+      ]);
+      expect(events).toEqual([]);
+    });
+  });
+
   it("survives bad lines", () => {
     expect(parseJournalLines('not json\n{"type":"user"}\n{"timestamp":"x","message":{"content":"s"}}')).toEqual([]);
   });

@@ -759,11 +759,19 @@ export class StateDb {
     return sessions.map((s) => ({ ...s, events: events.get(s.path) ?? [] }));
   }
 
-  // Live decision notes only: a pruned or archived note has no file to link to.
+  // Live decision notes only: a pruned, review-rejected or archived note has
+  // no file to link to. servingGate() is the same gate every read path uses.
   listJournalDecisions(): DecisionNote[] {
-    return this.listAllNoteRows()
-      .filter((r) => r.category === "decision" && r.pruned_at === null)
-      .map((r) => ({ path: r.path, topic: r.topic }));
+    return this.db
+      .prepare(
+        `SELECT path, topic FROM sessions
+         WHERE skipped = 0
+           AND topic IS NOT NULL
+           AND category = 'decision'
+           AND COALESCE(archived, 0) = 0${this.servingGate()}
+         ORDER BY path`,
+      )
+      .all() as DecisionNote[];
   }
 
   listAllNoteRows(): Array<{
