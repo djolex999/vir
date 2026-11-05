@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.30.0 — 2026-11-05
+
+**`vir journal` writes a daily record of what you did, per project, from your session transcripts. No LLM calls.**
+
+- **`vir journal [date]`** writes `<vault>/vir/journal/YYYY-MM-DD.md` with each project's Done, In progress, Blocked and Open work, plus links to that day's decision notes. `--since <date>` writes every day with activity from that date on, `--all` rewrites every day, `--stdout` prints instead of writing, and `--tz <zone>` sets the day boundary (default: this machine's time zone).
+- **Every line has evidence.** A Done line points to a commit sha or a completed task. A commit counts once git printed its sha; a task counts once its tool result confirmed it. Rejected commits and unanswered calls don't count. Tasks come from TaskCreate/TaskUpdate, TodoWrite and the Claude desktop app's task list.
+- **The journal outlives your transcripts.** Claude Code deletes transcripts after about 30 days; what they prove is copied into two new SQLite tables first. The files are regenerated from those, so deleting the folder and re-running brings it back identical. Edits to the files are overwritten.
+- **Search and lint skip the journal.** It's a record of work, not knowledge: `vir_query` and `vir lint` ignore the `journal/` folder.
+- **Known limits:** Claude Code sessions only (not Codex yet); `git commit -q`, merges, rebases and commits made outside an agent session aren't seen; a task appears only on days it was touched.
+- **npm shows a funding link** (Ko-fi).
+
 ## 0.29.0 — 2026-10-17
 
 **Search returns more relevant notes: MMR is off by default, and verified notes can no longer push past better matches.**
