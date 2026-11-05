@@ -298,7 +298,10 @@ function walkVault(dir: string, acc: string[]): void {
     } catch {
       continue;
     }
-    if (st.isDirectory()) walkVault(full, acc);
+    // Generated daily files are not notes: no index entry, nothing to lint.
+    if (st.isDirectory()) {
+      if (name !== "journal") walkVault(full, acc);
+    }
     else if (st.isFile() && name.endsWith(".md")) acc.push(full);
   }
 }

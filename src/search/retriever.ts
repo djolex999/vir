@@ -14,8 +14,9 @@ const SKIP_FILES = new Set(["index.md", "log.md"]);
 // (files-only, never in SQLite), human-rejected notes (`vir review` moves
 // them to .rejected/), and dedupe-archived duplicates. The embedding path is
 // covered separately — rejected notes' recorded paths no longer exist (the
-// content read skips them) and getEmbeddings gates on `archived`.
-const SKIP_DIRS = new Set(["summaries", ".rejected", "archived"]);
+// content read skips them) and getEmbeddings gates on `archived`. The journal
+// is a projection of work done, not knowledge to retrieve.
+const SKIP_DIRS = new Set(["summaries", ".rejected", "archived", "journal"]);
 
 export interface IndexedDoc {
   relPath: string;

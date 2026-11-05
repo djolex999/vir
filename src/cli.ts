@@ -56,6 +56,7 @@ import * as ui from "./ui/display.js";
 import { VaultWriter } from "./pipeline/writer.js";
 import { withPipelineLock } from "./cli/guards.js";
 import { cmdConnect } from "./cli/connect.js";
+import { cmdJournal } from "./cli/journal.js";
 import { runLessonBackfill, runSyncClaude } from "./cli/syncClaude.js";
 import { insightCounts, renderInsightsLine } from "./cli/insightsStatus.js";
 import { cmdReviewInsights } from "./cli/reviewInsights.js";
@@ -826,6 +827,15 @@ program
   .option("--reconsider <slug>", "Reset a rejected or declined rule to proposed")
   .option("--yes", "Skip the cost confirmation prompt")
   .action(runAction(cmdConnect));
+
+program
+  .command("journal [date]")
+  .description("Write the daily work journal from session transcripts (no LLM calls)")
+  .option("--since <date>", "Write every day with activity from this date on")
+  .option("--all", "Rewrite every day with activity")
+  .option("--stdout", "Print instead of writing to the vault")
+  .option("--tz <zone>", "IANA time zone for day boundaries (default: this machine's)")
+  .action(runAction(cmdJournal));
 
 program
   .command("compose <topic>")
