@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **The journal carries open loops forward.** Each day gets a **Carried over** section per project with tasks left unfinished on an earlier day and not touched since, each with its task pointer, its state and how many days it has been open. A loop stops carrying once it is completed or deleted, once a later session touches a task with the same subject (a resumed session or a re-plan), or after 7 days untouched.
+
 ## 0.30.0 — 2026-11-05
 
 **`vir journal` writes a daily record of what you did, per project, from your session transcripts. No LLM calls.**
