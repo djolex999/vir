@@ -499,7 +499,8 @@ run `vir <command> --help` for the full flag list. `vir query --json` and
 
 `vir journal` writes one file per day, `vault/vir/journal/YYYY-MM-DD.md`, with
 what happened in each project: what got done, what's in progress, blocked or
-still open, and links to that day's decision notes. It reads your transcripts
+still open, links to that day's decision notes, and work left unfinished on an
+earlier day that nothing has touched since. It reads your transcripts
 directly and makes no LLM calls, so it's free and gives the same file every
 time for the same input.
 
@@ -517,6 +518,9 @@ time for the same input.
 
 **Decisions**
 - [[use-sqlite-for-job-state-1f2e3d4c]]
+
+**Carried over**
+- Rotate webhook secret (task 9c8b7a6d#todo-1c2d3e4f), in progress, open 3 days
 ```
 
 Every line has to point at evidence: a commit sha git printed, or a task whose
@@ -540,9 +544,13 @@ get the same files back. Edits to journal files are overwritten. Search
 (`vir query`, MCP) and `vir lint` skip the folder: it records work done, it
 isn't knowledge to retrieve.
 
+An unfinished task carries over day to day until it's completed, deleted,
+picked up again under the same name in a later session, or left untouched for
+more than 7 days.
+
 Limits: Claude Code sessions only (not Codex yet). Commits made with
 `git commit -q`, merges, rebases and commits outside an agent session aren't
-seen. A task shows up only on days something touched it.
+seen. Work finished outside a session keeps carrying until the 7-day limit.
 
 ## Use vir from any agent (skill)
 
