@@ -462,6 +462,8 @@ with your distro, init system, and Node version.
 | `vir connect`               | $     | Propose those lessons as cited rules (≤10 LLM calls) |
 | `vir summarize <project>`   | cheap | Cross-session project synthesis           |
 | `vir summarize --week`      | cheap | Period summary of the week's notes        |
+| `vir journal [date]`        | free  | Daily work journal from transcripts, no LLM calls (default: today) |
+| `vir journal --since <date>` | free | Write every day with activity from that date on |
 | `vir lint`                  | cheap | Find orphans, stale notes, contradictions |
 | `vir dedupe`                | cheap | Interactive duplicate detection + merge   |
 | `vir review`                | free  | Walk new notes: approve/edit/reject       |
@@ -492,6 +494,63 @@ Most commands take `--dry-run`, `--yes`, or `--json` where they make sense;
 run `vir <command> --help` for the full flag list. `vir query --json` and
 `vir doctor --json` are the machine contracts the
 [vir-obsidian](https://github.com/djolex999/vir-obsidian) plugin consumes.
+
+## Daily journal
+
+`vir journal` writes one file per day, `vault/vir/journal/YYYY-MM-DD.md`, with
+what happened in each project: what got done, what's in progress, blocked or
+still open, links to that day's decision notes, and work left unfinished on an
+earlier day that nothing has touched since. It reads your transcripts
+directly and makes no LLM calls, so it's free and gives the same file every
+time for the same input.
+
+```markdown
+## my-app
+
+2 sessions
+
+**Done**
+- fix: retry webhook on 502 (commit a1b2c3d)
+- Add idempotency key to checkout (task 1f2e3d4c#todo-0a1b2c3d)
+
+**In progress**
+- Migrate sessions table (task 1f2e3d4c#todo-4e5f6a7b)
+
+**Decisions**
+- [[use-sqlite-for-job-state-1f2e3d4c]]
+
+**Carried over**
+- Rotate webhook secret (task 9c8b7a6d#todo-1c2d3e4f), in progress, open 3 days
+```
+
+Every line has to point at evidence: a commit sha git printed, or a task whose
+tool result confirmed it. A rejected commit, a refused call or a plan step
+nobody finished doesn't count. Tasks come from TaskCreate/TaskUpdate, TodoWrite
+and the Claude desktop app's task list.
+
+```
+vir journal                    # today
+vir journal 2026-11-04         # one day
+vir journal --since 2026-10-28 # every day with activity since then
+vir journal --all              # rewrite every day
+vir journal --stdout           # print instead of writing
+vir journal --tz Europe/Belgrade
+```
+
+Days are local calendar days in your machine's time zone (or `--tz`). The
+facts are copied into vir's SQLite state first, so the journal survives Claude
+Code deleting transcripts after about 30 days; delete the folder and re-run to
+get the same files back. Edits to journal files are overwritten. Search
+(`vir query`, MCP) and `vir lint` skip the folder: it records work done, it
+isn't knowledge to retrieve.
+
+An unfinished task carries over day to day until it's completed, deleted,
+picked up again under the same name in a later session, or left untouched for
+more than 7 days.
+
+Limits: Claude Code sessions only (not Codex yet). Commits made with
+`git commit -q`, merges, rebases and commits outside an agent session aren't
+seen. Work finished outside a session keeps carrying until the 7-day limit.
 
 ## Use vir from any agent (skill)
 
@@ -622,6 +681,7 @@ vault/vir/
   topics/        # synthesized topic pages (vir compose)
   projects/      # cross-session project summaries
   summaries/     # weekly/monthly period summaries (derived, never indexed)
+  journal/       # daily work journal, YYYY-MM-DD.md (vir journal; never indexed)
   archived/      # deduplicated notes (kept, never deleted)
 ```
 
@@ -676,6 +736,7 @@ Shipped:
 - [x] Any agent can read your notes: `npx skills add djolex999/vir` (0.25.0)
 - [x] Recurring lessons become reviewed rules: `vir connect` (0.25.0)
 - [x] Codex sessions, and a keyless `codex-cli` provider (0.26.0)
+- [x] Daily work journal from transcripts, no LLM calls: `vir journal` (0.30.0)
 
 Not built:
 
