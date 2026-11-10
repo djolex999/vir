@@ -1,10 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.31.0 — 2026-11-10
+
+**`vir audit --transcript` checks each note against the transcript it was distilled from, and the daemon can run it for you. The journal carries unfinished tasks forward.**
 
 - **`vir audit --transcript` checks notes against the transcript they came from.** The plain audit judges note text alone, so it catches generic and snapshot notes but not wrong ones. This mode sends each note with its transcript (tool-filtered, scrubbed and trimmed as the distiller saw it) and records each note as supported, unbacked or contradicted. Only contradicted notes join `vir review --audited`, as verify with the contradiction as the reason, and a fresh reject or merge verdict is never downgraded. On real notes, contradictions were genuine errors (an error count of 78 where the transcript showed 23, a reminder recorded as added that was only offered), while unbacked was mostly claims from truncated tool output. Notes whose transcripts the agent has pruned are counted as "transcript gone" and skipped, so the check is worth running soon after `vir run`. `--dry-run`, `--project`, `--limit` and `--all` work as in the plain audit, and notes are taken oldest first, since their transcripts are pruned next.
 - **The daemon can run the transcript check for you.** With `"checkTranscripts": true` in `~/.vir/config.json`, each `vir run --daemon` pass that is not halted checks up to `checkTranscriptsPerRun` (default 20) notes after distilling, oldest first, inside the same pipeline lock, and logs one line to `daemon.log`. A quota halt or failed call is logged and retried next pass; it never fails the run. Off by default because each note is one paid call priced like a distill.
-
 - **The journal carries open loops forward.** Each day gets a **Carried over** section per project with tasks left unfinished on an earlier day and not touched since, each with its task pointer, its state and how many days it has been open. A loop stops carrying once it is completed or deleted, once a later session touches a task with the same subject (a resumed session or a re-plan), or after 7 days untouched.
 
 ## 0.30.0 — 2026-11-05
