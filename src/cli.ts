@@ -394,6 +394,9 @@ program
       ui.blank();
 
       ui.line(ui.dim(`  top ${Math.min(topN, report.topNotes.length)} surfaced notes`));
+      if (report.selfHitsExcluded > 0) {
+        ui.line(ui.dim(`  (${report.selfHitsExcluded} hits on the queried note itself left out)`));
+      }
       for (const n of report.topNotes) {
         ui.line(
           `  ${ui.dim(ui.BULLET)} ${ui.text(n.slug.padEnd(52))} ${ui.dim(`${n.count}× · avg rank ${n.avgRank}`)}`,

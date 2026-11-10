@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.31.1 — 2026-11-10
+
+**`vir lint --stale` shows whether agents still retrieve each stale note, and `vir queries` stops counting a note's lookup of itself.**
+
+- **`vir lint --stale` shows whether each stale note is still retrieved.** Each entry now says "never retrieved" or "retrieved N×, last <date>", from `~/.vir/queries.jsonl`, and never-retrieved notes are listed first. Age alone was a weak signal: on the reference vault, 28 of the 31 notes flagged as stale had been retrieved since, one of them 36 times. Nothing is hidden on this basis, since the query log is a thin sample.
+- **`vir queries` no longer counts a note as surfacing for itself.** A query whose text is the note (the Obsidian sidebar's related-notes lookup) returns that note at rank 1, which put whatever note was open at the top of "most surfaced". Those hits are now left out and counted on their own line (24 on the reference vault). Both reports share one per-note usage count (`src/search/noteUsage.ts`).
+
 ## 0.31.0 — 2026-11-10
 
 **`vir audit --transcript` checks each note against the transcript it was distilled from, and the daemon can run it for you. The journal carries unfinished tasks forward.**

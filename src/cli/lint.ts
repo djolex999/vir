@@ -10,6 +10,8 @@ import {
 } from "../lint/legacyRelated.js";
 import { demoteStrays, strayFileCheck } from "../lint/strayFiles.js";
 import { StateDb } from "../state/db.js";
+import { buildNoteUsage } from "../search/noteUsage.js";
+import { readQueryLog } from "../search/queryLog.js";
 import * as ui from "../ui/display.js";
 import { VaultWriter } from "../pipeline/writer.js";
 import { confirmPaidStep } from "./guards.js";
@@ -137,7 +139,7 @@ export async function lintCommand(
 
     if (runAll || opts.stale) {
       const sp = ui.spinner("checking staleness").start();
-      const stale = stalenessCheck(cfg, db);
+      const stale = stalenessCheck(cfg, db, buildNoteUsage(readQueryLog()));
       sp.stop();
       staleCount = stale.length;
       issues += staleCount;
@@ -147,7 +149,11 @@ export async function lintCommand(
         ui.row(ui.errorColor(ui.CROSS), `${ui.text("stale")} ${ui.dim("(" + staleCount + ")")}`);
         for (const s of stale) {
           console.log(
-            `   ${ui.dim(ui.BULLET)} ${ui.text(ui.shortNotePath(s.relPath))}  ${ui.muted(`${s.ageDays}d`)}  ${ui.dim(`${s.newerSameProjectCount} newer ${s.project} sessions`)}`,
+            `   ${ui.dim(ui.BULLET)} ${ui.text(ui.shortNotePath(s.relPath))}  ${ui.muted(`${s.ageDays}d`)}  ${ui.dim(`${s.newerSameProjectCount} newer ${s.project} sessions`)}  ${
+              s.lastSurfacedAt === null
+                ? ui.warn("never retrieved")
+                : ui.dim(`retrieved ${s.surfaced}×, last ${s.lastSurfacedAt.slice(0, 10)}`)
+            }`,
           );
         }
       }

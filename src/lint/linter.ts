@@ -9,6 +9,7 @@ import {
   withRateLimitRetry,
 } from "../pipeline/distiller.js";
 import { kebab, makeSlug } from "../pipeline/slug.js";
+import type { NoteUsage } from "../search/noteUsage.js";
 
 const SKIP_BASENAMES = new Set(["index.md", "log.md"]);
 const SKIP_DIRS = new Set(["projects"]);
@@ -27,6 +28,9 @@ export interface StaleEntry {
   ageDays: number;
   newerSameProjectCount: number;
   startedAt: string;
+  // From the query log (self-hits excluded). 0 / null = never surfaced.
+  surfaced: number;
+  lastSurfacedAt: string | null;
 }
 
 export interface ContradictionEntry {
@@ -106,7 +110,14 @@ export function orphanCheck(cfg: Config): OrphanResult {
   return { orphans };
 }
 
-export function stalenessCheck(_cfg: Config, db: StateDb): StaleEntry[] {
+// `usage` comes from the query log. A stale note that agents still retrieve is
+// a weaker prune candidate than one nothing has surfaced, so never-surfaced
+// notes sort first; neither is hidden, since the log is a thin sample.
+export function stalenessCheck(
+  _cfg: Config,
+  db: StateDb,
+  usage: ReadonlyMap<string, NoteUsage> = new Map(),
+): StaleEntry[] {
   const rows = db.listDistilled();
   const now = Date.now();
   const day = 24 * 60 * 60 * 1000;
@@ -134,16 +145,22 @@ export function stalenessCheck(_cfg: Config, db: StateDb): StaleEntry[] {
       (x) => kebab(x.r.project) === projectSlug && x.t > t,
     ).length;
 
+    const relPath = noteRef(r);
+    const u = usage.get(relPath);
     stale.push({
-      relPath: noteRef(r),
+      relPath,
       project: projectSlug,
       ageDays,
       newerSameProjectCount: newerSameProj,
       startedAt: r.startedAt ?? "",
+      surfaced: u?.surfaced ?? 0,
+      lastSurfacedAt: u?.lastSurfacedAt ?? null,
     });
   }
 
-  stale.sort((a, b) => b.ageDays - a.ageDays);
+  stale.sort(
+    (a, b) => Number(a.surfaced > 0) - Number(b.surfaced > 0) || b.ageDays - a.ageDays,
+  );
   return stale;
 }
 
