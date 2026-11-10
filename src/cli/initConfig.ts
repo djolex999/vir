@@ -71,6 +71,9 @@ export function buildInitConfig(
     logQueries: existing?.logQueries,
     // Wizard-silent connect-pass knob.
     connectMaxCandidates: existing?.connectMaxCandidates,
+    // Wizard-silent daemon transcript check (opt-in, costs a call per note).
+    checkTranscripts: existing?.checkTranscripts,
+    checkTranscriptsPerRun: existing?.checkTranscriptsPerRun,
     // Migration marker: saveConfig stamps the current version anyway; carried
     // so a built config never reads as pre-migration.
     configVersion: existing?.configVersion,

@@ -64,6 +64,14 @@ export function selectGroundRows(
     }
     out.push(r);
   }
+  // Oldest first: their transcripts are the next the agent prunes, so a
+  // --limit (and the daemon's per-pass cap) spends on what is about to be lost.
+  out.sort((a, b) => {
+    if (a.startedAt === b.startedAt) return 0;
+    if (a.startedAt === null) return 1;
+    if (b.startedAt === null) return -1;
+    return a.startedAt.localeCompare(b.startedAt);
+  });
   const limited = opts.limit !== undefined && opts.limit > 0 ? out.slice(0, opts.limit) : out;
   return { rows: limited, skippedVerified, skippedFresh, transcriptGone };
 }

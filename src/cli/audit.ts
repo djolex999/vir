@@ -8,6 +8,8 @@ import {
   type GroundSummary,
 } from "../audit/ground.js";
 import { buildSources } from "../sources/registry.js";
+import { checkTranscriptsAfterRun } from "../audit/afterRun.js";
+import { appendRunLog } from "../pipeline/run.js";
 import {
   callLLM,
   maybeAnthropicClient,
@@ -248,7 +250,7 @@ async function transcriptCheck(
     }
   }
 
-  const client = maybeAnthropicClient(cfg);
+  const llm = groundLlm(cfg, model);
   let summary: GroundSummary | undefined;
   await withPipelineLock(async () => {
     const run = ui.spinner(`checking ${picked.rows.length} notes`).start();
@@ -259,15 +261,7 @@ async function transcriptCheck(
         onProgress: (done, total) => {
           run.text = ui.dim(`checking notes ${done + 1}/${total}`);
         },
-        llm: (prompt) =>
-          withRateLimitRetry(() =>
-            callLLM(cfg, client, {
-              prompt,
-              model,
-              maxTokens: 4000,
-              cost: { stage: "audit-transcript" },
-            }),
-          ),
+        llm,
       });
       run.stop();
     } catch (err) {
@@ -287,4 +281,36 @@ async function transcriptCheck(
   });
   ui.line(ui.dim("  nothing was moved — walk the flagged notes with `vir review --audited`"));
   if (summary.failed > 0) process.exitCode = 1;
+}
+
+function groundLlm(cfg: Config, model: string): (prompt: string) => Promise<string> {
+  const client = maybeAnthropicClient(cfg);
+  return (prompt) =>
+    withRateLimitRetry(() =>
+      callLLM(cfg, client, {
+        prompt,
+        model,
+        maxTokens: 4000,
+        cost: { stage: "audit-transcript" },
+      }),
+    );
+}
+
+// Called by `vir run --daemon` after a finished pass, inside its lock. A no-op
+// unless config.checkTranscripts is on.
+export async function transcriptCheckAfterPass(cfg: Config): Promise<void> {
+  if (cfg.checkTranscripts !== true) return;
+  const db = new StateDb();
+  try {
+    const root = vaultRoot(cfg);
+    const sources = buildSources(cfg);
+    await checkTranscriptsAfterRun(cfg, db, {
+      llm: groundLlm(cfg, normalizeModelName(resolveModelShorthand(cfg.models.distill), cfg.provider)),
+      isVerified: (r) => noteIsVerified(root, r),
+      evidence: (path) => loadEvidence(sources, path, cfg.filterToolCalls),
+      log: appendRunLog,
+    });
+  } finally {
+    db.close();
+  }
 }
