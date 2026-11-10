@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Config } from "../config.js";
 import type { Category } from "../pipeline/types.js";
 import { StateDb } from "../state/db.js";
-import { extractLesson, planUpdates, VIR_END, VIR_START } from "./updater.js";
+import { contentHash } from "../audit/types.js";
+import { extractLesson, flaggedNotePaths, planUpdates, VIR_END, VIR_START } from "./updater.js";
 
 let home: string;
 let prevHome: string | undefined;
@@ -256,5 +257,61 @@ describe("distill-time lessons", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.lesson).toBeNull();
     expect(projectBlock()).toContain("- Webhooks must be idempotent before they are retried.\n");
+  });
+});
+
+describe("flagged notes stay out of the block", () => {
+  const body = (n: number): string => learned(`Gotcha ${n} must never happen again.`);
+  const path = (n: number): string => `/t/growthq-${n}.jsonl`;
+  const plan = (opts = {}) => planUpdates(cfg, db, opts).find((p) => p.target === projectPath());
+
+  beforeEach(() => {
+    // Six gotchas, highest confidence first: 1 (0.99) ... 6 (0.90).
+    for (let n = 1; n <= 6; n++) note(n, "gotcha", 1 - n / 100, body(n));
+  });
+
+  it("skips a note with a fresh reject, verify or merge verdict and lets the next one in", () => {
+    db.recordAudit(path(1), { verdict: "verify", reason: "doubtful", mergeInto: null, contentHash: contentHash(body(1)) });
+    db.recordAudit(path(2), { verdict: "keep", reason: "fine", mergeInto: null, contentHash: contentHash(body(2)) });
+    const p = plan();
+    expect(p?.newBlock).not.toContain("Gotcha 1 must");
+    expect(p?.newBlock).toContain("Gotcha 2 must");
+    expect(p?.newBlock).toContain("Gotcha 6 must");
+    expect(p?.flaggedSkipped).toBe(1);
+  });
+
+  it("skips a note whose transcript check found a contradiction", () => {
+    db.recordGround(path(3), { verdict: "contradicted", reason: "x", contentHash: contentHash(body(3)) });
+    db.recordGround(path(4), { verdict: "unbacked", reason: "y", contentHash: contentHash(body(4)) });
+    const p = plan();
+    expect(p?.newBlock).not.toContain("Gotcha 3 must");
+    expect(p?.newBlock).toContain("Gotcha 4 must");
+    expect(p?.flaggedSkipped).toBe(1);
+  });
+
+  it("ignores a verdict on an older version of the note", () => {
+    db.recordAudit(path(1), { verdict: "reject", reason: "old", mergeInto: null, contentHash: contentHash("an older body") });
+    expect(plan()?.newBlock).toContain("Gotcha 1 must");
+  });
+
+  it("lets a human-approved note through despite a flag", () => {
+    db.recordAudit(path(1), { verdict: "verify", reason: "doubtful", mergeInto: null, contentHash: contentHash(body(1)) });
+    const p = plan({ isVerified: (r: { path: string }) => r.path === path(1) });
+    expect(p?.newBlock).toContain("Gotcha 1 must");
+    expect(p?.flaggedSkipped).toBe(0);
+  });
+});
+
+describe("flaggedNotePaths", () => {
+  it("collects non-keep fresh audits and fresh contradictions only", () => {
+    const a = (path: string, verdict: "keep" | "verify" | "merge" | "reject", fresh: boolean) =>
+      ({ path, sessionId: "s", verdict, reason: "", mergeInto: null, auditedAt: "", fresh });
+    const g = (path: string, verdict: "supported" | "unbacked" | "contradicted", fresh: boolean) =>
+      ({ path, verdict, reason: "", groundedAt: "", fresh });
+    const out = flaggedNotePaths(
+      [a("/k", "keep", true), a("/v", "verify", true), a("/m", "merge", true), a("/r", "reject", true), a("/old", "reject", false)],
+      [g("/c", "contradicted", true), g("/u", "unbacked", true), g("/oldc", "contradicted", false)],
+    );
+    expect([...out].sort()).toEqual(["/c", "/m", "/r", "/v"]);
   });
 });

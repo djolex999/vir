@@ -15,7 +15,7 @@ import type { Config } from "../config.js";
 import { extractLessonTexts, normalizeLesson } from "../connect/extract.js";
 import { ruleText } from "../connect/text.js";
 import type { InsightRow } from "../connect/types.js";
-import type { DistilledRow, StateDb } from "../state/db.js";
+import type { AuditRow, DistilledRow, GroundRow, StateDb } from "../state/db.js";
 import { kebab } from "../pipeline/writer.js";
 
 export const VIR_START = "<!-- VIR:START -->";
@@ -60,13 +60,38 @@ export interface PlanItem {
   newBlock: string;
   diff: DiffResult;
   scope: "global" | { project: string };
+  // Gotchas left out because an audit or transcript check flagged them (see
+  // flaggedNotePaths); the next-best gotcha takes the slot.
+  flaggedSkipped: number;
 }
 
 // The instruction file a plan targets. AGENTS.md (Codex and other agents) gets
 // the same VIR block as CLAUDE.md, but only where the file already exists.
 export type InstructionFile = "CLAUDE.md" | "AGENTS.md";
 
-type PlanOptions = { project?: string; globalOnly?: boolean; file?: InstructionFile };
+type PlanOptions = {
+  project?: string;
+  globalOnly?: boolean;
+  file?: InstructionFile;
+  // Human approval (frontmatter `verified: true`) overrides a flag, as in
+  // `vir audit`. Default: nothing is approved.
+  isVerified?: (row: DistilledRow) => boolean;
+};
+
+// Notes that must not be written into CLAUDE.md / AGENTS.md: a fresh audit
+// verdict other than keep (reject, verify, merge) or a fresh transcript check
+// that found a contradiction. These blocks are loaded into every session, so a
+// wrong or doubtful note there misleads every session, not just one search.
+// Stale verdicts (the note changed since) do not count.
+export function flaggedNotePaths(
+  audits: AuditRow[],
+  grounds: GroundRow[],
+): Set<string> {
+  const out = new Set<string>();
+  for (const a of audits) if (a.fresh && a.verdict !== "keep") out.add(a.path);
+  for (const g of grounds) if (g.fresh && g.verdict === "contradicted") out.add(g.path);
+  return out;
+}
 
 // Which CLAUDE.md a rule's scope lands in, limited to the targets planUpdates
 // builds this run (a project with no distilled notes has no plan).
@@ -110,6 +135,9 @@ export function planUpdates(
   // Rules approved interactively THIS run; rendered alongside promoted ones.
   approvedRuleIds: Set<string> = new Set(),
 ): PlanItem[] {
+  const flagged = flaggedNotePaths(db.listAudits(), db.listGrounds());
+  const isVerified = options.isVerified ?? (() => false);
+  const isFlagged = (r: DistilledRow): boolean => flagged.has(r.path) && !isVerified(r);
   const rows = db.listDistilled();
   const plans: PlanItem[] = [];
   const slugs = projectSlugsOf(rows);
@@ -129,7 +157,7 @@ export function planUpdates(
     const target = globalInstructionPath(file);
     // Notes are project-scoped: the global file gets the pointer and global
     // rules, never every project's gotchas.
-    plans.push(buildPlan(target, [], { scope: "global" }, rulesByTarget.get(target) ?? []));
+    plans.push(buildPlan(target, [], { scope: "global" }, rulesByTarget.get(target) ?? [], isFlagged));
   }
   if (options.globalOnly) return file === "AGENTS.md" ? plans.filter((p) => p.exists) : plans;
 
@@ -149,7 +177,7 @@ export function planUpdates(
   for (const [slug, projectRows] of byProject) {
     const target = projectInstructionPath(slug, file);
     plans.push(
-      buildPlan(target, projectRows, { scope: { project: slug } }, rulesByTarget.get(target) ?? []),
+      buildPlan(target, projectRows, { scope: { project: slug } }, rulesByTarget.get(target) ?? [], isFlagged),
     );
   }
 
@@ -163,8 +191,9 @@ function buildPlan(
   rows: DistilledRow[],
   meta: { scope: "global" | { project: string } },
   rules: RuleEntry[] = [],
+  isFlagged: (r: DistilledRow) => boolean = () => false,
 ): PlanItem {
-  const entries = selectTopEntries(rows);
+  const { entries, flaggedSkipped } = selectTopEntries(rows, isFlagged);
   const newBlock = renderBlock(entries, rules, meta.scope === "global" ? "global" : "project");
   const existsAtPath = existsSync(target);
 
@@ -198,23 +227,34 @@ function buildPlan(
     newBlock,
     diff,
     scope: meta.scope,
+    flaggedSkipped,
   };
 }
 
-function selectTopEntries(rows: DistilledRow[]): Entry[] {
+function selectTopEntries(
+  rows: DistilledRow[],
+  isFlagged: (r: DistilledRow) => boolean,
+): { entries: Entry[]; flaggedSkipped: number } {
   const seen = new Set<string>();
   const out: Entry[] = [];
+  let flaggedSkipped = 0;
   const sorted = rows
     .filter((r) => r.category === "gotcha")
     .sort((a, b) => b.confidence - a.confidence || (b.startedAt ?? "").localeCompare(a.startedAt ?? ""));
   for (const r of sorted) {
     if (out.length >= TOP_GOTCHAS) break;
+    // Counted only while slots remain: a flagged note below the top 5 would
+    // not have been written anyway.
+    if (isFlagged(r)) {
+      flaggedSkipped += 1;
+      continue;
+    }
     const lesson = lessonOf(r);
     if (lesson.length === 0 || seen.has(lesson)) continue;
     seen.add(lesson);
     out.push({ lesson });
   }
-  return out;
+  return { entries: out, flaggedSkipped };
 }
 
 // The distiller's lesson when the note has one; notes from before it (or whose
