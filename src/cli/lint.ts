@@ -13,8 +13,15 @@ import { StateDb } from "../state/db.js";
 import { buildNoteUsage } from "../search/noteUsage.js";
 import { readQueryLog } from "../search/queryLog.js";
 import * as ui from "../ui/display.js";
-import { VaultWriter } from "../pipeline/writer.js";
-import { confirmPaidStep } from "./guards.js";
+import { CATEGORY_DIR, VaultWriter } from "../pipeline/writer.js";
+import { makeSlug } from "../pipeline/slug.js";
+import { confirmPaidStep, withPipelineLock } from "./guards.js";
+import {
+  deadLinkCheck,
+  fixDeadLinks,
+  type DeadLinkFixSummary,
+  type DeadLinkKind,
+} from "../lint/deadLinks.js";
 
 export async function lintCommand(
   opts: {
@@ -24,6 +31,7 @@ export async function lintCommand(
         fix?: boolean;
         stale?: boolean;
         contradictions?: boolean;
+        links?: boolean;
         yes?: boolean;
       },
 ): Promise<void> {
@@ -35,12 +43,14 @@ export async function lintCommand(
       !opts.strays &&
       !opts.legacyRelated &&
       !opts.stale &&
-      !opts.contradictions;
+      !opts.contradictions &&
+      !opts.links;
     const checks: string[] = [];
     if (runAll || opts.orphans) checks.push("orphans");
     if (runAll || opts.strays) checks.push("strays");
     if (runAll || opts.legacyRelated) checks.push("legacy-related");
     if (runAll || opts.stale) checks.push("stale");
+    if (runAll || opts.links) checks.push("links");
     if (runAll || opts.contradictions) checks.push("contradictions");
 
     ui.header("lint");
@@ -50,6 +60,7 @@ export async function lintCommand(
     let strayCount = 0;
     let legacyCount = 0;
     let staleCount = 0;
+    let linkCount = 0;
     let contradictionCount = 0;
     let issues = 0;
 
@@ -137,6 +148,63 @@ export async function lintCommand(
       }
     }
 
+    if (runAll || opts.links) {
+      const sp = ui.spinner("checking links").start();
+      const r = deadLinkCheck(cfg);
+      sp.stop();
+      linkCount = r.dead.length;
+      issues += linkCount;
+      if (linkCount === 0) {
+        ui.row(ui.success(ui.CHECK), `${ui.text("links")}    ${ui.dim(`none dead of ${r.links}`)}`);
+      } else {
+        const by = (k: DeadLinkKind): number => r.dead.filter((d) => d.kind === k).length;
+        ui.row(
+          ui.errorColor(ui.CROSS),
+          `${ui.text("links")} ${ui.dim(`(${linkCount} dead of ${r.links} in ${r.scanned} notes: ${by("retitled")} retitled, ${by("removed")} removed, ${by("unknown")} unknown)`)}`,
+        );
+        const shown = r.dead.slice(0, 20);
+        for (const d of shown) {
+          const how =
+            d.kind === "retitled"
+              ? ui.muted(`target retitled (session now: ${d.replacement ?? ""})`)
+              : d.kind === "removed"
+                ? ui.muted("target removed")
+                : ui.warn("no match");
+          console.log(`   ${ui.dim(ui.BULLET)} ${ui.text(ui.shortNotePath(d.relPath))}:${d.line}  ${ui.muted(d.target)}  ${how}`);
+        }
+        if (r.dead.length > shown.length) console.log(ui.dim(`   … and ${r.dead.length - shown.length} more`));
+        if (opts.fix) {
+          let fixed: DeadLinkFixSummary | undefined;
+          await withPipelineLock(async () => {
+            const writer = new VaultWriter(cfg, db);
+            const sessionByRel = new Map(
+              db.listDistilled().map((row) => [`${CATEGORY_DIR[row.category]}/${makeSlug(row.topic, row.sessionId)}.md`, row.sessionId]),
+            );
+            fixed = await fixDeadLinks(cfg, r, (rel) => {
+              const sessionId = sessionByRel.get(rel);
+              // Extra candidates so already-listed neighbors can be skipped.
+              return sessionId === undefined ? null : writer.storedNeighbors(sessionId, 15);
+            });
+          });
+          if (fixed !== undefined) {
+            issues -= linkCount - fixed.left;
+            linkCount = fixed.left;
+            ui.row(
+              ui.success(ui.CHECK),
+              `${ui.text("links")} ${ui.dim(`removed ${fixed.removed} dead links, added ${fixed.added} nearest notes in ${fixed.repaired} Related lists; ${fixed.left} still dead`)}`,
+            );
+            if (fixed.left > 0) {
+              console.log(
+                `   ${ui.dim(ui.ARROW)} ${ui.muted("left: links in topic pages and journal days (vir compose / vir journal rebuild those) and ones with no session id")}`,
+              );
+            }
+          }
+        } else {
+          console.log(`   ${ui.dim(ui.ARROW)} ${ui.muted("vir lint --links --fix")}`);
+        }
+      }
+    }
+
     if (runAll || opts.stale) {
       const sp = ui.spinner("checking staleness").start();
       const stale = stalenessCheck(cfg, db, buildNoteUsage(readQueryLog()));
@@ -201,6 +269,7 @@ export async function lintCommand(
       strays: { value: strayCount, color: ui.muted },
       "legacy-related": { value: legacyCount, color: ui.muted },
       stale: { value: staleCount, color: ui.muted },
+      links: { value: linkCount, color: ui.muted },
       contradictions: { value: contradictionCount, color: ui.muted },
     });
     ui.divider();

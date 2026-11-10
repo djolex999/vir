@@ -18,7 +18,7 @@ import {
   type EmbeddingProvider,
 } from "../search/provider.js";
 import { thresholdsFor } from "../search/thresholds.js";
-import type { DistilledRow, StateDb } from "../state/db.js";
+import type { DistilledRow, EmbeddingRow, StateDb } from "../state/db.js";
 import type { Category, DistilledNote, ParsedSession } from "./types.js";
 import type { ParsedArticle } from "./articleReader.js";
 import {
@@ -809,12 +809,13 @@ export class VaultWriter {
     vec: number[],
     selfSessionId: string,
     model: string,
+    k: number = RELATED_K,
+    rows?: EmbeddingRow[],
   ): RelatedLink[] {
     if (!this.db) return [];
     const relatedMinSim = thresholdsFor(model).relatedMinSim;
     try {
-      return this.db
-        .getEmbeddings(this.root)
+      return (rows ?? this.db.getEmbeddings(this.root))
         .filter(
           (r) =>
             r.sessionId !== selfSessionId &&
@@ -825,7 +826,7 @@ export class VaultWriter {
         .map((r) => ({ r, sim: cosineSimilarity(vec, r.embedding) }))
         .filter((x) => x.sim >= relatedMinSim && existsSync(x.r.filePath))
         .sort((a, b) => b.sim - a.sim)
-        .slice(0, RELATED_K)
+        .slice(0, k)
         .map((x) => ({
           slug: makeSlug(x.r.topic, x.r.sessionId),
           topic: x.r.topic,
@@ -833,6 +834,19 @@ export class VaultWriter {
     } catch {
       return [];
     }
+  }
+
+  // Nearest existing notes to a stored note, from its stored embedding (no
+  // re-embed, no provider call), best first. For repairing a Related list in
+  // place: `vir lint --links --fix` keeps the live links and fills the slots
+  // dead ones leave. null when the note has no stored vector.
+  private embeddingCache: EmbeddingRow[] | null = null;
+  storedNeighbors(sessionId: string, k: number): RelatedLink[] | null {
+    if (!this.db) return null;
+    this.embeddingCache ??= this.db.getEmbeddings(this.root);
+    const self = this.embeddingCache.find((r) => r.sessionId === sessionId);
+    if (self === undefined) return null;
+    return this.neighborLinks(self.embedding, sessionId, self.embeddingModel, k, this.embeddingCache);
   }
 
   private ensureIndex(): void {
@@ -927,7 +941,7 @@ const RELATED_K = 5;
 // The cosine floor is per-model (nomic ≥0.6; bge runs hotter) — resolved from
 // thresholds.ts at use time, never a shared constant.
 
-interface RelatedLink {
+export interface RelatedLink {
   slug: string;
   topic: string;
 }
