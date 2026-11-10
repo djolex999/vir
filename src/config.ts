@@ -104,6 +104,15 @@ export const ConfigSchema = z
     filterToolCalls: z
       .enum(["aggressive", "moderate", "off"])
       .default("moderate"),
+    // After each daemon pass, check up to checkTranscriptsPerRun notes against
+    // their transcripts (`vir audit --transcript`), oldest first: the agent
+    // prunes transcripts (Claude Code: ~30 days), so a note left unchecked
+    // can never be checked. Off by default: one paid call per note, priced
+    // like a distill.
+    // Optional, not defaulted: hand-built Config fixtures need not list them.
+    // Absent = off / 20 (see audit/afterRun.ts).
+    checkTranscripts: z.boolean().optional(),
+    checkTranscriptsPerRun: z.number().int().positive().optional(),
     // Log every `vir query` / `vir_query` retrieval outcome to
     // ~/.vir/queries.jsonl (local-only, never transmitted). Default on:
     // the log is the baseline for ranking calibration, and usage that isn't

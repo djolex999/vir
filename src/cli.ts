@@ -64,7 +64,7 @@ import { runDoctor, runDoctorJson } from "./diagnostics/doctor.js";
 import { embedCommand } from "./cli/embed.js";
 import { lintCommand } from "./cli/lint.js";
 import { summarizeCommand } from "./cli/summarize.js";
-import { auditCommand } from "./cli/audit.js";
+import { auditCommand, transcriptCheckAfterPass } from "./cli/audit.js";
 import { composeCommand } from "./cli/compose.js";
 import { dedupeCommand } from "./cli/dedupe.js";
 import { cmdInit } from "./cli/init.js";
@@ -221,6 +221,16 @@ program
               : async (newCount, estimatedUsd) =>
                   confirmCostIfNeeded(cfg, newCount, estimatedUsd),
           });
+          // Still inside the lock: the check writes audit verdicts.
+          if (
+            daemon &&
+            needsLock &&
+            summary.limitHalted === null &&
+            !articlesOnly &&
+            !pdfsOnly
+          ) {
+            await transcriptCheckAfterPass(cfg);
+          }
         } finally {
           if (needsLock) releaseLock();
         }
@@ -1070,6 +1080,7 @@ program
   .option("--dry-run", "Show notes, batches and est. cost, exit before any LLM call")
   .option("--yes", "Skip the cost confirmation prompt")
   .option("--apply-rejects", "Move notes with a fresh reject verdict to .rejected/ (no model call; undo with vir review --restore)")
+  .option("--transcript", "Check each note against its own transcript; contradicted notes go to vir review --audited as verify")
   .action(
     runAction(auditCommand),
   );
