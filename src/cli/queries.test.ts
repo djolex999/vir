@@ -91,6 +91,18 @@ describe("buildQueriesReport", () => {
     expect(r.deadWeight).toBeNull();
   });
 
+  it("leaves out hits on the queried note itself and still counts its other hits", () => {
+    const r = buildQueriesReport(
+      [
+        rec({ query: "a-11111111\n\nbody of note a", hits: [h("patterns/a-11111111", 1), h("gotchas/b-22222222", 2)] }),
+        rec({ query: "a-11111111\n\nbody of note a", hits: [h("patterns/a-11111111", 1)] }),
+      ],
+      [],
+    );
+    expect(r.selfHitsExcluded).toBe(2);
+    expect(r.topNotes).toEqual([{ slug: "gotchas/b-22222222", count: 1, avgRank: 2 }]);
+  });
+
   it("caps topNotes at the requested size", () => {
     const many = Array.from({ length: 30 }, (_, i) =>
       rec({ hits: [h(`patterns/n-${i}`, 1)] }),

@@ -1,3 +1,4 @@
+import { isSelfHit } from "../search/noteUsage.js";
 import type { QueryLogRecord } from "../search/queryLog.js";
 
 // Below this many logged queries, "never surfaced" is dominated by "never
@@ -12,6 +13,9 @@ export interface QueriesReport {
   degraded: number;
   degradedRate: number;
   topNotes: Array<{ slug: string; count: number; avgRank: number }>;
+  // Hits left out because the query was the note itself (a related-notes
+  // lookup returning its own note); counting them inflated topNotes.
+  selfHitsExcluded: number;
   // Notes that never surfaced in ANY logged query — the prune target. null
   // (not []) below MIN_DEAD_WEIGHT_SAMPLE: "insufficient sample" must never
   // read as "no dead weight".
@@ -27,11 +31,16 @@ export function buildQueriesReport(
   let embedding = 0;
   let tfidf = 0;
   let degraded = 0;
+  let selfHitsExcluded = 0;
   for (const r of records) {
     if (r.method === "embedding") embedding += 1;
     else tfidf += 1;
     if (r.degraded) degraded += 1;
     for (const h of r.hits) {
+      if (isSelfHit(r.query, h)) {
+        selfHitsExcluded += 1;
+        continue;
+      }
       const s = surfaced.get(h.slug) ?? { count: 0, rankSum: 0 };
       s.count += 1;
       s.rankSum += h.rank;
@@ -54,6 +63,7 @@ export function buildQueriesReport(
     degraded,
     degradedRate: records.length === 0 ? 0 : degraded / records.length,
     topNotes,
+    selfHitsExcluded,
     deadWeight:
       records.length < MIN_DEAD_WEIGHT_SAMPLE
         ? null

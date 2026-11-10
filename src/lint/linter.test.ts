@@ -172,6 +172,42 @@ describe("stalenessCheck note references", () => {
       expect(entries[0]?.relPath).toBe(
         `patterns/${makeSlug(topic, "aaaa1111")}`,
       );
+      expect(entries[0]?.lastSurfacedAt).toBeNull();
+    } finally {
+      db.close();
+      rmSync(vault, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("stalenessCheck with retrieval usage", () => {
+  it("attaches usage and lists never-retrieved stale notes first", async () => {
+    const { StateDb } = await import("../state/db.js");
+    const { makeSlug } = await import("../pipeline/writer.js");
+    const { stalenessCheck } = await import("./linter.js");
+    const vault = mkdtempSync(join(tmpdir(), "vir-stale-usage-"));
+    const db = new StateDb(join(vault, "vir.db"));
+    try {
+      const row = (id: string, topic: string, startedAt: string): void =>
+        db.record({
+          path: `/proj/${id}.jsonl`, hash: id, skipped: false,
+          notePaths: [], content: topic, category: "pattern",
+          topic, project: "demo", confidence: 0.9, startedAt,
+        });
+      row("aaaa1111", "Old Used Note", "2025-01-01T00:00:00.000Z");
+      row("bbbb2222", "Newer Unused Note", "2025-03-01T00:00:00.000Z");
+      row("cccc3333", "Recent Note", new Date().toISOString());
+      const used = `patterns/${makeSlug("Old Used Note", "aaaa1111")}`;
+      const usage = new Map([[used, { surfaced: 4, top3: 2, lastSurfacedAt: "2026-10-20T00:00:00.000Z" }]]);
+
+      const entries = stalenessCheck(makeCfg(vault), db, usage);
+
+      expect(entries.map((e) => e.relPath)).toEqual([
+        `patterns/${makeSlug("Newer Unused Note", "bbbb2222")}`,
+        used,
+      ]);
+      expect(entries[1]).toMatchObject({ surfaced: 4, lastSurfacedAt: "2026-10-20T00:00:00.000Z" });
+      expect(entries[0]).toMatchObject({ surfaced: 0, lastSurfacedAt: null });
     } finally {
       db.close();
       rmSync(vault, { recursive: true, force: true });
