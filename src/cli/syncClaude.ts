@@ -9,7 +9,8 @@ import { ruleText } from "../connect/text.js";
 import { kebab } from "../pipeline/slug.js";
 import type { InsightRow } from "../connect/types.js";
 import { vaultRoot } from "../search/retriever.js";
-import type { StateDb } from "../state/db.js";
+import type { DistilledRow, StateDb } from "../state/db.js";
+import { noteIsVerified } from "../audit/run.js";
 import * as ui from "../ui/display.js";
 import { confirmPaidStep, withPipelineLock } from "./guards.js";
 
@@ -44,6 +45,9 @@ export function renderPlanLines(p: PlanItem): string[] {
   for (const r of p.diff.rulesRemoved) lines.push(`${ui.warn("-")} ${ui.text(`rule: ${r.rule}`)}`);
   if (p.diff.unchanged.length > 0) {
     lines.push(`${ui.dim("~")} ${ui.dim(`${p.diff.unchanged.length} entries unchanged`)}`);
+  }
+  if (p.flaggedSkipped > 0) {
+    lines.push(ui.dim(`${p.flaggedSkipped} flagged note(s) left out (vir audit / --transcript); see vir review --audited`));
   }
   if (lines.length === 0) lines.push(ui.dim("no changes"));
   return lines;
@@ -124,7 +128,12 @@ export async function runLessonBackfill(
 // one at a time, only on an interactive "y", and recorded as promoted only
 // after their CLAUDE.md write succeeds — so DB and file never disagree.
 export async function runSyncClaude(cfg: Config, db: StateDb, opts: SyncOptions, io: SyncIo): Promise<void> {
-  const planOpts = { project: opts.project, globalOnly: opts.globalOnly === true };
+  const root = vaultRoot(cfg);
+  const planOpts = {
+    project: opts.project,
+    globalOnly: opts.globalOnly === true,
+    isVerified: (r: DistilledRow): boolean => noteIsVerified(root, r),
+  };
   const agents = opts.agents ?? "also";
   const interactive = opts.force !== true && opts.dryRun !== true && io.isTTY;
   // Rules are approved against CLAUDE.md; AGENTS.md only mirrors approved ones.

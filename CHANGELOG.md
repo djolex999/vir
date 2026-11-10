@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.32.0 — 2026-11-10
+
+**`vir sync-claude` no longer writes notes your audit flagged into CLAUDE.md or AGENTS.md.**
+
+- **`vir sync-claude` leaves out notes your audit flagged.** A gotcha with a fresh `vir audit` verdict of reject, verify or merge, or a fresh `vir audit --transcript` contradiction, no longer becomes a CLAUDE.md or AGENTS.md lesson; the next-best gotcha takes its slot, and each file's diff says how many were left out. These blocks load into every session, so a doubtful note there misleads every session, not one search. Approving a note in `vir review --audited` (`verified: true`) lets it back in, and a verdict on an older version of the note doesn't count. On the reference vault this left out 56 flagged notes across 14 files, including a snapshot ("Codebase structure: 304 TypeScript source files…") that would have gone into growthq's CLAUDE.md.
+
 ## 0.31.1 — 2026-11-10
 
 **`vir lint --stale` shows whether agents still retrieve each stale note, and `vir queries` stops counting a note's lookup of itself.**

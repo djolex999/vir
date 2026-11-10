@@ -189,7 +189,9 @@ worse results, not better."_ Fair. Vir addresses it in layers:
   at or below `0.6` is dropped before the more expensive distill step.
 - **Opt-in `CLAUDE.md` sync.** Nothing vir generates touches your prompt
   context automatically. `vir sync-claude` shows a diff and waits for your
-  confirmation. You decide what reaches Claude.
+  confirmation. You decide what reaches Claude. Notes that `vir audit` or
+  `vir audit --transcript` flagged stay out until you approve them in
+  `vir review --audited`.
 - **Plain markdown output.** Every note is a file in your notes folder. Read
   it, edit it, delete it. Nothing is hidden in a database you can't inspect.
 - **Lint and dedupe.** `vir lint` flags contradictions and stale notes;
