@@ -196,6 +196,22 @@ export interface AuditRow {
   fresh: boolean;
 }
 
+export type GroundVerdict = "supported" | "unbacked" | "contradicted";
+
+export interface GroundRecordInput {
+  verdict: GroundVerdict;
+  reason: string;
+  contentHash: string;
+}
+
+export interface GroundRow {
+  path: string;
+  verdict: GroundVerdict;
+  reason: string;
+  groundedAt: string;
+  fresh: boolean;
+}
+
 export interface ArticleRow {
   path: string;
   notePath: string | null;
@@ -307,6 +323,19 @@ const ADDED_COLUMNS: Array<{ name: string; ddl: string }> = [
     ddl: "ALTER TABLE sessions ADD COLUMN audit_content_hash TEXT",
   },
   { name: "audited_at", ddl: "ALTER TABLE sessions ADD COLUMN audited_at TEXT" },
+  {
+    // `vir audit --transcript`: was every claim in the note found in its own
+    // transcript? "supported" | "unbacked" | "contradicted". Never a gate.
+    name: "ground_verdict",
+    ddl: "ALTER TABLE sessions ADD COLUMN ground_verdict TEXT",
+  },
+  { name: "ground_reason", ddl: "ALTER TABLE sessions ADD COLUMN ground_reason TEXT" },
+  {
+    // SHA-256 of `content` at check time; a mismatch makes the result stale.
+    name: "ground_content_hash",
+    ddl: "ALTER TABLE sessions ADD COLUMN ground_content_hash TEXT",
+  },
+  { name: "grounded_at", ddl: "ALTER TABLE sessions ADD COLUMN grounded_at TEXT" },
   {
     // The gotcha's one-line rule for `vir sync-claude`, written at distill
     // time. NULL for notes distilled before it; those fall back to
@@ -612,6 +641,49 @@ export class StateDb {
          WHERE path = ?`,
       )
       .run(a.verdict, a.reason, a.mergeInto, a.contentHash, now, path).changes;
+  }
+
+  recordGround(
+    path: string,
+    g: GroundRecordInput,
+    now: string = new Date().toISOString(),
+  ): number {
+    return this.db
+      .prepare(
+        `UPDATE sessions SET ground_verdict = ?, ground_reason = ?,
+           ground_content_hash = ?, grounded_at = ?
+         WHERE path = ?`,
+      )
+      .run(g.verdict, g.reason, g.contentHash, now, path).changes;
+  }
+
+  // Transcript-check results for rows that still serve notes (same gates as
+  // listAudits).
+  listGrounds(): GroundRow[] {
+    if (!this.columnsOf("sessions").has("ground_verdict")) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT path, content, ground_verdict, ground_reason, ground_content_hash, grounded_at
+         FROM sessions
+         WHERE ground_verdict IS NOT NULL
+           AND skipped = 0
+           AND COALESCE(archived, 0) = 0${this.servingGate()}`,
+      )
+      .all() as Array<{
+      path: string;
+      content: string | null;
+      ground_verdict: GroundVerdict;
+      ground_reason: string | null;
+      ground_content_hash: string | null;
+      grounded_at: string;
+    }>;
+    return rows.map((r) => ({
+      path: r.path,
+      verdict: r.ground_verdict,
+      reason: r.ground_reason ?? "",
+      groundedAt: r.grounded_at,
+      fresh: r.ground_content_hash === contentHash(r.content ?? ""),
+    }));
   }
 
   // Verdicts for rows that still serve notes. Rejected, pruned and archived rows

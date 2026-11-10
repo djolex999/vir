@@ -473,6 +473,7 @@ with your distro, init system, and Node version.
 | `vir review --audited`      | free  | Walk notes vir audit flagged, worst first |
 | `vir review --insights`     | free  | Accept, edit or reject rules proposed by `vir connect` |
 | `vir audit --apply-rejects` | free  | Move fresh reject verdicts to `.rejected/` (reversible) |
+| `vir audit --transcript`    | $$    | Check each note against its own transcript; contradicted notes join `vir review --audited` |
 | `vir lint --strays`         | free  | Note files with no live DB row (retitle debris) |
 | `vir lint --strays --fix`   | free  | Move retitle debris to `archived/` (only when a live copy exists) |
 | `vir lint --legacy-related` | free  | Pre-0.12.0 notes whose stored Related holds content a rewrite drops |

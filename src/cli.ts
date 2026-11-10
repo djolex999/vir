@@ -1070,6 +1070,7 @@ program
   .option("--dry-run", "Show notes, batches and est. cost, exit before any LLM call")
   .option("--yes", "Skip the cost confirmation prompt")
   .option("--apply-rejects", "Move notes with a fresh reject verdict to .rejected/ (no model call; undo with vir review --restore)")
+  .option("--transcript", "Check each note against its own transcript; contradicted notes go to vir review --audited as verify")
   .action(
     runAction(auditCommand),
   );
