@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.33.0 — 2026-11-12
+
+**`vir lint --links` finds links to notes that no longer exist, and `--fix` repairs Related lists in place.**
 
 - **`vir lint --links` finds links to notes that no longer exist.** A session note's Related list is built from its nearest notes when it is written, and nothing updated it when one of those notes was later retitled, rejected or pruned. On the reference vault that left 310 of 1427 links pointing at nothing. Each dead link is reported as retitled (the session's note now has another title), removed (the target is only in `.rejected/` or `archived/`), or unknown. Project and category header links are not counted, and a link resolves the way Obsidian resolves it: by file name anywhere in the vault, or by alias.
 - **`vir lint --links --fix` repairs Related lists in place.** It drops each dead bullet and fills the slot with the nearest existing note not already listed, from the note's stored embedding (no model or embedding calls). Live links and everything outside Related stay as they are. A dead link is never repointed by session id: a re-distilled session can come back under an unrelated title. In topic pages and journal days it only drops links whose target is gone; `vir compose` and `vir journal` rebuild those. On the reference vault: 310 dead links down to 38 in under a second, with no live link lost.
