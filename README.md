@@ -467,6 +467,8 @@ with your distro, init system, and Node version.
 | `vir journal [date]`        | free  | Daily work journal from transcripts, no LLM calls (default: today) |
 | `vir journal --since <date>` | free | Write every day with activity from that date on |
 | `vir lint`                  | cheap | Find orphans, stale notes, contradictions |
+| `vir lint --links`          | free  | Links to notes that were retitled, rejected or pruned since they were written |
+| `vir lint --links --fix`    | free  | Drop those links and fill each Related list with the nearest existing notes |
 | `vir lint --stale`          | free  | Old notes with newer work in the same project, each with how often agents still retrieve it |
 | `vir dedupe`                | cheap | Interactive duplicate detection + merge   |
 | `vir review`                | free  | Walk new notes: approve/edit/reject       |

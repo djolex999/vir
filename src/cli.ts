@@ -624,7 +624,7 @@ program
 program
   .command("lint")
   .description(
-    "Run orphan, stray-file, legacy-Related, staleness, and contradiction checks on the vault",
+    "Run orphan, stray-file, legacy-Related, staleness, dead-link, and contradiction checks on the vault",
   )
   .option("--orphans", "Run only the orphan check (free)")
   .option("--strays", "Run only the stray-file check (free)")
@@ -634,8 +634,9 @@ program
   )
   .option(
     "--fix",
-    "Move retitle-duplicate strays into archived/ (other strays are left alone), and move legacy Related content into ## Details",
+    "Move retitle-duplicate strays into archived/ (other strays are left alone), move legacy Related content into ## Details, and repoint or drop dead links",
   )
+  .option("--links", "Run only the dead-link check: links to notes that were retitled or removed (free)")
   .option("--stale", "Run only the staleness check (free)")
   .option("--contradictions", "Run only the contradiction check (Haiku tokens)")
   .option("--yes", "Skip the cost confirmation for the contradiction check")
