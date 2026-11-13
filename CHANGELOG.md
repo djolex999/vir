@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.34.0 — 2026-11-13
+
+**Search results say how far each note can be trusted: verified, transcript-supported, unbacked, contradicted or unchecked.**
+
+- **Search results say how far each note can be trusted.** `vir_query` (MCP) returns a `status` for every source: `verified` (you approved it in `vir review`), `transcript-supported` (`vir audit --transcript` found every claim in its session), `unbacked`, `contradicted`, or `unchecked`. The synthesized answer sees the same labels and is told not to state a contradicted note's claims as fact, and `vir query` prints a warning under a contradicted or unbacked source. A check on an older version of a note doesn't count. A prompt whose notes were never checked is unchanged. On the reference vault, an agent asking about TS2339 errors now gets the note that miscounted them labelled `contradicted`. `vir query --json`, the Obsidian plugin's contract, is unchanged.
+
 ## 0.33.1 — 2026-11-13
 
 **`vir queries` counts dead weight only in note folders.**

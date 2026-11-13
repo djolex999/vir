@@ -36,6 +36,7 @@ import { kebab, makeSlug } from "../pipeline/writer.js";
 import { searchWithOutcome, type SearchHit } from "../search/retriever.js";
 import { recordQueryEvent } from "../search/queryLog.js";
 import { synthesize } from "../search/synthesizer.js";
+import { noteStatusLookup, type NoteStatus } from "../search/noteStatus.js";
 import { StateDb } from "../state/db.js";
 
 const CATEGORIES = ["pattern", "gotcha", "decision", "tool"] as const;
@@ -225,6 +226,10 @@ export const VIR_QUERY_DESCRIPTION =
   "Use this before working on a task to consult prior learnings. " +
   "Human-verified notes (approved via `vir review`) are ranked above " +
   "unverified ones. " +
+  "Each source has a status: verified (approved by the user), " +
+  "transcript-supported (every claim found in its session transcript), " +
+  "unbacked (some claims not found there), contradicted (the transcript " +
+  "shows something else: do not rely on it), or unchecked. " +
   "By default the matching notes are synthesized into one answer with an " +
   "LLM call that is billed to the user's provider; pass synthesize: false " +
   "to get only the matching notes, with no LLM call.";
@@ -239,6 +244,7 @@ export interface QueryResult {
     url?: string;
     score: number;
     file: string;
+    status: NoteStatus;
   }>;
 }
 
@@ -249,6 +255,7 @@ export async function buildQueryResult(
   selected: SearchHit[],
   opts: { synthesize?: boolean },
   synth: (hits: SearchHit[]) => Promise<string>,
+  statusOf: (hit: SearchHit) => NoteStatus = () => "unchecked",
 ): Promise<QueryResult> {
   if (selected.length === 0) {
     return { answer: "No matching notes found in the vault.", sources: [] };
@@ -265,6 +272,7 @@ export async function buildQueryResult(
       ...(meta.url ? { url: meta.url } : {}),
       score: h.score,
       file: h.title,
+      status: statusOf(h),
     };
   });
   return { answer, sources };
@@ -373,11 +381,13 @@ export async function runMcpServer(cfg: Config): Promise<void> {
           latencyMs,
         });
 
+        const statusOf = noteStatusLookup(db.listGrounds());
         return ok(
           await buildQueryResult(
             selected,
             { synthesize: wantSynthesis },
-            (hits) => synthesize(cfg, query, hits),
+            (hits) => synthesize(cfg, query, hits, undefined, statusOf),
+            statusOf,
           ),
         );
       } catch (err) {
