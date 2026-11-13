@@ -64,6 +64,7 @@ import { runDoctor, runDoctorJson } from "./diagnostics/doctor.js";
 import { embedCommand } from "./cli/embed.js";
 import { lintCommand } from "./cli/lint.js";
 import { summarizeCommand } from "./cli/summarize.js";
+import { noteStatusLookup } from "./search/noteStatus.js";
 import { auditCommand, transcriptCheckAfterPass } from "./cli/audit.js";
 import { composeCommand } from "./cli/compose.js";
 import { dedupeCommand } from "./cli/dedupe.js";
@@ -802,7 +803,8 @@ program
         return;
       }
 
-      const answer = await synthesize(cfg, question, hits);
+      const statusOf = noteStatusLookup(db.listGrounds());
+      const answer = await synthesize(cfg, question, hits, undefined, statusOf);
       ui.blank();
       console.log(ui.text(ui.wrap(answer.trim(), 60)));
       ui.blank();
@@ -810,7 +812,12 @@ program
       const method = outcome.method;
       const relevant = hits.filter((h) => h.score > 0).slice(0, 3);
       ui.divider();
-      for (const h of relevant) ui.sourceRow(h.title, h.score);
+      for (const h of relevant) {
+        ui.sourceRow(h.title, h.score);
+        const st = statusOf(h);
+        if (st === "contradicted") console.log(`   ${ui.errorColor("contradicted by its transcript")} ${ui.dim("(vir review --audited)")}`);
+        else if (st === "unbacked") console.log(`   ${ui.warn("some claims not in its transcript")}`);
+      }
       ui.divider();
       const totalNotes =
         method === "embedding"

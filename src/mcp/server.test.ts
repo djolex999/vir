@@ -138,6 +138,13 @@ describe("vir_query synthesis is opt-out and labelled as billed", () => {
     expect(result.sources[0]).toMatchObject({ category: "gotcha", project: "vir" });
   });
 
+  it("labels each source with its status, unchecked by default", async () => {
+    const synth = vi.fn(async () => "answer");
+    expect((await buildQueryResult(hits, { synthesize: false }, synth)).sources[0]?.status).toBe("unchecked");
+    const flagged = await buildQueryResult(hits, { synthesize: false }, synth, () => "contradicted");
+    expect(flagged.sources[0]?.status).toBe("contradicted");
+  });
+
   it("synthesizes by default", async () => {
     const synth = vi.fn(async () => "  the answer  ");
     const result = await buildQueryResult(hits, {}, synth);
