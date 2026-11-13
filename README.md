@@ -720,7 +720,7 @@ improvements. Delete it any time; disable it with `"logQueries": false` in
 
 |                |                                           |
 | -------------- | ----------------------------------------- |
-| Version        | 0.33.0                                    |
+| Version        | 0.33.1                                    |
 | Tests          | 1475 passing                              |
 | Platforms      | macOS (launchd), Linux (systemd/cron)     |
 | Node           | 20+                                       |

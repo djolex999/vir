@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.33.1 — 2026-11-13
+
+**`vir queries` counts dead weight only in note folders.**
 
 - **`vir queries` counts dead weight only in note folders.** "Never surfaced" listed files vir never writes (a stray `Untitled.md`, the `decision.md` hub Obsidian creates when a Category link is clicked) and `projects/` hub pages; on the reference vault those were 24 of the 140 entries. Only patterns, gotchas, decisions, tools, topics, articles, PDFs and accepted insights are counted now.
 - README: the test badge and the Project status table were stale (1411 and 1073 tests, version 0.24.2).
