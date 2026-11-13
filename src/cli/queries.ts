@@ -7,6 +7,19 @@ import type { QueryLogRecord } from "../search/queryLog.js";
 // at topK 5–8 give every genuinely useful note ~100+ chances to surface.
 export const MIN_DEAD_WEIGHT_SAMPLE = 20;
 
+// Folders vir writes retrievable knowledge into. Dead weight is counted only
+// there: the output root also holds files vir never writes (a stray
+// `Untitled.md`, the `decision.md` hub Obsidian creates when a Category link is
+// clicked) and projects/ holds hub pages, and listing those as "never
+// surfaced" made the prune target noisy (24 of 140 entries on the reference
+// vault).
+const KNOWLEDGE_DIRS = new Set(["patterns", "gotchas", "decisions", "tools", "topics", "articles", "pdfs", "insights"]);
+
+export function isKnowledgeNote(slug: string): boolean {
+  const slash = slug.indexOf("/");
+  return slash > 0 && KNOWLEDGE_DIRS.has(slug.slice(0, slash));
+}
+
 export interface QueriesReport {
   total: number;
   byMethod: { embedding: number; tfidf: number };
@@ -67,6 +80,6 @@ export function buildQueriesReport(
     deadWeight:
       records.length < MIN_DEAD_WEIGHT_SAMPLE
         ? null
-        : allSlugs.filter((s) => !surfaced.has(s)),
+        : allSlugs.filter((s) => isKnowledgeNote(s) && !surfaced.has(s)),
   };
 }

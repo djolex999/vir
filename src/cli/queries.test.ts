@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MIN_DEAD_WEIGHT_SAMPLE, buildQueriesReport } from "./queries.js";
+import { MIN_DEAD_WEIGHT_SAMPLE, buildQueriesReport, isKnowledgeNote } from "./queries.js";
 import type { QueryLogRecord } from "../search/queryLog.js";
 
 function rec(over: Partial<QueryLogRecord>): QueryLogRecord {
@@ -82,6 +82,19 @@ describe("buildQueriesReport", () => {
     ]);
   });
 
+  it("leaves files vir never writes and project hubs out of dead weight", () => {
+    const many = Array.from({ length: MIN_DEAD_WEIGHT_SAMPLE }, () => rec({ hits: [] }));
+    const r = buildQueriesReport(many, [
+      "patterns/a-11111111",
+      "topics/auth-flow-patterns",
+      "Untitled",
+      "decision",
+      "projects/growthq",
+      "journal/2026-11-05",
+    ]);
+    expect(r.deadWeight).toEqual(["patterns/a-11111111", "topics/auth-flow-patterns"]);
+  });
+
   it("handles an empty log without dividing by zero", () => {
     const r = buildQueriesReport([], allSlugs);
     expect(r.total).toBe(0);
@@ -109,5 +122,15 @@ describe("buildQueriesReport", () => {
     );
     const r = buildQueriesReport(many, [], 5);
     expect(r.topNotes).toHaveLength(5);
+  });
+});
+
+describe("isKnowledgeNote", () => {
+  it("accepts vir's note folders and rejects the root, hubs and journal", () => {
+    expect(isKnowledgeNote("gotchas/x-11111111")).toBe(true);
+    expect(isKnowledgeNote("insights/rule-1")).toBe(true);
+    expect(isKnowledgeNote("2026-05-27")).toBe(false);
+    expect(isKnowledgeNote("projects/popis")).toBe(false);
+    expect(isKnowledgeNote("archived/old-22222222")).toBe(false);
   });
 });
