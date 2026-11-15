@@ -22,6 +22,7 @@ import {
 import { StateDb } from "../state/db.js";
 import * as ui from "../ui/display.js";
 import { estCostLabel } from "./costLabel.js";
+import { dreamCommand } from "./dream.js";
 import { withPipelineLock } from "./guards.js";
 
 export async function summarizeCommand(
@@ -36,6 +37,12 @@ export async function summarizeCommand(
   },
 
 ): Promise<void> {
+  // A project page is a dream page now: `vir summarize <project>|--all` is an
+  // alias for `vir dream`, which takes its own lock. Period summaries stay here.
+  if (opts.week === undefined && opts.month === undefined) {
+    await dreamCommand(project, { all: opts.all, dryRun: opts.dryRun, yes: opts.yes, model: opts.model });
+    return;
+  }
   // Writes notes and the DB: hold the lock (a dry run only reads).
   const run = async (): Promise<void> => {
     const cfg = loadConfig();

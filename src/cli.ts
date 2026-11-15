@@ -63,6 +63,7 @@ import { cmdReviewInsights } from "./cli/reviewInsights.js";
 import { runDoctor, runDoctorJson } from "./diagnostics/doctor.js";
 import { embedCommand } from "./cli/embed.js";
 import { lintCommand } from "./cli/lint.js";
+import { dreamCommand } from "./cli/dream.js";
 import { summarizeCommand } from "./cli/summarize.js";
 import { noteStatusLookup } from "./search/noteStatus.js";
 import { auditCommand, transcriptCheckAfterPass } from "./cli/audit.js";
@@ -646,9 +647,20 @@ program
   );
 
 program
+  .command("dream [project]")
+  .description("Rebuild a project's reference page from its notes (cross-session dreaming)")
+  .option("--all", "Every project with enough notes")
+  .option("--dry-run", "Show projects, notes and estimated cost, exit before the model call")
+  .option("--yes", "Skip the cost confirmation prompt")
+  .option("--model <model>", "haiku | sonnet (default: models.distill)")
+  .option("--force", "Rebuild even when the notes have not changed")
+  .option("--min-notes <n>", "Skip projects with fewer notes (default 5)")
+  .action(runAction(dreamCommand));
+
+program
   .command("summarize [project]")
   .description(
-    "Generate a project, --all, or period (--week/--month) knowledge summary",
+    "Project pages (alias for vir dream) or a period (--week/--month) summary",
   )
   .option("--all", "Regenerate summaries for every project with notes")
   .option(
@@ -659,9 +671,9 @@ program
     "--month [n]",
     "Summarize a calendar month (offset back; --month 1 = last month)",
   )
-  .option("--model <model>", "Synthesis model: haiku | sonnet (period only)")
+  .option("--model <model>", "Synthesis model: haiku | sonnet")
   .option("--dry-run", "Show note count + estimated cost, exit before LLM")
-  .option("--yes", "Skip the cost confirmation prompt (period only)")
+  .option("--yes", "Skip the cost confirmation prompt")
   .action(
     runAction(summarizeCommand),
   );
