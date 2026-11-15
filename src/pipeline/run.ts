@@ -54,6 +54,7 @@ function isDistilledRow(row: SessionRow | undefined): boolean {
 
 import { scrub } from "./scrubber.js";
 import { summarizeProject } from "./summarizer.js";
+import { isDreamPage, projectPagePath } from "../dream/page.js";
 import { filterToolCalls } from "./toolCallFilter.js";
 import { distillOneSession } from "./distillSession.js";
 import type { ParsedSession } from "./types.js";
@@ -1106,6 +1107,12 @@ export async function runPipeline(
   for (const [slug, count] of newPerProject) {
     if (halted) break;
     if (count < 3) continue;
+    // A `vir dream` page is rebuilt by `vir dream` only; the old summary would
+    // overwrite its checked quotes and labels.
+    if (isDreamPage(projectPagePath(cfg, slug))) {
+      fileLog(`skipped summary for project/${slug}: dream page`);
+      continue;
+    }
     try {
       const res = await summarizeProject(cfg, slug, db);
       if (res) {

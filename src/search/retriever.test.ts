@@ -133,6 +133,20 @@ describe("loadIndex — derived summaries never enter the TF-IDF index", () => {
     expect(rels).toContain("patterns/widget-note.md");
     expect(rels.some((r) => r.startsWith("summaries/"))).toBe(false);
   });
+
+  it("never indexes projects/ pages, so a dream page can't come back as a source", () => {
+    const vault = mkdtempSync(join(tmpdir(), "vir-idx-"));
+    tmps.push(vault);
+    mkdirSync(join(vault, "vir", "patterns"), { recursive: true });
+    mkdirSync(join(vault, "vir", "projects"), { recursive: true });
+    writeFileSync(join(vault, "vir", "patterns", "widget-note.md"), "---\ntopic: widget\n---\nA widget pattern.");
+    writeFileSync(join(vault, "vir", "projects", "demo.md"), "---\nkind: dream\n---\nThe widget rule.");
+
+    const rels = loadIndex({ vaultPath: vault, outputDir: "vir" } as unknown as Config).map((d) => d.relPath);
+
+    expect(rels).toContain("patterns/widget-note.md");
+    expect(rels.some((r) => r.startsWith("projects/"))).toBe(false);
+  });
 });
 
 describe("search — topic embeddings are first-class in the pool", () => {

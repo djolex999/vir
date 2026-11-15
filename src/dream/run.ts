@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import type { Config } from "../config.js";
 import { flaggedNotePaths } from "../claude/updater.js";
 import { parseFrontmatter } from "../cli/review.js";
@@ -12,6 +12,7 @@ import { DreamParseError, buildDreamPrompt, parseDreamResponse } from "./prompt.
 import { renderBody, renderDreamFile } from "./render.js";
 import { dreamInputHash, selectDreamNotes, type DreamSelection } from "./select.js";
 import { validateDream, type DreamStats } from "./validate.js";
+import { projectPagePath } from "./page.js";
 
 // One project's dream: select notes, one model call, validate in code, write
 // projects/<slug>.md. The only file it ever writes is that page.
@@ -34,9 +35,7 @@ export type DreamOutcome =
   | { kind: "written"; path: string; stats: DreamStats; conflicts: number }
   | { kind: "failed"; reason: string };
 
-export function projectPagePath(cfg: VaultCfg, slug: string): string {
-  return join(cfg.vaultPath, cfg.outputDir, "projects", `${slug}.md`);
-}
+export { isDreamPage, projectPagePath } from "./page.js";
 
 function readPage(file: string): string | null {
   if (!existsSync(file)) return null;

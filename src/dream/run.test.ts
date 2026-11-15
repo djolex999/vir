@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { contentHash } from "../audit/types.js";
 import { StateDb } from "../state/db.js";
-import { dreamProject, projectPagePath, type DreamDeps } from "./run.js";
+import { dreamProject, isDreamPage, projectPagePath, type DreamDeps } from "./run.js";
 
 const sid = (n: number): string => `abc1234${n}-0000-4000-8000-000000000001`;
 const pathOf = (n: number): string => `/p/-home-u-vir/${sid(n)}.jsonl`;
@@ -107,5 +107,14 @@ describe("dreamProject", () => {
     await dreamProject(cfg, db, "vir", deps(), opts);
     expect(prompts[0]).not.toContain("secret contradicted body");
     expect(prompts[0]).toContain("body two");
+  });
+
+  it("isDreamPage reads the page's kind", async () => {
+    const file = projectPagePath(cfg, "vir");
+    expect(isDreamPage(file)).toBe(false);
+    await dreamProject(cfg, db, "vir", deps(), opts);
+    expect(isDreamPage(file)).toBe(true);
+    writeFileSync(file, "---\nproject: vir\n---\nold summary\n");
+    expect(isDreamPage(file)).toBe(false);
   });
 });
