@@ -1,0 +1,19 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renderBody > matches the snapshot 1`] = `
+"## Overview
+
+A Serbian exam-prep SaaS.
+
+## Deploy
+
+- Delete empty env vars — [[gotchas/env-bbbb2222]] · confirmed · retrieved 3× · also [[gotchas/env2-cccc3333]]
+  > npm ci --include=dev
+- Use npm ci --include=dev on Render — [[gotchas/render-build-aaaa1111]] · unconfirmed
+  > npm ci --include=dev
+
+## Payments
+
+- Tax mode is baked into a price — [[decisions/tax-dddd4444]] · unconfirmed
+  > npm ci --include=dev"
+`;
