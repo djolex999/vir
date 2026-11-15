@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import type { Config } from "../config.js";
+import { codeLines } from "./codeFences.js";
 
 // Wikilinks in vault notes that resolve to nothing. Session notes build their
 // Related list from embedding neighbors at write time; when a neighbor is later
@@ -156,10 +157,10 @@ export function deadLinkCheck(cfg: Pick<Config, "vaultPath" | "outputDir">): Dea
         continue;
       }
       result.scanned += 1;
-      let inFence = false;
-      raw.split("\n").forEach((line, i) => {
-        if (/^\s*```/.test(line)) inFence = !inFence;
-        if (inFence || HUB_LINE.test(line)) return;
+      const lines = raw.split("\n");
+      const inCode = codeLines(lines);
+      lines.forEach((line, i) => {
+        if (inCode[i] || HUB_LINE.test(line)) return;
         for (const m of line.matchAll(LINK)) {
           const target = linkTarget(m[2] ?? "");
           if (target === "") continue;

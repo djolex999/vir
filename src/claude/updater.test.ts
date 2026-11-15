@@ -126,6 +126,19 @@ describe("applyPlan marker handling", () => {
     // The fenced example survives untouched and the real block was appended.
     expect(out.indexOf("fresh vir content")).toBeGreaterThan(out.indexOf("```"));
   });
+
+  it("replaces a block that follows a line starting with inline code", () => {
+    // That line is not a fence. Reading it as one hid the real block and
+    // appended a second one (audiobookVoiceClone, 2026-11-15).
+    writeFileSync(target, `- tip\n   \`\`\`\` \`\`\`json \`\`\`\` occasionally.\n\n${VIR_START}\nold\n${VIR_END}\n`);
+
+    expect(applyPlan(plan(target)).ok).toBe(true);
+
+    const out = readFileSync(target, "utf8");
+    expect(out.match(new RegExp(VIR_START, "g"))).toHaveLength(1);
+    expect(out).not.toContain("old");
+    expect(out).toContain("fresh vir content");
+  });
 });
 
 // CLAUDE.md is the one file vir rewrites that the user owns: a crash or a full

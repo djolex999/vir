@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.34.1 — 2026-11-15
+
+**`vir sync-claude` no longer adds a second VIR block when a line starts with inline code.**
+
+- **`vir sync-claude` no longer adds a second VIR block when a line starts with inline code.** Any line beginning with three backticks was taken for the start of a code block, so a line like ```` ```` ```json ```` occasionally ```` hid every VIR marker after it and sync-claude appended a new block instead of replacing the old one. Code blocks are now detected the way Markdown does: a backtick fence can't have backticks after its opening run, and only a bare run of the same character, at least as long, closes it. Running `vir sync-claude` once on a file that already has two blocks keeps the first and drops the rest. The diff preview now reads the same block that gets written.
+- **`vir lint --links` no longer skips links after such a line.** It used the same check and now uses the same detector.
+
 ## 0.34.0 — 2026-11-13
 
 **Search results say how far each note can be trusted: verified, transcript-supported, unbacked, contradicted or unchecked.**
