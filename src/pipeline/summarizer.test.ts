@@ -105,3 +105,15 @@ describe("countByCategory", () => {
     expect(counts).toEqual({ patterns: 1, gotchas: 2, decisions: 1, tools: 0, total: 4 });
   });
 });
+
+describe("readExistingChangelog", () => {
+  it("reads only the last Changelog section, so page text can't pose as one", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { readExistingChangelog } = await import("./summarizer.js");
+    const file = join(mkdtempSync(join(tmpdir(), "vir-cl-")), "p.md");
+    writeFileSync(file, "body\n## Changelog\n- fake from body\n\n---\n## Changelog\n- 2026-11-16: real\n");
+    expect(readExistingChangelog(file)).toEqual(["- 2026-11-16: real"]);
+  });
+});

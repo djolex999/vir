@@ -37,6 +37,26 @@ export const MAX_RATIO = 0.35;
 
 const norm = (s: string): string => s.replace(/\s+/g, " ").trim();
 
+// Model text is rendered into markdown lines next to code-made links and
+// labels. Flatten it to one plain line, strip what could pose as structure
+// (wikilinks, label separators, headings, quote markers) and clip it.
+function plain(s: string, max: number): string {
+  let out = norm(s)
+    .replace(/\[\[|\]\]/g, "")
+    .replace(/·/g, "-")
+    .replace(/#{1,6}\s/g, "")
+    .replace(/^[>\-*\s]+/, "")
+    .trim();
+  if (out.length > max) {
+    const cut = out.slice(0, max - 1);
+    const space = cut.lastIndexOf(" ");
+    out = `${space > max / 2 ? cut.slice(0, space) : cut}…`;
+  }
+  return out;
+}
+
+const LIMITS = { claim: 300, heading: 80, overview: 600, about: 200, gap: 200, gaps: 10, conflicts: 20 };
+
 export function validateDream(
   raw: RawDream,
   notes: DreamNote[],
@@ -48,7 +68,7 @@ export function validateDream(
   let dropped = 0;
   let position = 0;
   const sections = raw.sections.map((s) => ({
-    heading: s.heading,
+    heading: plain(s.heading, LIMITS.heading) || "General",
     entries: s.entries.flatMap((e): (DreamEntry & { position: number })[] => {
       const src = byIndex.get(e.source);
       const quote = norm(e.quote);
@@ -64,7 +84,12 @@ export function validateDream(
         });
       const confirmed = src.status === "verified" || src.status === "transcript-supported";
       position += 1;
-      return [{ ...e, confirmed, ref: src.ref, alsoRefs, surfaced: src.surfaced, position }];
+      const claim = plain(e.claim, LIMITS.claim);
+      if (claim === "") {
+        dropped += 1;
+        return [];
+      }
+      return [{ ...e, claim, confirmed, ref: src.ref, alsoRefs, surfaced: src.surfaced, position }];
     }),
   }));
 
@@ -72,16 +97,18 @@ export function validateDream(
     const a = byIndex.get(c.a);
     const b = byIndex.get(c.b);
     if (a === undefined || b === undefined || a === b) return [];
-    return [{ a: a.ref, b: b.ref, about: c.about }];
-  });
+    return [{ a: a.ref, b: b.ref, about: plain(c.about, LIMITS.about) }];
+  }).slice(0, LIMITS.conflicts);
+  const overview = plain(raw.overview, LIMITS.overview);
+  const gaps = raw.gaps.map((g) => plain(g, LIMITS.gap)).filter((g) => g !== "").slice(0, LIMITS.gaps);
 
   const build = (): DreamPage => ({
-    overview: raw.overview,
+    overview,
     sections: sections
       .filter((s) => s.entries.length > 0)
       .map((s) => ({ heading: s.heading, entries: s.entries.map(({ position: _p, ...rest }) => rest) })),
     conflicts,
-    gaps: raw.gaps,
+    gaps,
   });
 
   // Cut the weakest entry until the page fits: unconfirmed before confirmed,

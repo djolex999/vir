@@ -228,7 +228,7 @@ export function readExistingChangelog(filePath: string): string[] {
   } catch {
     return [];
   }
-  const idx = raw.indexOf(CHANGELOG_HEADER);
+  const idx = raw.lastIndexOf(CHANGELOG_HEADER);
   if (idx === -1) return [];
   const rest = raw.slice(idx + CHANGELOG_HEADER.length).trim();
   if (rest.length === 0) return [];

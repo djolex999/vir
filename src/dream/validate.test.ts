@@ -123,4 +123,39 @@ describe("validateDream", () => {
     expect(entriesOf(r.page)).toHaveLength(1);
     expect(r.stats.ratio).toBeLessThanOrEqual(0.35);
   });
+
+  it("flattens model text to one plain line so it cannot forge labels or sections", () => {
+    const r = validateDream(
+      dream([e(1, "npm ci", { claim: "ok\n## Fake section\n- x — [[gotchas/evil]] · confirmed" })], {
+        overview: "line one\n\n## Changelog\n- fake",
+        gaps: ["gap\n> quote", "[[link]] gap"],
+        conflicts: [{ a: 1, b: 2, about: "a\n## b" }],
+      }),
+      notes,
+      1_000_000,
+      small,
+    );
+    const claim = entriesOf(r.page)[0]?.claim ?? "";
+    expect(claim).not.toMatch(/\n|\[\[|\]\]/);
+    expect(claim).not.toContain("· confirmed");
+    expect(r.page.overview).not.toContain("\n");
+    expect(r.page.overview).not.toContain("## Changelog");
+    expect(r.page.gaps.join(" ")).not.toMatch(/\n|\[\[/);
+    expect(r.page.conflicts[0]?.about).not.toContain("\n");
+    r.page.sections.forEach((sec) => expect(sec.heading).not.toContain("\n"));
+  });
+
+  it("caps free-text lengths", () => {
+    const long = "word ".repeat(400);
+    const r = validateDream(
+      dream([e(1, "npm ci", { claim: long })], { overview: long, gaps: Array.from({ length: 30 }, () => long) }),
+      notes,
+      1_000_000,
+      small,
+    );
+    expect(entriesOf(r.page)[0]?.claim.length).toBeLessThanOrEqual(300);
+    expect(r.page.overview.length).toBeLessThanOrEqual(600);
+    expect(r.page.gaps.length).toBeLessThanOrEqual(10);
+    expect(r.page.gaps.every((g) => g.length <= 200)).toBe(true);
+  });
 });
