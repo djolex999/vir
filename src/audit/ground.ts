@@ -3,6 +3,8 @@ import type { FilterMode } from "../pipeline/toolCallFilter.js";
 import { filterToolCalls } from "../pipeline/toolCallFilter.js";
 import { scrub } from "../pipeline/scrubber.js";
 import { trimTranscript } from "../pipeline/distillSession.js";
+import { noteRef } from "../pipeline/slug.js";
+import type { NoteUsage } from "../search/noteUsage.js";
 import { SubscriptionLimitError } from "../pipeline/subscription.js";
 import { resolveSource } from "../sources/registry.js";
 import type { SessionSource } from "../sources/types.js";
@@ -27,6 +29,8 @@ export interface GroundOptions {
   project?: string;
   limit?: number;
   all?: boolean;
+  // Retrieval counts from the query log, keyed by noteRef. Absent: oldest first.
+  usage?: ReadonlyMap<string, NoteUsage>;
 }
 
 export interface GroundSelection {
@@ -64,9 +68,14 @@ export function selectGroundRows(
     }
     out.push(r);
   }
-  // Oldest first: their transcripts are the next the agent prunes, so a
-  // --limit (and the daemon's per-pass cap) spends on what is about to be lost.
+  // Most-retrieved first: a wrong note does harm when agents read it, so a
+  // --limit (and the daemon's per-pass cap) spends on the notes search serves.
+  // Ties, and every note never retrieved, go oldest first: their transcripts
+  // are the next the agent prunes.
+  const surfaced = (r: DistilledRow): number => opts.usage?.get(noteRef(r))?.surfaced ?? 0;
   out.sort((a, b) => {
+    const byUse = surfaced(b) - surfaced(a);
+    if (byUse !== 0) return byUse;
     if (a.startedAt === b.startedAt) return 0;
     if (a.startedAt === null) return 1;
     if (b.startedAt === null) return -1;

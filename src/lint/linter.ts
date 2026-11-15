@@ -8,7 +8,7 @@ import {
   normalizeModelName,
   withRateLimitRetry,
 } from "../pipeline/distiller.js";
-import { kebab, makeSlug } from "../pipeline/slug.js";
+import { kebab, noteRef } from "../pipeline/slug.js";
 import type { NoteUsage } from "../search/noteUsage.js";
 
 const SKIP_BASENAMES = new Set(["index.md", "log.md"]);
@@ -323,7 +323,3 @@ function walkVault(dir: string, acc: string[]): void {
   }
 }
 
-function noteRef(r: DistilledRow): string {
-  const dir = `${r.category}s`;
-  return `${dir}/${makeSlug(r.topic, r.sessionId)}`;
-}

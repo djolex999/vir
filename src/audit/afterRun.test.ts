@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ClaudeCliLimitError } from "../pipeline/claudeCli.js";
+import { noteRef } from "../pipeline/slug.js";
 import { StateDb } from "../state/db.js";
 import { checkTranscriptsAfterRun } from "./afterRun.js";
 
@@ -81,6 +82,25 @@ describe("checkTranscriptsAfterRun", () => {
     expect(prompts[0]).toContain(`transcript of ${pathOf(2)}`);
     expect(prompts[1]).toContain(`transcript of ${pathOf(3)}`);
     expect(logs).toEqual(["transcript check: 2 checked, 0 contradicted (0 sent to review), 0 unbacked, 0 failed"]);
+  });
+
+  it("puts the most-retrieved note ahead of older ones", async () => {
+    const prompts: string[] = [];
+    const usage = new Map([[noteRef({ category: "gotcha", topic: "topic 1", sessionId: sid(1) }), { surfaced: 4, top3: 1, lastSurfacedAt: "2026-11-01" }]]);
+    await checkTranscriptsAfterRun(
+      { checkTranscripts: true, checkTranscriptsPerRun: 2 },
+      db,
+      {
+        ...base,
+        usage,
+        llm: async (p) => {
+          prompts.push(p);
+          return '{"findings":[]}';
+        },
+      },
+    );
+    expect(prompts[0]).toContain(`transcript of ${pathOf(1)}`);
+    expect(prompts[1]).toContain(`transcript of ${pathOf(2)}`);
   });
 
   it("logs and stops on a subscription limit instead of throwing", async () => {

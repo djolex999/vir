@@ -215,4 +215,23 @@ describe("selectGroundRows", () => {
     expect(s.rows).toEqual([]);
     expect(s.skippedVerified).toBe(1);
   });
+
+  it("checks the notes agents retrieve most first, then the rest oldest first", () => {
+    const dated = (n: number, startedAt: string) => ({ ...row(n), startedAt });
+    const used = (surfaced: number) => ({ surfaced, top3: 0, lastSurfacedAt: "2026-11-01" });
+    const s = selectGroundRows(
+      [dated(1, "2026-10-01"), dated(2, "2026-10-02"), dated(3, "2026-10-03"), dated(4, "2026-10-04")],
+      [],
+      {
+        limit: 3,
+        usage: new Map([
+          [`gotchas/t3-${sid(3).slice(0, 8)}`, used(2)],
+          [`gotchas/t4-${sid(4).slice(0, 8)}`, used(9)],
+        ]),
+      },
+      () => false,
+      () => true,
+    );
+    expect(s.rows.map((r) => r.topic)).toEqual(["t4", "t3", "t1"]);
+  });
 });
