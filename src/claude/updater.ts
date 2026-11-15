@@ -13,6 +13,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "../config.js";
 import { extractLessonTexts, normalizeLesson } from "../connect/extract.js";
+import { codeLines } from "../lint/codeFences.js";
 import { ruleText } from "../connect/text.js";
 import type { InsightRow } from "../connect/types.js";
 import type { AuditRow, DistilledRow, GroundRow, StateDb } from "../state/db.js";
@@ -389,11 +390,11 @@ function parseRules(block: string): RuleEntry[] {
   return out;
 }
 
+// The block applyPlan will replace, so the diff shows what actually changes.
 function extractBlock(raw: string): string {
-  const start = raw.indexOf(VIR_START);
-  const end = raw.indexOf(VIR_END);
-  if (start === -1 || end === -1 || end < start) return "";
-  return raw.slice(start, end + VIR_END.length);
+  const { starts, ends } = markerOffsets(raw);
+  const first = pairBlocks(starts, ends)?.[0];
+  return first === undefined ? "" : raw.slice(first.from, first.to);
 }
 
 function extractLastUpdated(block: string): string | null {
@@ -440,17 +441,16 @@ function markerOffsets(raw: string): { starts: number[]; ends: number[] } {
   const starts: number[] = [];
   const ends: number[] = [];
   let offset = 0;
-  let fenced = false;
-  for (const line of raw.split("\n")) {
+  const lines = raw.split("\n");
+  const inCode = codeLines(lines);
+  lines.forEach((line, i) => {
     const t = line.trim();
-    if (t.startsWith("```") || t.startsWith("~~~")) {
-      fenced = !fenced;
-    } else if (!fenced) {
+    if (!inCode[i]) {
       if (t === VIR_START) starts.push(offset);
       else if (t === VIR_END) ends.push(offset);
     }
     offset += line.length + 1;
-  }
+  });
   return { starts, ends };
 }
 
