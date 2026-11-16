@@ -21,6 +21,7 @@ vi.mock("../state/db.js", () => ({
     isProcessed = vi.fn(() => false);
     retryExhausted = vi.fn(() => false);
     isPruned = spies.isPruned;
+    liveCopyOf = vi.fn(() => null);
     record = spies.record;
     recordError = vi.fn();
     getByPath = spies.getByPath;

@@ -8,7 +8,10 @@ import type { SessionSource } from "../sources/types.js";
 export type PruneReason =
   | "workflow-transcript"
   | "sidechain-transcript"
-  | "agent-transcript";
+  | "agent-transcript"
+  // A second live copy of a session distilled under another project folder
+  // (`vir prune --duplicates`). Not a classifyRow outcome.
+  | "duplicate-session";
 
 // Why a row survives. `unclassifiable` and `merge-winner` are reported, never
 // acted on — they are the two buckets where the evidence does not exist.

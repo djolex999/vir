@@ -939,6 +939,17 @@ export async function runPipeline(
         continue;
       }
 
+      // One session, one note: a transcript copied into a second project folder
+      // (main checkout vs `--claude-worktrees-<name>`) whose session already
+      // serves a note from the other path is not distilled again — even under
+      // --full. Nothing is recorded, so pruning the other copy lets this one in.
+      const liveCopy = db.liveCopyOf(found.path);
+      if (liveCopy !== null) {
+        summary.alreadyProcessed += 1;
+        fileLog(`session already distilled at ${liveCopy}, skipping: ${found.path}`);
+        continue;
+      }
+
       // Retry bound: MAX_DISTILL_ATTEMPTS consecutive failures park the
       // session — even under --full — so the daemon can't burn money on a
       // persistently failing transcript. `vir reconcile --force` is the only

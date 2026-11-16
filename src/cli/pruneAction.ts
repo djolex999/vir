@@ -5,6 +5,11 @@ import {
   restorePruned,
   type PrunePlan,
 } from "../prune/prune.js";
+import {
+  applyDuplicatePlan,
+  buildDuplicatePlan,
+  type DuplicatePlan,
+} from "../prune/duplicates.js";
 import { StateDb } from "../state/db.js";
 import * as ui from "../ui/display.js";
 
@@ -12,6 +17,7 @@ export interface PruneCliOptions {
   apply?: boolean;
   restore?: boolean;
   dryRun?: boolean;
+  duplicates?: boolean;
 }
 
 function renderPlan(plan: PrunePlan): void {
@@ -64,6 +70,31 @@ function renderPlan(plan: PrunePlan): void {
   }
 }
 
+function renderDuplicatePlan(plan: DuplicatePlan): void {
+  ui.header("prune --duplicates — one note per session");
+  ui.blank();
+  if (plan.prune.length === 0) {
+    ui.row(ui.success(ui.CHECK), ui.text("no session serves more than one note"));
+  }
+  for (const item of plan.prune) {
+    const keep = plan.winners.get(item.path) ?? "?";
+    ui.row(ui.warn(ui.DIAMOND), ui.text(item.slug), ui.dim(item.noteExists ? "" : "row only"));
+    ui.line(ui.dim(`    drop ${item.path}`));
+    ui.line(ui.dim(`    keep ${keep}`));
+  }
+  ui.blank();
+  ui.divider();
+  ui.summary({
+    sessions: { value: plan.groups, color: ui.info },
+    "would prune": { value: plan.prune.length, color: ui.warn },
+    "dangling links": {
+      value: plan.danglingLinks,
+      color: plan.danglingLinks > 0 ? ui.warn : ui.dim,
+    },
+  });
+  ui.divider();
+}
+
 export async function pruneCommand(opts: PruneCliOptions): Promise<void> {
   const cfg = await loadConfig();
   const db = new StateDb();
@@ -79,6 +110,26 @@ export async function pruneCommand(opts: PruneCliOptions): Promise<void> {
           color: res.missing > 0 ? ui.warn : ui.dim,
         },
       });
+      return;
+    }
+
+    if (opts.duplicates === true) {
+      const plan = buildDuplicatePlan(db, cfg);
+      renderDuplicatePlan(plan);
+      if (opts.apply !== true || plan.prune.length === 0) {
+        ui.blank();
+        ui.line(ui.dim("  dry run — nothing moved, nothing written"));
+        ui.line(ui.dim("  run `vir prune --duplicates --apply` to demote, `vir prune --restore` to undo"));
+        return;
+      }
+      const res = applyDuplicatePlan(db, cfg, plan);
+      ui.blank();
+      ui.summary({
+        "notes moved": { value: res.moved, color: ui.success },
+        "rows marked": { value: res.marked, color: ui.success },
+        "row only": { value: res.stateOnly, color: ui.dim },
+      });
+      ui.line(ui.dim("  demoted to .rejected/ — `vir prune --restore` puts them back"));
       return;
     }
 

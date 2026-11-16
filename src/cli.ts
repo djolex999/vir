@@ -1101,8 +1101,12 @@ program
   .description("Demote agent-derived notes to .rejected/ (dry run by default)")
   .option("--apply", "Actually demote (default is a dry run)")
   .option("--restore", "Restore every pruned note to its exact prior state")
+  .option(
+    "--duplicates",
+    "Instead: keep one note per session distilled under two project folders (main checkout + worktree)",
+  )
   .action(
-    runAction(async (opts: { apply?: boolean; restore?: boolean }) => {
+    runAction(async (opts: { apply?: boolean; restore?: boolean; duplicates?: boolean }) => {
       await pruneCommand(opts);
     }),
   );

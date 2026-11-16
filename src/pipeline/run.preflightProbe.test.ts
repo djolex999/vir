@@ -24,6 +24,7 @@ vi.mock("../state/db.js", () => ({
     isProcessed = vi.fn(() => false);
     retryExhausted = vi.fn(() => false);
     isPruned = vi.fn(() => false);
+    liveCopyOf = vi.fn(() => null);
     record = vi.fn();
     recordError = spies.recordError;
     listDistilled = vi.fn(() => []);
