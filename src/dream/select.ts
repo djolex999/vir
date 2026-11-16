@@ -40,15 +40,23 @@ export function selectDreamNotes(
   },
 ): DreamSelection {
   let excludedFlagged = 0;
-  const kept: { row: DistilledRow; ref: string; surfaced: number }[] = [];
+  const kept: { row: DistilledRow; ref: string; status: NoteStatus; surfaced: number }[] = [];
   for (const row of rows) {
     if (kebab(row.project) !== projectSlug) continue;
     if (opts.flagged.has(row.path) && !opts.isVerified(row)) {
       excludedFlagged += 1;
       continue;
     }
+    // The flag is keyed by transcript path, the status by session id: a session
+    // distilled under two paths (main checkout and a worktree) is flagged on one
+    // path only. A contradicted status catches the other copy.
+    const status = opts.statusOf(row);
+    if (status === "contradicted") {
+      excludedFlagged += 1;
+      continue;
+    }
     const ref = noteRef(row);
-    kept.push({ row, ref, surfaced: opts.usage.get(ref)?.surfaced ?? 0 });
+    kept.push({ row, ref, status, surfaced: opts.usage.get(ref)?.surfaced ?? 0 });
   }
   kept.sort(
     (a, b) =>
@@ -59,14 +67,14 @@ export function selectDreamNotes(
 
   let usedTokens = 0;
   let sourceChars = 0;
-  const notes = kept.map(({ row, ref, surfaced }, i): DreamNote => {
+  const notes = kept.map(({ row, ref, status, surfaced }, i): DreamNote => {
     sourceChars += row.content.length;
     const tokens = Math.ceil(row.content.length / 4);
     const full = usedTokens + tokens <= opts.budgetTokens;
     let text = row.content;
     if (full) usedTokens += tokens;
     else text = `${row.topic}: ${row.lesson ?? row.content.slice(0, SHORT_CHARS)}`;
-    return { index: i + 1, row, ref, status: opts.statusOf(row), surfaced, text, full };
+    return { index: i + 1, row, ref, status, surfaced, text, full };
   });
   return { notes, excludedFlagged, sourceChars };
 }

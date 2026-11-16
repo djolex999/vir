@@ -45,6 +45,17 @@ describe("selectDreamNotes", () => {
     expect(s.excludedFlagged).toBe(1);
   });
 
+  it("leaves out a note whose status is contradicted even when its path isn't flagged", () => {
+    // The same session distilled under two transcript paths: the check flagged
+    // one path, the status lookup (by session id) catches the other.
+    const s = selectDreamNotes([row(1), row(2)], "pripremi-rs", {
+      ...base,
+      statusOf: (r) => (r.topic === "topic 1" ? "contradicted" : "unchecked"),
+    });
+    expect(s.notes.map((n) => n.row.topic)).toEqual(["topic 2"]);
+    expect(s.excludedFlagged).toBe(1);
+  });
+
   it("orders by retrieval, then confidence, then newest", () => {
     const rows = [
       row(1, { confidence: 0.9 }),

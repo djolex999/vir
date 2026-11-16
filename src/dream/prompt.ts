@@ -38,6 +38,7 @@ Rules:
 - Group by area of the project (auth, payments, deploy, data, ...), not by note category.
 - One entry per fact. When several notes say the same thing, write it once and list the other note numbers in "also".
 - At most 40 entries in total, most important first. Fewer, sharper entries beat many.
+- Never mention note numbers in claims, conflicts, gaps or the overview: the reader can't see them. Numbers go only in "source", "also", "a" and "b".
 - Prefer facts likely to bite again: rules, traps, decisions and how-tos. Skip one-off narrative.
 - Never state anything that is not in a note. Each entry cites one source note by number and copies a "quote" from that note EXACTLY, character for character, at most 200 characters. An entry whose quote is not in its note is thrown away.
 - When notes disagree, do not pick a winner: list the pair under "conflicts".
