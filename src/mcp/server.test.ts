@@ -171,3 +171,27 @@ describe("tool descriptions are agent-neutral", () => {
     expect(VIR_QUERY_DESCRIPTION).not.toContain("past Claude Code sessions");
   });
 });
+
+describe("projectSummaryLookup", () => {
+  const dream = "---\nproject: vir\ngenerated: 2026-11-16T10:00:00.000Z\nsessions: 6\nkind: dream\nentries: 12\nconfirmed: 4\n---\nbody";
+
+  it("reports dream page fields and counts notes newer than the page", async () => {
+    const { projectSummaryLookup } = await import("./server.js");
+    const r = projectSummaryLookup("vir", () => dream, ["2026-11-10T00:00:00.000Z", "2026-11-17T00:00:00.000Z", null]);
+    expect(r).toMatchObject({ project: "vir", kind: "dream", entries: 12, confirmed_entries: 4, stale_notes: 1, sessions_count: 6 });
+  });
+
+  it("gives nulls for an old summary page", async () => {
+    const { projectSummaryLookup } = await import("./server.js");
+    const r = projectSummaryLookup("vir", () => "---\nproject: vir\nsessions: 3\n---\nold", []);
+    expect(r).toMatchObject({ kind: null, entries: null, confirmed_entries: null, stale_notes: null });
+  });
+
+  it("points at vir dream when the page is missing", async () => {
+    const { projectSummaryLookup } = await import("./server.js");
+    expect(projectSummaryLookup("vir", () => null, [])).toEqual({
+      error: "Project page not yet generated. Run: vir dream vir",
+      project_slug: "vir",
+    });
+  });
+});

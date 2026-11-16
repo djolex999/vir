@@ -1,10 +1,11 @@
 import { SubscriptionLimitError } from "../pipeline/subscription.js";
+import type { NoteUsage } from "../search/noteUsage.js";
 import type { StateDb } from "../state/db.js";
 import { runGround, type GroundDeps, type GroundSummary } from "./ground.js";
 
 // The daemon's transcript check: after a distill pass, check up to `perRun`
-// notes against their transcripts, oldest first, so no note ages past the
-// agent's transcript retention unchecked. Runs inside the pass's pipeline lock.
+// notes against their transcripts, the most-retrieved first (`usage`, from the
+// query log), then oldest first. Runs inside the pass's pipeline lock.
 
 export interface AfterRunConfig {
   checkTranscripts?: boolean;
@@ -21,12 +22,13 @@ export type AfterRunOutcome =
 export async function checkTranscriptsAfterRun(
   cfg: AfterRunConfig,
   db: StateDb,
-  deps: GroundDeps & { log: (msg: string) => void },
+  deps: GroundDeps & { log: (msg: string) => void; usage?: ReadonlyMap<string, NoteUsage> },
 ): Promise<AfterRunOutcome> {
   if (cfg.checkTranscripts !== true) return { kind: "off" };
   let summary: GroundSummary;
   try {
-    summary = await runGround(db, { limit: cfg.checkTranscriptsPerRun ?? DEFAULT_CHECKS_PER_RUN }, deps);
+    const limit = cfg.checkTranscriptsPerRun ?? DEFAULT_CHECKS_PER_RUN;
+    summary = await runGround(db, { limit, usage: deps.usage }, deps);
   } catch (err) {
     // An optional step after a finished distill pass: a quota halt or a failed
     // call is logged and retried next pass, never turned into a failed run.

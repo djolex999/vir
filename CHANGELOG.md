@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+**`vir dream <project>` rebuilds a project's reference page from its notes, with every entry quoted from its source and labelled confirmed or unconfirmed.**
+
+- **`vir dream <project>` (and `--all`)** is a cross-session pass modelled on the "dreaming" in Anthropic's agent-memory research. One model call reads a project's notes together and groups the facts by area into `projects/<slug>.md`, which agents read through `vir_project_summary`.
+  - Every entry must quote its source note verbatim, and an entry whose quote isn't in that note is dropped.
+  - Each entry is labelled from your checks, not by the model: confirmed (you verified the note, or `vir audit --transcript` found it in its session) or unconfirmed.
+  - Notes that disagree are listed under "Needs review", and gaps the notes leave open under "Gaps".
+  - Flagged and contradicted notes never reach the prompt.
+  - The page is capped at 40 entries, 12 KB and 0.35× its notes' size, and is never used as a source for search or another dream.
+  - An unchanged project costs nothing to rerun.
+  - On the reference vault's `vir` project (38 notes): 26 entries, every quote found in its linked note, 3 entries dropped for a quote that wasn't there, 2 conflicts, 0.11× the source size.
+- **`vir summarize <project>` and `--all` now run `vir dream`.** `--week` and `--month` are unchanged. The distill pass no longer overwrites a dream page with its old auto-summary.
+- **`vir_project_summary` returns `kind`, `entries`, `confirmed_entries` and `stale_notes`** (notes newer than the page), and points at `vir dream` when a project has no page.
+- **`vir audit --transcript` checks the notes agents retrieve most first**, then the rest oldest first. A `--limit`, and the daemon's 20 checks per pass, now go to the notes search actually serves.
+
 ## 0.34.1 — 2026-11-15
 
 **`vir sync-claude` no longer adds a second VIR block when a line starts with inline code.**

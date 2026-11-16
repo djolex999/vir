@@ -12,7 +12,7 @@ import type { Category } from "./types.js";
 import { kebab } from "./writer.js";
 
 const EXCERPT_LEN = 200;
-const CHANGELOG_HEADER = "## Changelog";
+export const CHANGELOG_HEADER = "## Changelog";
 
 export interface ProjectGroup {
   slug: string;
@@ -220,7 +220,7 @@ function writeSummaryFile(
 // Returns the existing changelog entries (the lines after `## Changelog`),
 // excluding the header itself. Empty array if file is missing or has no
 // changelog section yet.
-function readExistingChangelog(filePath: string): string[] {
+export function readExistingChangelog(filePath: string): string[] {
   if (!existsSync(filePath)) return [];
   let raw: string;
   try {
@@ -228,7 +228,7 @@ function readExistingChangelog(filePath: string): string[] {
   } catch {
     return [];
   }
-  const idx = raw.indexOf(CHANGELOG_HEADER);
+  const idx = raw.lastIndexOf(CHANGELOG_HEADER);
   if (idx === -1) return [];
   const rest = raw.slice(idx + CHANGELOG_HEADER.length).trim();
   if (rest.length === 0) return [];

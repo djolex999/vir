@@ -1,4 +1,6 @@
 import confirm from "@inquirer/confirm";
+import { buildNoteUsage } from "../search/noteUsage.js";
+import { readQueryLog } from "../search/queryLog.js";
 import { loadConfig, type Config } from "../config.js";
 import {
   loadEvidence,
@@ -110,7 +112,8 @@ export async function auditCommand(
     );
 
     if (opts.transcript) {
-      await transcriptCheck(cfg, db, auditOpts, isVerified, model, opts);
+      const usage = buildNoteUsage(readQueryLog());
+      await transcriptCheck(cfg, db, { ...auditOpts, usage }, isVerified, model, opts);
       return;
     }
 
@@ -309,6 +312,7 @@ export async function transcriptCheckAfterPass(cfg: Config): Promise<void> {
       isVerified: (r) => noteIsVerified(root, r),
       evidence: (path) => loadEvidence(sources, path, cfg.filterToolCalls),
       log: appendRunLog,
+      usage: buildNoteUsage(readQueryLog()),
     });
   } finally {
     db.close();

@@ -17,6 +17,12 @@ export function makeSlug(topic: string, sessionId: string): string {
   return base.length > 0 ? `${base}-${suffix}` : `note-${suffix}`;
 }
 
+// A note's vault-relative path without `.md` ("gotchas/x-aaaa1111"): the slug
+// the query log records hits under.
+export function noteRef(r: { category: string; topic: string; sessionId: string }): string {
+  return `${r.category}s/${makeSlug(r.topic, r.sessionId)}`;
+}
+
 // The half of a note filename that identifies its session. MUST stay in step
 // with the suffix makeSlug appends: callers resolve an existing note by this
 // when the topic half has changed underneath them.

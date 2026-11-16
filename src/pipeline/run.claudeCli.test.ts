@@ -321,6 +321,21 @@ describe("runPipeline — a limit halt skips the later LLM phases", () => {
     expect(spies.summarize).toHaveBeenCalledTimes(1);
     expect(docRow("articles", "/a/normal.md")).toEqual({ hash: "hn", error: null });
   });
+
+  it("leaves a dream page alone instead of overwriting it with a summary", async () => {
+    const { mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+    const dir = "/tmp/vir-test-vault/Vir/projects";
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(`${dir}/demo.md`, "---\nproject: demo\nkind: dream\n---\nbody\n");
+    try {
+      spies.scan.mockReturnValue(sessions(3));
+      spies.distill.mockResolvedValue(sessionNote);
+      await runPipeline(withDocs("claude-cli"), { quiet: true });
+      expect(spies.summarize).not.toHaveBeenCalled();
+    } finally {
+      rmSync(`${dir}/demo.md`, { force: true });
+    }
+  });
 });
 
 describe("runPipeline — errored articles and PDFs retry", () => {

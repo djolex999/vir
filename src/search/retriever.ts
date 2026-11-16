@@ -15,8 +15,10 @@ const SKIP_FILES = new Set(["index.md", "log.md"]);
 // them to .rejected/), and dedupe-archived duplicates. The embedding path is
 // covered separately — rejected notes' recorded paths no longer exist (the
 // content read skips them) and getEmbeddings gates on `archived`. The journal
-// is a projection of work done, not knowledge to retrieve.
-const SKIP_DIRS = new Set(["summaries", ".rejected", "archived", "journal"]);
+// is a projection of work done, not knowledge to retrieve. projects/ holds
+// `vir dream` pages built from notes: retrieving one as a source would feed
+// a derived page back in as evidence.
+const SKIP_DIRS = new Set(["summaries", ".rejected", "archived", "journal", "projects"]);
 
 export interface IndexedDoc {
   relPath: string;

@@ -7,8 +7,6 @@ import {
 } from "../pipeline/distiller.js";
 import {
   countByCategory,
-  summarizeAll,
-  summarizeProject,
 } from "../pipeline/summarizer.js";
 import {
   buildPeriodPrompt,
@@ -22,6 +20,7 @@ import {
 import { StateDb } from "../state/db.js";
 import * as ui from "../ui/display.js";
 import { estCostLabel } from "./costLabel.js";
+import { dreamCommand } from "./dream.js";
 import { withPipelineLock } from "./guards.js";
 
 export async function summarizeCommand(
@@ -36,6 +35,17 @@ export async function summarizeCommand(
   },
 
 ): Promise<void> {
+  // A project page is a dream page now: `vir summarize <project>|--all` is an
+  // alias for `vir dream`, which takes its own lock. Period summaries stay here.
+  if (opts.week === undefined && opts.month === undefined) {
+    if (project === undefined && opts.all !== true) {
+      console.error(chalk.red("usage: vir summarize <project> | --all | --week [n] | --month [n]"));
+      process.exitCode = 1;
+      return;
+    }
+    await dreamCommand(project, { all: opts.all, dryRun: opts.dryRun, yes: opts.yes, model: opts.model });
+    return;
+  }
   // Writes notes and the DB: hold the lock (a dry run only reads).
   const run = async (): Promise<void> => {
     const cfg = loadConfig();
@@ -161,42 +171,6 @@ export async function summarizeCommand(
       return;
     }
 
-    // ── project / --all path (unchanged) ────────────────────────────────
-    const db = new StateDb();
-    try {
-      if (opts.all) {
-        const results = await summarizeAll(cfg, db);
-        if (results.length === 0) {
-          console.log(chalk.yellow("no projects with notes"));
-          return;
-        }
-        for (const r of results) {
-          console.log(
-            chalk.green(`summarized project/${r.slug}`) +
-              ` (${r.counts.total} sessions)`,
-          );
-        }
-        return;
-      }
-      if (!project) {
-        console.error(
-          chalk.red("usage: vir summarize <project> | --all | --week [n] | --month [n]"),
-        );
-        process.exitCode = 1;
-        return;
-      }
-      const res = await summarizeProject(cfg, project, db);
-      if (!res) {
-        console.log(chalk.yellow(`no distilled notes for project '${project}'`));
-        return;
-      }
-      console.log(
-        chalk.green(`summarized project/${res.slug}`) +
-          ` (${res.counts.total} sessions) → ${res.path}`,
-      );
-    } finally {
-      db.close();
-    }
   };
   if (opts.dryRun) await run();
   else await withPipelineLock(run);

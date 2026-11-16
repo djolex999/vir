@@ -216,6 +216,20 @@ worse results, not better."_ Fair. Vir addresses it in layers:
   vault for related notes and synthesizes them into a single topic page under
   `topics/`, with each source wikilinked so it backlinks in Obsidian's graph.
   `--dry-run` previews the sources and cost for free.
+- **Project reference pages** via `vir dream <project>`, a cross-session pass
+  modelled on the "dreaming" in Anthropic's agent-memory research. One model
+  call reads a project's notes together and groups the facts by area. Every
+  entry must quote its source note verbatim, and code drops any entry whose
+  quote isn't in that note. Labels come from your checks, never the model:
+  confirmed (you verified the note, or `vir audit --transcript` found it in
+  its session) or unconfirmed. Notes that disagree are listed under "Needs
+  review", never resolved. Flagged and contradicted notes never reach the
+  prompt, the page never feeds back in as a source, and it is capped at 40
+  entries and 0.35× its notes' size. Agents read it through
+  `vir_project_summary`. On the reference vault's `vir` project (38 notes):
+  26 entries, all 26 quotes found in their notes, 3 dropped for a quote
+  that wasn't there, 2 conflicts, 0.11× the source size. An unchanged
+  project costs nothing to rerun.
 - **Cost transparency.** `vir run --dry-run` estimates per-session cost before
   you spend a cent; `vir cost` reports the actuals (total, median, p90, top
   sessions) from a local `~/.vir/cost.log`. Pricing is provider-aware
@@ -462,7 +476,8 @@ with your distro, init system, and Node version.
 | `vir compose "<topic>"`     | $$    | Synthesize a topic page from related notes |
 | `vir connect --dry-run`     | free  | Find lessons you keep re-learning; show candidates + cost |
 | `vir connect`               | $     | Propose those lessons as cited rules (≤10 LLM calls) |
-| `vir summarize <project>`   | cheap | Cross-session project synthesis           |
+| `vir dream <project>`       | $     | Rebuild a project's reference page: quoted, labelled, size-capped (`--all`, `--dry-run`, `--force`) |
+| `vir summarize <project>`   | $     | Alias for `vir dream <project>`           |
 | `vir summarize --week`      | cheap | Period summary of the week's notes        |
 | `vir journal [date]`        | free  | Daily work journal from transcripts, no LLM calls (default: today) |
 | `vir journal --since <date>` | free | Write every day with activity from that date on |

@@ -167,6 +167,32 @@ export function hitMeta(hit: SearchHit): {
   };
 }
 
+// Pure lookup behind vir_project_summary. `noteDates` are the project's live
+// notes' startedAt values: those newer than the page are not on it yet.
+export function projectSummaryLookup(
+  slug: string,
+  read: (slug: string) => string | null,
+  noteDates: (string | null)[],
+): Record<string, unknown> {
+  const content = read(slug);
+  if (content === null) {
+    return { error: `Project page not yet generated. Run: vir dream ${slug}`, project_slug: slug };
+  }
+  const fm = parseFrontmatter(content);
+  const num = (v: string | undefined): number | null => (v === undefined ? null : Number(v));
+  const generated = fm.generated ?? null;
+  return {
+    project: slug,
+    content,
+    kind: fm.kind ?? null,
+    sessions_count: num(fm.sessions),
+    generated,
+    entries: num(fm.entries),
+    confirmed_entries: num(fm.confirmed),
+    stale_notes: generated === null ? null : noteDates.filter((d) => d !== null && d > generated).length,
+  };
+}
+
 // Pure lookup behind vir_compose. Given the topic and a reader that returns the
 // cached topic file's content (or null if absent), produce the MCP payload.
 // Read-only by design: synthesis (an LLM call + vault write + db upsert) only
@@ -607,9 +633,11 @@ export async function runMcpServer(cfg: Config): Promise<void> {
     "vir_project_summary",
     {
       description:
-        "Get a synthesized summary of what the user has learned about a " +
-        "specific project. Includes key patterns, gotchas, decisions, and " +
-        "tools.",
+        "A project's reference page, built by `vir dream` from its notes: facts " +
+        "grouped by area, each linked to its source note and labelled confirmed " +
+        "(verified or matched against its session transcript) or unconfirmed. " +
+        "Prefer confirmed entries; check `vir_query` for anything unconfirmed " +
+        "before relying on it. `stale_notes` counts notes newer than the page.",
       inputSchema: {
         project: z.string().describe("Project slug, e.g. 'growthq'"),
       },
@@ -617,31 +645,17 @@ export async function runMcpServer(cfg: Config): Promise<void> {
     async ({ project }) => {
       try {
         const slug = kebab(project);
-        const file = join(
-          cfg.vaultPath,
-          cfg.outputDir,
-          "projects",
-          `${slug}.md`,
-        );
-
-        // Read-only facade: never generate a summary here — that's an LLM
-        // call and a vault write. If it isn't cached, point the user at the
-        // CLI command that produces it under explicit intent.
-        if (!existsSync(file)) {
-          return ok({
-            error: `Project summary not yet generated. Run: vir summarize ${slug}`,
-            project_slug: slug,
-          });
-        }
-
-        const content = readFileSync(file, "utf8");
-        const fm = parseFrontmatter(content);
-        return ok({
-          project: slug,
-          content,
-          sessions_count: fm.sessions ? Number(fm.sessions) : null,
-          generated: fm.generated ?? null,
-        });
+        // Read-only facade: never generate a page here — that's an LLM call
+        // and a vault write. If it isn't there, point at `vir dream`.
+        const read = (sl: string): string | null => {
+          const file = join(cfg.vaultPath, cfg.outputDir, "projects", `${sl}.md`);
+          return existsSync(file) ? readFileSync(file, "utf8") : null;
+        };
+        const dates = db
+          .listDistilled()
+          .filter((r) => kebab(r.project) === slug)
+          .map((r) => r.startedAt);
+        return ok(projectSummaryLookup(slug, read, dates));
       } catch (err) {
         return fail((err as Error).message);
       }
