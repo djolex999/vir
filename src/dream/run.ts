@@ -57,8 +57,9 @@ export function planDream(
   const lookup = noteStatusLookup(grounds);
   const statusOf = (r: DistilledRow): NoteStatus =>
     deps.isVerified(r) ? "verified" : lookup({ title: noteRef(r), content: r.content });
-  const selection = selectDreamNotes(db.listDistilled(), slug, {
-    flagged: flaggedNotePaths(db.listAudits(), grounds),
+  const rows = db.listDistilled();
+  const selection = selectDreamNotes(rows, slug, {
+    flagged: flaggedNotePaths(db.listAudits(), grounds, rows),
     isVerified: deps.isVerified,
     statusOf,
     usage: deps.usage,
