@@ -26,6 +26,7 @@ function plan(target: string): PlanItem {
     diff: { added: [], removed: [], unchanged: [], rulesAdded: [], rulesRemoved: [] },
     scope: "global",
     flaggedSkipped: 0,
+    pointerAdded: false,
   };
 }
 
