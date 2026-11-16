@@ -37,6 +37,7 @@ describe("buildDreamPrompt", () => {
     expect(p).toMatch(/also/);
     expect(p).toMatch(/never state anything that is not in a note/i);
     expect(p).toMatch(/conflicts/);
+    expect(p).toMatch(/at most 40 entries/i);
   });
 });
 

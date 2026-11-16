@@ -32,4 +32,16 @@ describe("vir summarize", () => {
     await summarizeCommand("growthq", { dryRun: true, yes: true, model: "sonnet" });
     expect(dreamCommand).toHaveBeenCalledWith("growthq", { all: undefined, dryRun: true, yes: true, model: "sonnet" });
   });
+
+  it("bare vir summarize shows its own usage, with the period options", async () => {
+    const { summarizeCommand } = await import("./summarize.js");
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    dreamCommand.mockClear();
+    await summarizeCommand(undefined, {});
+    expect(dreamCommand).not.toHaveBeenCalled();
+    expect(err.mock.calls.flat().join(" ")).toContain("--week");
+    expect(process.exitCode).toBe(1);
+    process.exitCode = 0;
+    err.mockRestore();
+  });
 });

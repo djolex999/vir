@@ -1,4 +1,3 @@
-import confirm from "@inquirer/confirm";
 import { noteIsVerified, parseLimitOption } from "../audit/run.js";
 import { loadConfig, type Config } from "../config.js";
 import { dreamProject, planDream, type DreamOutcome } from "../dream/run.js";
@@ -16,7 +15,7 @@ import { vaultRoot } from "../search/retriever.js";
 import { StateDb, type DistilledRow } from "../state/db.js";
 import * as ui from "../ui/display.js";
 import { estCostLabel } from "./costLabel.js";
-import { withPipelineLock } from "./guards.js";
+import { confirmPaidStep, withPipelineLock } from "./guards.js";
 
 // `vir dream`: rebuild a project's reference page from its notes. Estimate
 // first, confirm, then one model call per project that changed.
@@ -112,16 +111,12 @@ export async function dreamCommand(
       ui.line(ui.dim("  dry run — no model calls made"));
       return;
     }
-    if (opts.yes !== true) {
-      const proceed = await confirm({
-        message: `rebuild ${toRun.length} project page(s) with ${model} (~${estCost})?`,
-        default: true,
-      });
-      if (!proceed) {
-        ui.line(ui.dim("aborted"));
-        return;
-      }
-    }
+    // No TTY (a script, cron, the old `vir summarize` callers): skip with a
+    // note instead of hanging on a prompt. --yes runs it.
+    const proceed = await confirmPaidStep(`rebuild ${toRun.length} project page(s) with ${model} (~${estCost})`, {
+      yes: opts.yes,
+    });
+    if (!proceed) return;
 
     const llm = dreamLlm(cfg, model);
     await withPipelineLock(async () => {

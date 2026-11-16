@@ -34,6 +34,8 @@ export interface DreamStats {
 export const MAX_ENTRIES = 40;
 export const MAX_BODY_BYTES = 12_000;
 export const MAX_RATIO = 0.35;
+// Below this many entries, gaps, conflicts and the overview are dropped first.
+const MIN_KEEP = 3;
 
 const norm = (s: string): string => s.replace(/\s+/g, " ").trim();
 
@@ -55,7 +57,7 @@ function plain(s: string, max: number): string {
   return out;
 }
 
-const LIMITS = { claim: 300, heading: 80, overview: 600, about: 200, gap: 200, gaps: 10, conflicts: 20 };
+const LIMITS = { quote: 200, claim: 300, heading: 80, overview: 600, about: 200, gap: 200, gaps: 10, conflicts: 20 };
 
 export function validateDream(
   raw: RawDream,
@@ -64,7 +66,9 @@ export function validateDream(
   measure: (page: DreamPage) => number,
 ): { page: DreamPage; stats: DreamStats } {
   const byIndex = new Map(notes.map((n) => [n.index, n]));
-  const normalized = new Map(notes.map((n) => [n.index, norm(n.row.content)]));
+  // Check a quote against what the model was shown: a note past the budget
+  // was shown as "topic: lesson", and the lesson is not in its content.
+  const normalized = new Map(notes.map((n) => [n.index, norm(n.full ? n.row.content : `${n.text}\n${n.row.content}`)]));
   let dropped = 0;
   let position = 0;
   const sections = raw.sections.map((s) => ({
@@ -89,18 +93,20 @@ export function validateDream(
         dropped += 1;
         return [];
       }
-      return [{ ...e, claim, confirmed, ref: src.ref, alsoRefs, surfaced: src.surfaced, position }];
+      // Clipping keeps it a substring of the note; the spec caps quotes at 200.
+      const clipped = e.quote.trim().slice(0, LIMITS.quote);
+      return [{ ...e, claim, quote: clipped, confirmed, ref: src.ref, alsoRefs, surfaced: src.surfaced, position }];
     }),
   }));
 
-  const conflicts = raw.conflicts.flatMap((c) => {
+  let conflicts = raw.conflicts.flatMap((c) => {
     const a = byIndex.get(c.a);
     const b = byIndex.get(c.b);
     if (a === undefined || b === undefined || a === b) return [];
     return [{ a: a.ref, b: b.ref, about: plain(c.about, LIMITS.about) }];
   }).slice(0, LIMITS.conflicts);
-  const overview = plain(raw.overview, LIMITS.overview);
-  const gaps = raw.gaps.map((g) => plain(g, LIMITS.gap)).filter((g) => g !== "").slice(0, LIMITS.gaps);
+  let overview = plain(raw.overview, LIMITS.overview);
+  let gaps = raw.gaps.map((g) => plain(g, LIMITS.gap)).filter((g) => g !== "").slice(0, LIMITS.gaps);
 
   const build = (): DreamPage => ({
     overview,
@@ -123,6 +129,14 @@ export function validateDream(
   let page = build();
   let count = sections.reduce((n, s) => n + s.entries.length, 0);
   while (count > 0 && !fits(page, count)) {
+    // On a small page, uncited text goes before the last few entries.
+    if (count <= MIN_KEEP && (gaps.length > 0 || conflicts.length > 0 || overview !== "")) {
+      if (gaps.length > 0) gaps = [];
+      else if (conflicts.length > 0) conflicts = [];
+      else overview = "";
+      page = build();
+      continue;
+    }
     let worst: { s: number; i: number } | null = null;
     let worstKey: [number, number, number] | null = null;
     sections.forEach((s, si) =>

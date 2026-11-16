@@ -97,7 +97,7 @@ describe("dreamProject", () => {
   it("writes nothing when every entry fails the quote check", async () => {
     const bad = '{"overview":"o","sections":[{"heading":"H","entries":[{"claim":"c","source":1,"quote":"invented","kind":"rule"}]}]}';
     const out = await dreamProject(cfg, db, "vir", deps(bad), opts);
-    expect(out.kind).toBe("failed");
+    expect(out).toEqual({ kind: "failed", reason: "no entry survived: 1 failed the quote check, 0 cut to fit" });
     expect(existsSync(projectPagePath(cfg, "vir"))).toBe(false);
   });
 

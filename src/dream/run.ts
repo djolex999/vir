@@ -110,7 +110,7 @@ export async function dreamProject(
   }
   const { page, stats } = validateDream(raw, notes, sourceChars, (p) => Buffer.byteLength(renderBody(p)));
   if (stats.kept === 0) {
-    return { kind: "failed", reason: `no entry survived the quote check (${stats.dropped} dropped)` };
+    return { kind: "failed", reason: `no entry survived: ${stats.dropped} failed the quote check, ${stats.cut} cut to fit` };
   }
 
   const file = projectPagePath(cfg, slug);

@@ -158,4 +158,31 @@ describe("validateDream", () => {
     expect(r.page.gaps.length).toBeLessThanOrEqual(10);
     expect(r.page.gaps.every((g) => g.length <= 200)).toBe(true);
   });
+
+  it("accepts a quote from the shortened text a note past the budget was shown as", () => {
+    const short = { ...note(1, "long body without the lesson"), full: false, text: "t1: always pin Node 20" };
+    const r = validateDream(dream([e(1, "always pin Node 20")]), [short], 1_000_000, small);
+    expect(entriesOf(r.page)).toHaveLength(1);
+  });
+
+  it("clips a quote to 200 characters after checking it", () => {
+    const long = "x".repeat(500);
+    const r = validateDream(dream([e(1, long)]), [note(1, long)], 1_000_000, small);
+    expect(entriesOf(r.page)[0]?.quote.length).toBeLessThanOrEqual(200);
+  });
+
+  it("drops gaps, conflicts and overview before cutting the last entries", () => {
+    const tiny = [note(1, "alpha"), note(2, "beta"), note(3, "gamma")];
+    const raw = dream([e(1, "alpha"), e(2, "beta"), e(3, "gamma")], {
+      overview: "o".repeat(500),
+      gaps: ["g".repeat(150), "h".repeat(150)],
+      conflicts: [{ a: 1, b: 2, about: "c".repeat(150) }],
+    });
+    const measure = (p: DreamPage): number =>
+      entriesOf(p).length * 10 + p.overview.length + p.gaps.join("").length + p.conflicts.map((c) => c.about).join("").length;
+    const r = validateDream(raw, tiny, 200, measure);
+    expect(entriesOf(r.page).length).toBeGreaterThan(0);
+    expect(r.page.gaps).toEqual([]);
+    expect(r.stats.ratio).toBeLessThanOrEqual(0.35);
+  });
 });
