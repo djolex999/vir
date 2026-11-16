@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.36.0 — 2026-11-16
 
 **Each project's CLAUDE.md / AGENTS.md block now opens with a line telling the agent to check vir before it starts work.**
 
