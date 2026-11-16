@@ -294,6 +294,27 @@ describe("flagged notes stay out of the block", () => {
     expect(plan()?.newBlock).toContain("Gotcha 1 must");
   });
 
+  it("leaves out every copy of a session distilled under two transcript paths", () => {
+    // The same Claude Code session, distilled once from the main checkout's
+    // project folder and once from a worktree's: two rows, one session id.
+    const uuid = "ad237d30-1111-2222-3333-444455556666";
+    const copies = [`/p/-Users-me-projects-growthq/${uuid}.jsonl`, `/p/-Users-me-growthq--claude-worktrees-x/${uuid}.jsonl`];
+    copies.forEach((p, i) => {
+      const content = learned(`Duplicated gotcha copy ${i} must stay out.`);
+      db.record({
+        path: p, hash: `dup${i}`, skipped: false, notePaths: [], content, category: "gotcha",
+        topic: `dup ${i}`, project: "growthq", confidence: 0.999, startedAt: "2026-01-09", lesson: null,
+      });
+    });
+    db.recordGround(copies[0]!, {
+      verdict: "contradicted", reason: "x", contentHash: contentHash(learned("Duplicated gotcha copy 0 must stay out.")),
+    });
+    const p = plan();
+    expect(p?.newBlock).not.toContain("Duplicated gotcha copy 0");
+    expect(p?.newBlock).not.toContain("Duplicated gotcha copy 1");
+    expect(p?.flaggedSkipped).toBe(2);
+  });
+
   it("lets a human-approved note through despite a flag", () => {
     db.recordAudit(path(1), { verdict: "verify", reason: "doubtful", mergeInto: null, contentHash: contentHash(body(1)) });
     const p = plan({ isVerified: (r: { path: string }) => r.path === path(1) });
@@ -311,7 +332,14 @@ describe("flaggedNotePaths", () => {
     const out = flaggedNotePaths(
       [a("/k", "keep", true), a("/v", "verify", true), a("/m", "merge", true), a("/r", "reject", true), a("/old", "reject", false)],
       [g("/c", "contradicted", true), g("/u", "unbacked", true), g("/oldc", "contradicted", false)],
+      [],
     );
     expect([...out].sort()).toEqual(["/c", "/m", "/r", "/v"]);
+  });
+
+  it("extends a flag to every row of the same session under another path", () => {
+    const g = { path: "/main/abc.jsonl", verdict: "contradicted" as const, reason: "", groundedAt: "", fresh: true };
+    const out = flaggedNotePaths([], [g], [{ path: "/main/abc.jsonl" }, { path: "/wt/abc.jsonl" }, { path: "/wt/other.jsonl" }]);
+    expect([...out].sort()).toEqual(["/main/abc.jsonl", "/wt/abc.jsonl"]);
   });
 });
