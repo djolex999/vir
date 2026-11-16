@@ -887,6 +887,81 @@ export class StateDb {
       .all() as PruneCandidateRow[];
   }
 
+  // Live distilled rows whose transcript file name is a real session id (see
+  // sessionKeyOf) — the input to `vir prune --duplicates`. "Live" is the
+  // serving state: distilled, not archived, pruned or review-rejected.
+  listSessionCopies(): Array<{
+    path: string;
+    sessionId: string;
+    processedAt: string;
+    contentLength: number;
+    category: Category;
+    topic: string;
+    project: string | null;
+    hasAuditVerdict: boolean;
+    hasGroundVerdict: boolean;
+    hasLesson: boolean;
+  }> {
+    const cols = this.columnsOf("sessions");
+    const pick = (c: string, as: string): string => (cols.has(c) ? `${c} AS ${as}` : `NULL AS ${as}`);
+    const rows = this.db
+      .prepare(
+        `SELECT path, processed_at, length(content) AS len, category, topic, project,
+                ${pick("audit_verdict", "av")}, ${pick("ground_verdict", "gv")}, ${pick("lesson", "les")}
+         FROM sessions
+         WHERE ${LIVE_ROW}${this.servingGate()}`,
+      )
+      .all() as Array<{
+      path: string;
+      processed_at: string;
+      len: number;
+      category: Category;
+      topic: string;
+      project: string | null;
+      av: string | null;
+      gv: string | null;
+      les: string | null;
+    }>;
+    const out = [];
+    for (const r of rows) {
+      const sessionId = sessionKeyOf(r.path);
+      if (sessionId === null) continue;
+      out.push({
+        path: r.path,
+        sessionId,
+        processedAt: r.processed_at,
+        contentLength: r.len,
+        category: r.category,
+        topic: r.topic,
+        project: r.project,
+        hasAuditVerdict: r.av !== null,
+        hasGroundVerdict: r.gv !== null,
+        hasLesson: r.les !== null && r.les !== "",
+      });
+    }
+    return out;
+  }
+
+  // The live row of the same session stored under a different transcript path,
+  // or null. The distill-time guard: a session copied into a second project
+  // folder must not be distilled again. Null when `path` serves its own note
+  // (re-distilling it replaces that note, it adds no copy) or when the file
+  // name is not a session id.
+  liveCopyOf(path: string): string | null {
+    const sessionId = sessionKeyOf(path);
+    if (sessionId === null) return null;
+    const rows = this.db
+      .prepare(
+        `SELECT path FROM sessions
+         WHERE path LIKE ? AND ${LIVE_ROW}${this.servingGate()}`,
+      )
+      .all(`%/${sessionId}.jsonl`) as Array<{ path: string }>;
+    // LIKE also matches a longer basename ending in the id; keep exact ones.
+    const live = rows.filter((r) => sessionKeyOf(r.path) === sessionId);
+    if (live.some((r) => r.path === path)) return null;
+    return live[0]?.path ?? null;
+  }
+
   getByPath(path: string): SessionRow | undefined {
     return this.db
       .prepare("SELECT * FROM sessions WHERE path = ?")
@@ -2303,6 +2378,24 @@ function deriveSessionId(path: string): string {
   const base = path.split("/").pop() ?? path;
   return base.replace(/\.jsonl$/, "");
 }
+
+// The session id a transcript path can be deduplicated on: a UUID (Claude Code
+// session) or `agent-<hex>` (subagent transcript). Any other file name is not
+// unique across folders — every workflow run writes a `journal.jsonl` — so it
+// keys nothing, and two such rows are never treated as one session.
+const SESSION_KEY = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|agent-[0-9a-f]+)$/i;
+
+export function sessionKeyOf(path: string): string | null {
+  const id = deriveSessionId(path);
+  return SESSION_KEY.test(id) ? id : null;
+}
+
+// A row that serves a note (before the pruned/rejected serving gate).
+const LIVE_ROW = `skipped = 0
+           AND error IS NULL
+           AND content IS NOT NULL AND content != ''
+           AND topic IS NOT NULL AND category IS NOT NULL
+           AND COALESCE(archived, 0) = 0`;
 
 // Re-export for callers outside db.ts (reconcile) that need the same path → id
 // mapping cost.log uses, so the collateral-count join lines up.

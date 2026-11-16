@@ -103,7 +103,7 @@ function toItem(
 // Count wikilinks pointing at a to-be-pruned slug from notes that are staying.
 // Walks the live category dirs only — `.rejected/` and `archived/` are already
 // out of every read path, so a link from there costs nothing.
-function countDanglingLinks(cfg: Config, doomed: PrunePlanItem[]): number {
+export function countDanglingLinks(cfg: Config, doomed: PrunePlanItem[]): number {
   if (doomed.length === 0) return 0;
   const slugs = new Set(doomed.map((d) => d.slug));
   const doomedFiles = new Set(doomed.map((d) => d.notePath));

@@ -44,6 +44,7 @@ vi.mock("../state/db.js", async (importOriginal) => {
       isProcessed = vi.fn(() => false);
       retryExhausted = vi.fn(() => false);
       isPruned = vi.fn(() => false);
+      liveCopyOf = vi.fn(() => null);
       record = vi.fn();
       recordError = spies.recordError;
       getByPath = vi.fn(() => undefined);
