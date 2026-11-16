@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.35.0 — 2026-11-16
 
 **`vir dream <project>` rebuilds a project's reference page from its notes, with every entry quoted from its source and labelled confirmed or unconfirmed.**
 
@@ -15,6 +15,8 @@
 - **`vir summarize <project>` and `--all` now run `vir dream`.** `--week` and `--month` are unchanged. The distill pass no longer overwrites a dream page with its old auto-summary.
 - **`vir_project_summary` returns `kind`, `entries`, `confirmed_entries` and `stale_notes`** (notes newer than the page), and points at `vir dream` when a project has no page.
 - **`vir audit --transcript` checks the notes agents retrieve most first**, then the rest oldest first. A `--limit`, and the daemon's 20 checks per pass, now go to the notes search actually serves.
+- **A flag now covers every copy of a session.** The same session can be distilled twice, once from the main checkout's project folder and once from a worktree's. An audit or transcript check lands on one copy only, so the other could still reach CLAUDE.md / AGENTS.md through `vir sync-claude`, or reach `vir dream`. Flags are now matched by session id. A note you verified still goes in.
+- **`vir prune --duplicates` keeps one note per session copied under two project folders.** It shows what it would change unless you pass `--apply`. The copy with an audit or transcript verdict stays, then the one with a lesson, then the newest. The others go through the usual prune flow (note to `.rejected/`, `vir prune --restore` undoes it). On the reference vault: 7 rows. `vir run` no longer distills a session a second time when another path already serves its note.
 
 ## 0.34.1 — 2026-11-15
 
