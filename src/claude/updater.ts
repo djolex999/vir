@@ -16,6 +16,7 @@ import { extractLessonTexts, normalizeLesson } from "../connect/extract.js";
 import { codeLines } from "../lint/codeFences.js";
 import { ruleText } from "../connect/text.js";
 import type { InsightRow } from "../connect/types.js";
+import { deriveSessionId } from "../state/db.js";
 import type { AuditRow, DistilledRow, GroundRow, StateDb } from "../state/db.js";
 import { kebab } from "../pipeline/writer.js";
 
@@ -84,13 +85,22 @@ type PlanOptions = {
 // that found a contradiction. These blocks are loaded into every session, so a
 // wrong or doubtful note there misleads every session, not just one search.
 // Stale verdicts (the note changed since) do not count.
+//
+// A flag covers the whole session, not just the transcript path it landed on:
+// the same session can be distilled under two paths (the main checkout's
+// project folder and a worktree's), and the check runs on one copy only. Every
+// row in `rows` whose session id (transcript file name) matches a flagged one
+// is returned too.
 export function flaggedNotePaths(
   audits: AuditRow[],
   grounds: GroundRow[],
+  rows: ReadonlyArray<{ path: string }>,
 ): Set<string> {
   const out = new Set<string>();
   for (const a of audits) if (a.fresh && a.verdict !== "keep") out.add(a.path);
   for (const g of grounds) if (g.fresh && g.verdict === "contradicted") out.add(g.path);
+  const sessions = new Set([...out].map(deriveSessionId));
+  for (const r of rows) if (sessions.has(deriveSessionId(r.path))) out.add(r.path);
   return out;
 }
 
@@ -136,10 +146,10 @@ export function planUpdates(
   // Rules approved interactively THIS run; rendered alongside promoted ones.
   approvedRuleIds: Set<string> = new Set(),
 ): PlanItem[] {
-  const flagged = flaggedNotePaths(db.listAudits(), db.listGrounds());
+  const rows = db.listDistilled();
+  const flagged = flaggedNotePaths(db.listAudits(), db.listGrounds(), rows);
   const isVerified = options.isVerified ?? (() => false);
   const isFlagged = (r: DistilledRow): boolean => flagged.has(r.path) && !isVerified(r);
-  const rows = db.listDistilled();
   const plans: PlanItem[] = [];
   const slugs = projectSlugsOf(rows);
   const rulesByTarget = new Map<string, RuleEntry[]>();
