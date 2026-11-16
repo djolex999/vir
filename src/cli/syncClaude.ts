@@ -43,6 +43,7 @@ export function renderPlanLines(p: PlanItem): string[] {
   for (const r of p.diff.removed) lines.push(`${ui.warn("-")} ${ui.text(r.lesson)}`);
   for (const r of p.diff.rulesAdded) lines.push(`${ui.success("+")} ${ui.text(`rule: ${r.rule}`)}`);
   for (const r of p.diff.rulesRemoved) lines.push(`${ui.warn("-")} ${ui.text(`rule: ${r.rule}`)}`);
+  if (p.pointerAdded) lines.push(`${ui.success("+")} ${ui.text("read-first line: check vir before debugging or changing this project")}`);
   if (p.diff.unchanged.length > 0) {
     lines.push(`${ui.dim("~")} ${ui.dim(`${p.diff.unchanged.length} entries unchanged`)}`);
   }

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+**Each project's CLAUDE.md / AGENTS.md block now opens with a line telling the agent to check vir before it starts work.**
+
+- **`vir sync-claude` opens every project block with a read-first line:** "Before debugging or changing something in <project>, check what past sessions learned" (`vir_query`, or `vir query`).
+  - When `vir dream` has written the project's page, the line also points at `vir_project_summary` and says to prefer confirmed entries.
+  - Why: Anthropic's agent-memory research found that telling a model to read memory before answering moved one model from 0.36 to 0.64. Having the memory available was not enough.
+  - The line stays even when every gotcha was left out.
+  - The sync diff shows it as `+ read-first line` until a file has it.
+  - On the reference vault this is 25 project files; 9 of them also link a dream page.
+
 ## 0.35.0 — 2026-11-16
 
 **`vir dream <project>` rebuilds a project's reference page from its notes, with every entry quoted from its source and labelled confirmed or unconfirmed.**

@@ -136,8 +136,42 @@ describe("VIR block contents", () => {
     expect(block).not.toContain("Gotcha number 1 is");
     expect(block).not.toContain("pattern that should stay out");
     expect(block).not.toMatch(/conf \d|vir-note/);
-    // The pointer lives in the global file only.
-    expect(block).not.toContain("vir_query");
+  });
+
+  it("opens a project block with a read-first line for that project, before the gotchas", () => {
+    note(1, "gotcha", 0.9, learned("**A real lesson for this project.**"));
+
+    const block = projectBlock();
+
+    expect(block).toContain("## Past sessions (from vir)");
+    expect(block).toContain("Before debugging or changing something in growthq");
+    expect(block).toContain("`vir_query`");
+    expect(block.indexOf("Before debugging")).toBeLessThan(block.indexOf("## Gotchas"));
+    // No dream page for this project: no pointer to one.
+    expect(block).not.toContain("vir_project_summary");
+  });
+
+  it("points at the project page when vir dream has written one", () => {
+    note(1, "gotcha", 0.9, learned("**A real lesson for this project.**"));
+    const block =
+      planUpdates(cfg, db, { hasProjectPage: (slug) => slug === "growthq" }).find((p) => p.target === projectPath())
+        ?.newBlock ?? "";
+    expect(block).toContain('`vir_project_summary` ("growthq")');
+    expect(block).toMatch(/prefer the confirmed ones/i);
+  });
+
+  it("keeps the read-first line when every gotcha was left out", () => {
+    note(1, "pattern", 0.9, learned("**Only a pattern here.**"));
+    expect(projectBlock()).toContain("Before debugging or changing something in growthq");
+    expect(projectBlock()).not.toContain("## Gotchas");
+  });
+
+  it("reports the read-first line as new until the file has it", () => {
+    note(1, "gotcha", 0.9, learned("**A real lesson for this project.**"));
+    const first = planUpdates(cfg, db).find((p) => p.target === projectPath());
+    expect(first?.pointerAdded).toBe(true);
+    writeFileSync(projectPath(), `# growthq\n\n${first?.newBlock}\n`);
+    expect(planUpdates(cfg, db).find((p) => p.target === projectPath())?.pointerAdded).toBe(false);
   });
 
   it("keeps project notes out of the global CLAUDE.md, which gets the pointer", () => {

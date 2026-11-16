@@ -14,6 +14,7 @@ import { join } from "node:path";
 import type { Config } from "../config.js";
 import { extractLessonTexts, normalizeLesson } from "../connect/extract.js";
 import { codeLines } from "../lint/codeFences.js";
+import { isDreamPage, projectPagePath } from "../dream/page.js";
 import { ruleText } from "../connect/text.js";
 import type { InsightRow } from "../connect/types.js";
 import { deriveSessionId } from "../state/db.js";
@@ -29,6 +30,16 @@ const TOP_GOTCHAS = 5;
 const MAX_LESSON_CHARS = 200;
 const POINTER =
   'Search notes from past sessions (patterns, decisions, gotchas) with the `vir_query` MCP tool, or `vir query "<topic>"`.';
+
+// The first line of a project block. Agents that read memory before acting do
+// far better than ones that only have it available (Anthropic's agent-memory
+// research: 0.36 → 0.64 for one model, from this prompt alone), so say what
+// the memory is for and when to reach for it.
+export function projectPointer(slug: string, hasPage: boolean): string {
+  const base = `Before debugging or changing something in ${slug}, check what past sessions learned: the \`vir_query\` MCP tool, or \`vir query "<topic>"\`.`;
+  if (!hasPage) return base;
+  return `${base} The project page, \`vir_project_summary\` ("${slug}"), lists its facts by area, each confirmed or unconfirmed; prefer the confirmed ones.`;
+}
 
 export interface Entry {
   lesson: string;
@@ -65,6 +76,8 @@ export interface PlanItem {
   // Gotchas left out because an audit or transcript check flagged them (see
   // flaggedNotePaths); the next-best gotcha takes the slot.
   flaggedSkipped: number;
+  // A project block's read-first line is new or changed in this plan.
+  pointerAdded: boolean;
 }
 
 // The instruction file a plan targets. AGENTS.md (Codex and other agents) gets
@@ -78,6 +91,9 @@ type PlanOptions = {
   // Human approval (frontmatter `verified: true`) overrides a flag, as in
   // `vir audit`. Default: nothing is approved.
   isVerified?: (row: DistilledRow) => boolean;
+  // Whether `vir dream` has written the project's reference page. Default:
+  // read projects/<slug>.md under the configured vault.
+  hasProjectPage?: (slug: string) => boolean;
 };
 
 // Notes that must not be written into CLAUDE.md / AGENTS.md: a fresh audit
@@ -140,7 +156,7 @@ export function renderRuleHunk(c: RuleCandidate): string {
 }
 
 export function planUpdates(
-  _cfg: Config,
+  cfg: Config,
   db: StateDb,
   options: PlanOptions = {},
   // Rules approved interactively THIS run; rendered alongside promoted ones.
@@ -150,6 +166,10 @@ export function planUpdates(
   const flagged = flaggedNotePaths(db.listAudits(), db.listGrounds(), rows);
   const isVerified = options.isVerified ?? (() => false);
   const isFlagged = (r: DistilledRow): boolean => flagged.has(r.path) && !isVerified(r);
+  const hasProjectPage =
+    options.hasProjectPage ??
+    ((slug: string): boolean =>
+      typeof cfg.vaultPath === "string" && isDreamPage(projectPagePath(cfg, slug)));
   const plans: PlanItem[] = [];
   const slugs = projectSlugsOf(rows);
   const rulesByTarget = new Map<string, RuleEntry[]>();
@@ -188,7 +208,13 @@ export function planUpdates(
   for (const [slug, projectRows] of byProject) {
     const target = projectInstructionPath(slug, file);
     plans.push(
-      buildPlan(target, projectRows, { scope: { project: slug } }, rulesByTarget.get(target) ?? [], isFlagged),
+      buildPlan(
+        target,
+        projectRows,
+        { scope: { project: slug }, pointer: projectPointer(slug, hasProjectPage(slug)) },
+        rulesByTarget.get(target) ?? [],
+        isFlagged,
+      ),
     );
   }
 
@@ -200,12 +226,12 @@ export function planUpdates(
 function buildPlan(
   target: string,
   rows: DistilledRow[],
-  meta: { scope: "global" | { project: string } },
+  meta: { scope: "global" | { project: string }; pointer?: string },
   rules: RuleEntry[] = [],
   isFlagged: (r: DistilledRow) => boolean = () => false,
 ): PlanItem {
   const { entries, flaggedSkipped } = selectTopEntries(rows, isFlagged);
-  const newBlock = renderBlock(entries, rules, meta.scope === "global" ? "global" : "project");
+  const newBlock = renderBlock(entries, rules, meta.scope === "global" ? "global" : "project", meta.pointer);
   const existsAtPath = existsSync(target);
 
   let existingBlock = "";
@@ -239,6 +265,7 @@ function buildPlan(
     diff,
     scope: meta.scope,
     flaggedSkipped,
+    pointerAdded: meta.pointer !== undefined && !existingBlock.includes(meta.pointer),
   };
 }
 
@@ -363,6 +390,7 @@ export function renderBlock(
   entries: Entry[],
   rules: RuleEntry[] = [],
   scope: "global" | "project" = "project",
+  pointer?: string,
 ): string {
   const today = new Date().toISOString().slice(0, 10);
   const lines: string[] = [];
@@ -373,6 +401,11 @@ export function renderBlock(
     lines.push("## Past sessions (from vir)");
     lines.push("");
     lines.push(POINTER);
+    lines.push("");
+  } else if (pointer !== undefined) {
+    lines.push("## Past sessions (from vir)");
+    lines.push("");
+    lines.push(pointer);
     lines.push("");
   }
   if (entries.length > 0) {
