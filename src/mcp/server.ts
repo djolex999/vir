@@ -14,8 +14,8 @@
  *   }
  *
  * After restarting Claude Code, the agent can call vir_query, vir_status,
- * vir_recent_notes, vir_recent_articles, vir_project_summary, and
- * vir_compose as tools.
+ * vir_recent_notes, vir_recent_articles, vir_project_summary, vir_compose
+ * and vir_drift as tools.
  *
  * Transport is stdio: stdout is reserved for the MCP JSON-RPC protocol, so
  * every log line goes to stderr. The SQLite DB is opened read-only — this
@@ -38,6 +38,7 @@ import { recordQueryEvent } from "../search/queryLog.js";
 import { synthesize } from "../search/synthesizer.js";
 import { noteStatusLookup, type NoteStatus } from "../search/noteStatus.js";
 import { StateDb } from "../state/db.js";
+import { driftToolReport } from "../drift/tool.js";
 
 const CATEGORIES = ["pattern", "gotcha", "decision", "tool"] as const;
 const ARTICLE_CATEGORIES = [
@@ -697,9 +698,40 @@ export async function runMcpServer(cfg: Config): Promise<void> {
     },
   );
 
+  server.registerTool(
+    "vir_drift",
+    {
+      description:
+        "Is CLAUDE.md (or the README) still accurate? Checks a repo's docs " +
+        "against its code and returns only the differences, per doc: stale " +
+        "(paths, npm scripts, CLI commands/flags, env vars, dependencies the " +
+        "code no longer has), changed (renamed files, a different package " +
+        "manager) and undocumented (source modules and CLI commands no doc " +
+        "mentions), or 'No drift detected'. Deterministic, no model call, " +
+        "writes nothing. Defaults to the current project.",
+      inputSchema: {
+        path: z
+          .string()
+          .optional()
+          .describe("Repo folder to check (default: the current project)"),
+        doc: z
+          .string()
+          .optional()
+          .describe("Check only this doc, e.g. 'CLAUDE.md' or 'README.md'"),
+      },
+    },
+    async ({ path, doc }) => {
+      try {
+        return ok(driftToolReport(path, doc));
+      } catch (err) {
+        return fail((err as Error).message);
+      }
+    },
+  );
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  log("vir MCP server ready on stdio (6 tools)");
+  log("vir MCP server ready on stdio (7 tools)");
 
   const shutdown = async (sig: string): Promise<void> => {
     log(`received ${sig}, shutting down`);

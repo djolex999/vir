@@ -64,6 +64,7 @@ import { runDoctor, runDoctorJson } from "./diagnostics/doctor.js";
 import { embedCommand } from "./cli/embed.js";
 import { lintCommand } from "./cli/lint.js";
 import { dreamCommand } from "./cli/dream.js";
+import { driftCommand } from "./cli/drift.js";
 import { summarizeCommand } from "./cli/summarize.js";
 import { noteStatusLookup } from "./search/noteStatus.js";
 import { auditCommand, transcriptCheckAfterPass } from "./cli/audit.js";
@@ -869,6 +870,22 @@ program
   .option("--stdout", "Print instead of writing to the vault")
   .option("--tz <zone>", "IANA time zone for day boundaries (default: this machine's)")
   .action(runAction(cmdJournal));
+
+program
+  .command("drift [path]")
+  .description("Find where a repo's CLAUDE.md / README no longer match its code (no LLM calls)")
+  .option(
+    "--doc <file>",
+    "Also check this doc (repeatable)",
+    (v: string, acc: string[]) => acc.concat(v),
+    [] as string[],
+  )
+  .option("--only <doc>", "Check only this doc, e.g. CLAUDE.md")
+  .option("--stdout", "Print the report instead of writing it to the vault")
+  .option("--json", "Print the report as JSON")
+  .option("--report <file>", "Also write the report to this file")
+  .option("--tz <zone>", "IANA time zone for the report date (default: Europe/Belgrade)")
+  .action(runAction(driftCommand));
 
 program
   .command("compose <topic>")

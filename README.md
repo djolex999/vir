@@ -485,6 +485,7 @@ with your distro, init system, and Node version.
 | `vir summarize --week`      | cheap | Period summary of the week's notes        |
 | `vir journal [date]`        | free  | Daily work journal from transcripts, no LLM calls (default: today) |
 | `vir journal --since <date>` | free | Write every day with activity from that date on |
+| `vir drift [path]`          | free  | Where CLAUDE.md / README no longer match the code, no LLM calls (`--stdout`, `--json`, `--only <doc>`) |
 | `vir lint`                  | cheap | Find orphans, stale notes, contradictions |
 | `vir lint --links`          | free  | Links to notes that were retitled, rejected or pruned since they were written |
 | `vir lint --links --fix`    | free  | Drop those links and fill each Related list with the nearest existing notes |
@@ -530,6 +531,34 @@ directly and makes no LLM calls, so it's free and gives the same file every
 time for the same input.
 
 ```markdown
+## Docs drift
+
+`vir drift [path]` checks a repo's docs against its code and lists only what
+no longer matches. It reads the root `CLAUDE.md` (in a worktree, where
+CLAUDE.md is usually gitignored, the main checkout's copy, labelled as such),
+every nested `CLAUDE.md`, and the root README; `--doc <file>` adds more. Each
+doc is checked on its own, deterministically, with no LLM calls:
+
+- **Paths** in code spans, directory trees and relative links. A path whose
+  first folder isn't in the repo is about something else (the vault, `~`) and
+  is skipped, not reported. A file git recorded as renamed shows as changed,
+  with its new path.
+- **npm scripts**, the **package manager** (a doc that says `pnpm` in a repo
+  locked with `package-lock.json`), **dependencies** named in a Stack list or
+  installed with `npm install`.
+- **CLI commands and flags** of the repo's own `bin`, read from its
+  commander setup.
+- **Env vars** written as `process.env.X`, `$X` or `X=`, against the code and
+  any `.env.example` (real `.env` files are never read).
+
+Findings come grouped per doc as stale (the doc says it, the code has none) or
+changed (the doc says X, the code has Y), plus one undocumented list: source
+modules and CLI commands no doc mentions. With nothing to report it prints
+"No drift detected". The report goes to `vault/vir/drift/<project>.md` and a
+dated copy to `drift/<project>/YYYY-MM-DD.md` (Europe/Belgrade date; `--tz`
+changes it); `--report <file>` writes one more copy wherever you want. Agents
+can ask mid-session through the read-only `vir_drift` MCP tool.
+
 ## my-app
 
 2 sessions
@@ -613,9 +642,10 @@ command = "vir"
 args = ["mcp"]
 ```
 
-Restart the agent. The vault is now queryable mid-session via six tools:
+Restart the agent. The vault is now queryable mid-session via seven tools:
 `vir_query`, `vir_status`, `vir_recent_notes`, `vir_recent_articles`,
-`vir_project_summary`, `vir_compose`. `vir_query` takes a `type` filter
+`vir_project_summary`, `vir_compose`, and `vir_drift` (is this repo's
+CLAUDE.md still accurate?). `vir_query` takes a `type` filter
 (`session` | `article` | `topic` | `pdf` | `all`). Human-verified notes
 (approved via `vir review`) get a +0.2 score boost; pass `verified_only: true`
 to see only those. The server never writes the vault. `vir_query` is the one tool
@@ -709,6 +739,7 @@ vault/vir/
   projects/      # cross-session project summaries
   summaries/     # weekly/monthly period summaries (derived, never indexed)
   journal/       # daily work journal, YYYY-MM-DD.md (vir journal; never indexed)
+  drift/         # docs-vs-code reports per project (vir drift; never indexed)
   archived/      # deduplicated notes (kept, never deleted)
 ```
 
