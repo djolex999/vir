@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.37.0 — 2026-11-17
+
+**`vir drift [path]` finds where a repo's CLAUDE.md and README no longer match its code, with no LLM calls.**
+
+- **`vir drift [path]`** reads the root `CLAUDE.md`, every nested `CLAUDE.md` and the root README, one doc at a time, and checks each claim against the code.
+  - What it checks: paths (code spans, directory trees, relative links), npm scripts, the package manager, dependencies named in a Stack list or an `npm install`, the repo's own CLI commands and flags, and env vars written as `process.env.X`, `$X` or `X=`.
+  - Only differences are listed, per doc: stale (the doc says it, the code has none) or changed (the doc says X, the code has Y). "Changed" is used only for a rename git recorded, or when one file with that name is left.
+  - One undocumented list covers source modules and CLI commands no doc mentions. With nothing to report it prints "No drift detected".
+  - A path whose first folder isn't in the repo (the vault, `~`) is skipped, not reported. A section about a sub-package (`site/`) resolves against that package.
+  - In a worktree, where CLAUDE.md is usually gitignored, the main checkout's copy is read and labelled as such.
+  - Reports go to `drift/<project>.md` and `drift/<project>/YYYY-MM-DD.md` in the vault (Europe/Belgrade date; `--tz` changes it). `--report <file>` writes one more copy. `--stdout` and `--json` print without writing.
+  - `drift/` is kept out of search and `vir lint`, like `journal/`.
+  - On this repo: 678 claims across 2 docs, 1 finding (`src/dream/` missing from CLAUDE.md's Structure section).
+- **`vir_drift` MCP tool** answers "is this repo's CLAUDE.md still accurate?" mid-session. It is read-only: no writes, no model call, and only repos under your home folder. It follows a worktree's main checkout only when that checkout is also under your home folder.
+
 ## 0.36.0 — 2026-11-16
 
 **Each project's CLAUDE.md / AGENTS.md block now opens with a line telling the agent to check vir before it starts work.**
