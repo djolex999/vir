@@ -8,4 +8,5 @@ export const VIR_TOOLS = [
   "vir_recent_articles",
   "vir_project_summary",
   "vir_compose",
+  "vir_drift",
 ] as const;

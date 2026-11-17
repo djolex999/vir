@@ -18,7 +18,7 @@ const SKIP_FILES = new Set(["index.md", "log.md"]);
 // is a projection of work done, not knowledge to retrieve. projects/ holds
 // `vir dream` pages built from notes: retrieving one as a source would feed
 // a derived page back in as evidence.
-const SKIP_DIRS = new Set(["summaries", ".rejected", "archived", "journal", "projects"]);
+const SKIP_DIRS = new Set(["summaries", ".rejected", "archived", "journal", "projects", "drift"]);
 
 export interface IndexedDoc {
   relPath: string;

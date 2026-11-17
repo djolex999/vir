@@ -20,7 +20,7 @@ This skill only **reads** the notes. It never writes them.
    billed to the user's provider; you only need the matching notes, and you
    can read them yourself. Other read-only tools: `vir_recent_notes` (latest
    notes), `vir_project_summary` (one project's knowledge), `vir_status`
-   (vault health).
+   (vault health), `vir_drift` (is this repo's CLAUDE.md still accurate?).
 2. **CLI.** If `vir --version` prints a version, search with:
 
    ```bash
