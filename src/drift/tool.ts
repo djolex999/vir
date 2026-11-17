@@ -15,7 +15,7 @@ export function driftToolReport(path: string | undefined, doc: string | undefine
   const root = resolveRepoRoot(target);
   const rel = relative(realpathSync(home), realpathSync(root));
   if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) throw new Error(`only repos under your home folder can be checked, got ${root}`);
-  const report = runDrift(root, doc !== undefined ? { only: doc } : {});
+  const report = runDrift(root, { allowedRoot: home, ...(doc !== undefined ? { only: doc } : {}) });
   if (report.docs.length === 0) {
     throw new Error(doc !== undefined ? `no doc "${doc}" in ${root} (try CLAUDE.md or README.md)` : `no CLAUDE.md or README.md in ${root}`);
   }

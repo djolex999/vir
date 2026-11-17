@@ -17,6 +17,8 @@ export interface DriftOptions {
   only?: string;
   timeZone?: string;
   now?: Date;
+  // Docs may only be read from inside this folder (see discoverDocs).
+  allowedRoot?: string;
 }
 
 // The repo `path` belongs to: its git top level, or the folder itself.
@@ -34,7 +36,7 @@ export function runDrift(path: string, opts: DriftOptions = {}): DriftReport {
   const root = resolveRepoRoot(path);
   const idx = new CodeIndex(root);
   const bins = idx.cli().bins;
-  const all = discoverDocs(root, opts.docs ?? []);
+  const all = discoverDocs(root, opts.docs ?? [], opts.allowedRoot);
   const docs = opts.only !== undefined ? all.filter((d) => d.rel === opts.only) : all;
   const texts: string[] = [];
   const reports: DocReport[] = [];

@@ -1,5 +1,5 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { mainCheckout } from "./codeIndex.js";
 
 // Which docs make claims about the current code: CLAUDE.md layers (nested
@@ -42,7 +42,20 @@ function nestedClaudeMd(root: string, dir: string, depth: number, acc: string[])
   }
 }
 
-export function discoverDocs(root: string, extra: string[] = []): DocFile[] {
+// True when `path` really sits inside `dir` (symlinks resolved).
+export function isInside(path: string, dir: string): boolean {
+  try {
+    const rel = relative(realpathSync(dir), realpathSync(path));
+    return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+  } catch {
+    return false;
+  }
+}
+
+// `allowedRoot`: the main-checkout fallback is used only when that checkout
+// is inside it. A repo's .git file can point anywhere, so the MCP tool, which
+// only accepts repos under $HOME, must not follow it out of $HOME.
+export function discoverDocs(root: string, extra: string[] = [], allowedRoot?: string): DocFile[] {
   const docs: DocFile[] = [];
   const rootClaude = join(root, "CLAUDE.md");
   if (existsSync(rootClaude)) {
@@ -52,7 +65,8 @@ export function discoverDocs(root: string, extra: string[] = []): DocFile[] {
     // checkout's copy describes its own branch: label it so a difference
     // reads as "main's doc vs this branch", not silent drift.
     const main = mainCheckout(root);
-    if (main !== null && existsSync(join(main, "CLAUDE.md"))) {
+    const allowed = main !== null && (allowedRoot === undefined || isInside(main, allowedRoot));
+    if (main !== null && allowed && existsSync(join(main, "CLAUDE.md"))) {
       docs.push({ rel: "CLAUDE.md", abs: join(main, "CLAUDE.md"), source: "main checkout" });
     }
   }

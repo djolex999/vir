@@ -140,4 +140,27 @@ describe("driftToolReport", () => {
     rmSync(elsewhere, { recursive: true, force: true });
     expect(() => driftToolReport(root, "NOPE.md", root, tmpdir())).toThrow(/no doc "NOPE.md"/);
   });
+
+  it("never follows a worktree's main checkout out of the home folder", () => {
+    // The main checkout (root) holds a CLAUDE.md; the worktree sits in a
+    // separate "home" with none, and its .git file points back at root.
+    write("CLAUDE.md", "Secret: `src/leaked.ts`\n");
+    write("README.md", "# tool\n");
+    git("add", "-A");
+    git("commit", "-q", "-m", "docs");
+    const home = mkdtempSync(join(tmpdir(), "vir-drift-home-"));
+    const wt = join(home, "wt");
+    git("worktree", "add", "-q", wt);
+    rmSync(join(wt, "CLAUDE.md"));
+    try {
+      // The CLI follows it (you chose the path)...
+      expect(runDrift(wt).docs.find((d) => d.doc === "CLAUDE.md")?.source).toBe("main checkout");
+      // ...the MCP tool, limited to home, does not.
+      const out = driftToolReport(wt, undefined, wt, home);
+      expect(out).not.toContain("leaked");
+      expect(() => driftToolReport(wt, "CLAUDE.md", wt, home)).toThrow(/no doc "CLAUDE.md"/);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
 });
