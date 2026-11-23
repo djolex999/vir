@@ -132,6 +132,9 @@ export async function embedCommand(
 
     // Accepted connect-pass rules are served by search too, so a model switch
     // must carry them over like every other layer.
+    // Ingested meetings: --force re-embeds all of them (a model switch).
+    const meetingTargets = db.listMeetingEmbeddingTargets(opts.force === true);
+
     const insightTargets = insightEmbedTargets(db, provider.modelName, opts.force === true);
 
     const total =
@@ -139,6 +142,7 @@ export async function embedCommand(
       topicTargets.length +
       articleTargets.length +
       pdfTargets.length +
+      meetingTargets.length +
       insightTargets.length;
     if (total === 0) {
       ui.row(ui.success(ui.CHECK), ui.text("all notes already embedded"));
@@ -216,6 +220,16 @@ export async function embedCommand(
         continue;
       }
       db.storePdfEmbedding(p.path, vec, provenance);
+      embedded += 1;
+      sp.text = ui.dim(`embedding notes (${embedded}/${total})`);
+    }
+    for (const m of meetingTargets) {
+      const vec = await embedNoteWithProvider(provider, m.content);
+      if (!vec) {
+        errors += 1;
+        continue;
+      }
+      db.storeMeetingEmbedding(m.path, vec, provenance);
       embedded += 1;
       sp.text = ui.dim(`embedding notes (${embedded}/${total})`);
     }

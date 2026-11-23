@@ -144,6 +144,25 @@ export interface PdfEmbeddingTargetRow {
   embedding: string | null;
 }
 
+// A meeting note handed over by another tool (`vir ingest`, e.g. Muninn). vir
+// indexes it in place: no LLM call, no copy into the vault. `path` is the
+// absolute path of the note file and the PK; `content` is the text that was
+// embedded (title + summary, transcript left out).
+export interface MeetingRow {
+  path: string;
+  source: string;
+  hash: string;
+  title: string;
+  project: string | null;
+  date: string | null;
+  content: string;
+}
+
+export interface MeetingEmbeddingTargetRow {
+  path: string;
+  content: string;
+}
+
 export interface ProjectStats {
   total: number;
   patterns: number;
@@ -490,6 +509,19 @@ export class StateDb {
         at TEXT NOT NULL,
         data TEXT NOT NULL,
         PRIMARY KEY (path, seq)
+      );
+      CREATE TABLE IF NOT EXISTS meetings (
+        path TEXT PRIMARY KEY,
+        source TEXT NOT NULL,
+        hash TEXT NOT NULL,
+        title TEXT NOT NULL,
+        project TEXT,
+        date TEXT,
+        content TEXT NOT NULL,
+        ingested_at TEXT NOT NULL,
+        embedding TEXT,
+        embedding_model TEXT,
+        embedding_dim INTEGER
       );
       CREATE TABLE IF NOT EXISTS lesson_embeddings (
         content_hash TEXT NOT NULL,
@@ -1743,6 +1775,136 @@ export class StateDb {
         category: r.category ?? "",
         project: "",
         filePath: r.note_path,
+        embedding: vec,
+        embeddingModel: r.embedding_model ?? LEGACY_EMBEDDING_PROVENANCE.model,
+        embeddingDim: r.embedding_dim ?? vec.length,
+      });
+    }
+    return out;
+  }
+
+  // ── meetings ──────────────────────────────────────────────────────────────
+  // Meeting notes from other tools (`vir ingest`), indexed in place. Their own
+  // table, like articles and PDFs, so they never touch session listings, stats
+  // or the rewrite path. Reads guard a missing table (read-only MCP path).
+
+  private hasMeetingsTable(): boolean {
+    try {
+      return (
+        this.db
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='meetings'",
+          )
+          .get() !== undefined
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  // True when this exact file content is already indexed WITH an embedding, so
+  // a repeated hand-over is a no-op.
+  isMeetingCurrent(path: string, hash: string): boolean {
+    if (!this.hasMeetingsTable()) return false;
+    const row = this.db
+      .prepare("SELECT hash, embedding FROM meetings WHERE path = ?")
+      .get(path) as { hash: string; embedding: string | null } | undefined;
+    return row !== undefined && row.hash === hash && row.embedding !== null;
+  }
+
+  // Upsert. A changed hash NULLs the embedding in the same statement: a stale
+  // vector would retrieve on text the note no longer contains (the 0.14.1
+  // rule), and the sweep only heals NULLs.
+  recordMeeting(row: MeetingRow): void {
+    this.db
+      .prepare(
+        `INSERT INTO meetings (path, source, hash, title, project, date, content, ingested_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(path) DO UPDATE SET
+           embedding = CASE WHEN meetings.hash = excluded.hash THEN meetings.embedding ELSE NULL END,
+           embedding_model = CASE WHEN meetings.hash = excluded.hash THEN meetings.embedding_model ELSE NULL END,
+           embedding_dim = CASE WHEN meetings.hash = excluded.hash THEN meetings.embedding_dim ELSE NULL END,
+           source = excluded.source,
+           hash = excluded.hash,
+           title = excluded.title,
+           project = excluded.project,
+           date = excluded.date,
+           content = excluded.content,
+           ingested_at = excluded.ingested_at`,
+      )
+      .run(
+        row.path,
+        row.source,
+        row.hash,
+        row.title,
+        row.project,
+        row.date,
+        row.content,
+        new Date().toISOString(),
+      );
+  }
+
+  // Embedding back-fill set (sweep, `vir embed`). `all` re-embeds every row,
+  // for a model switch.
+  listMeetingEmbeddingTargets(all = false): MeetingEmbeddingTargetRow[] {
+    if (!this.hasMeetingsTable()) return [];
+    return this.db
+      .prepare(
+        `SELECT path, content FROM meetings
+         WHERE content != ''${all ? "" : " AND embedding IS NULL"}`,
+      )
+      .all() as MeetingEmbeddingTargetRow[];
+  }
+
+  storeMeetingEmbedding(
+    path: string,
+    embedding: number[],
+    provenance: EmbeddingProvenance,
+  ): boolean {
+    return (
+      this.db
+        .prepare(
+          "UPDATE meetings SET embedding = ?, embedding_model = ?, embedding_dim = ? WHERE path = ?",
+        )
+        .run(JSON.stringify(embedding), provenance.model, provenance.dim, path)
+        .changes > 0
+    );
+  }
+
+  // Shaped like session EmbeddingRow so the retriever can concat it. filePath
+  // is the note's own absolute path (outside the vault), category "meeting".
+  getMeetingEmbeddings(): EmbeddingRow[] {
+    if (!this.hasMeetingsTable()) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT path, title, project, embedding, embedding_model, embedding_dim
+         FROM meetings WHERE embedding IS NOT NULL`,
+      )
+      .all() as Array<{
+      path: string;
+      title: string;
+      project: string | null;
+      embedding: string;
+      embedding_model: string | null;
+      embedding_dim: number | null;
+    }>;
+    const out: EmbeddingRow[] = [];
+    for (const r of rows) {
+      let vec: number[];
+      try {
+        const parsed = JSON.parse(r.embedding) as unknown;
+        if (!Array.isArray(parsed)) continue;
+        vec = parsed.map((x) => Number(x));
+        if (vec.some((n) => !Number.isFinite(n))) continue;
+      } catch {
+        continue;
+      }
+      out.push({
+        sessionId: r.path,
+        topic: r.title,
+        category: "meeting",
+        project: r.project ?? "",
+        filePath: r.path,
         embedding: vec,
         embeddingModel: r.embedding_model ?? LEGACY_EMBEDDING_PROVENANCE.model,
         embeddingDim: r.embedding_dim ?? vec.length,

@@ -32,6 +32,7 @@ vi.mock("../state/db.js", () => ({
     listTopicEmbeddingTargets = vi.fn(() => []);
     listArticleEmbeddingTargets = vi.fn(() => []);
     listPdfEmbeddingTargets = vi.fn(() => []);
+    listMeetingEmbeddingTargets = vi.fn(() => []);
     close = vi.fn();
   },
 }));

@@ -65,6 +65,7 @@ import { embedCommand } from "./cli/embed.js";
 import { lintCommand } from "./cli/lint.js";
 import { dreamCommand } from "./cli/dream.js";
 import { driftCommand } from "./cli/drift.js";
+import { ingestCommand } from "./cli/ingest.js";
 import { summarizeCommand } from "./cli/summarize.js";
 import { noteStatusLookup } from "./search/noteStatus.js";
 import { auditCommand, transcriptCheckAfterPass } from "./cli/audit.js";
@@ -886,6 +887,12 @@ program
   .option("--report <file>", "Also write the report to this file")
   .option("--tz <zone>", "IANA time zone for the report date (default: Europe/Belgrade)")
   .action(runAction(driftCommand));
+
+program
+  .command("ingest <file>")
+  .description("Index a meeting note another tool wrote (e.g. Muninn), in place, no LLM call")
+  .requiredOption("--source <tool>", "The tool that wrote the note; must match its frontmatter source")
+  .action(runAction(ingestCommand));
 
 program
   .command("compose <topic>")

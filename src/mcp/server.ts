@@ -53,6 +53,7 @@ export const QUERY_TYPES = [
   "topic",
   "pdf",
   "insight",
+  "meeting",
   "all",
 ] as const;
 
@@ -116,11 +117,21 @@ export function hitMeta(hit: SearchHit): {
   topic: string;
   category: string;
   project: string;
-  type: "session" | "article" | "topic" | "pdf" | "insight";
+  type: "session" | "article" | "topic" | "pdf" | "insight" | "meeting";
   url?: string;
 } {
   const fm = parseFrontmatter(hit.content);
   const base = hit.title.split("/").pop() ?? hit.title;
+  // Meeting notes ingested from another tool (`vir ingest`): the shared core
+  // fields from CONVENTIONS.md. YAML null reads back as the string "null".
+  if (fm.kind === "meeting" && fm.source) {
+    return {
+      topic: fm.title ?? base,
+      category: "meeting",
+      project: fm.project && fm.project !== "null" ? fm.project : "",
+      type: "meeting",
+    };
+  }
   if (fm.type === "article") {
     return {
       topic: fm.source_title ?? base,
@@ -336,7 +347,8 @@ export async function runMcpServer(cfg: Config): Promise<void> {
           .describe(
             "Restrict to 'session' notes (coding-agent sessions), 'article' notes " +
               "(web articles), 'topic' pages (synthesized via `vir compose`), " +
-              "'pdf' notes (distilled papers/PDFs), or 'all' (default).",
+              "'pdf' notes (distilled papers/PDFs), 'meeting' notes (meetings " +
+              "indexed from other tools such as Muninn), or 'all' (default).",
           ),
         category: z
           .enum(CATEGORIES)

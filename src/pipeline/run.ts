@@ -626,7 +626,8 @@ export async function runPipeline(
     db.listEmbeddingTargets().length +
     db.listTopicEmbeddingTargets().length +
     db.listArticleEmbeddingTargets().length +
-    db.listPdfEmbeddingTargets().length;
+    db.listPdfEmbeddingTargets().length +
+    db.listMeetingEmbeddingTargets().length;
   if (interactive) {
     ui.line(
       ui.dim(

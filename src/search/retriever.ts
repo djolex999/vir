@@ -221,6 +221,8 @@ async function searchByEmbedding(
     ...db.getArticleEmbeddings(),
     ...db.getTopicEmbeddings(root, cfg.topicsDir),
     ...db.getPdfEmbeddings(),
+    // Meeting notes from other tools (`vir ingest`), read in place.
+    ...db.getMeetingEmbeddings(),
     // Accepted connect-pass rules only — the DB query is the serving gate.
     ...db.getInsightEmbeddings(root),
   ];
@@ -271,10 +273,13 @@ async function searchByEmbedding(
   const ranked = mmrRerank(candidates, topK, 1 - cfg.retrievalDiversity);
 
   const hits = ranked.map((c) => {
+    // An ingested meeting lives outside the vault: show its own path, not a
+    // ../../ walk out of the vault.
     const rel = relative(root, c.docId);
+    const shown = rel.startsWith("..") ? c.docId : rel;
     return {
       filePath: c.docId,
-      title: rel.replace(/\.md$/, ""),
+      title: shown.replace(/\.md$/, ""),
       content: c.content,
       score: Math.round(c.score * 10000) / 10000,
       method: "embedding" as const,

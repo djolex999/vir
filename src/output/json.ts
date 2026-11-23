@@ -17,7 +17,8 @@ export type VirQueryCategory =
   | "article"
   | "topic"
   | "pdf"
-  | "insight";
+  | "insight"
+  | "meeting";
 
 export interface VirQueryResult {
   path: string; // vault-relative path to the .md file
@@ -117,6 +118,9 @@ function categoryOf(
   // PDF sub-taxonomy (paper/reference/notes/other) collapses to the single
   // "pdf" wire bucket, exactly like articles collapse to "article".
   if (fm.type === "pdf") return "pdf";
+  // Meeting notes ingested from another tool (`vir ingest`). The plugin parses
+  // categories permissively, so an unknown one renders as a muted badge.
+  if (fm.kind === "meeting" && fm.source) return "meeting";
   if (fm.category && WIRE_CATEGORIES.has(fm.category)) {
     return fm.category as VirQueryCategory;
   }
@@ -142,7 +146,9 @@ export function buildQueryResults(
   const out: VirQueryResult[] = [];
   for (const h of hits) {
     const fm = parseFrontmatter(h.content);
-    const relPath = relative(vaultRoot, h.filePath);
+    // An ingested meeting lives outside the vault: keep its absolute path.
+    const rel = relative(vaultRoot, h.filePath);
+    const relPath = rel.startsWith("..") ? h.filePath : rel;
     const conf = Number(fm.confidence);
     out.push({
       path: relPath,
@@ -150,7 +156,7 @@ export function buildQueryResults(
       category: categoryOf(fm, relPath, topicsDir),
       confidence: Number.isFinite(conf) ? conf : 0,
       preview: excerpt(h.content),
-      project: fm.project && fm.project.length > 0 ? fm.project : null,
+      project: fm.project && fm.project.length > 0 && fm.project !== "null" ? fm.project : null,
       date: fm.date ?? "",
     });
   }

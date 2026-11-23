@@ -221,6 +221,7 @@ function fakeDb(
     listTopicEmbeddingTargets: () => topicTargets,
     listArticleEmbeddingTargets: () => articleTargets,
     listPdfEmbeddingTargets: () => pdfTargets,
+    listMeetingEmbeddingTargets: () => [],
     storeEmbedding: (sessionId: string, vec: number[]) =>
       stored.push({ sessionId, vec }),
     storeTopicEmbedding: (id: string, vec: number[]) =>

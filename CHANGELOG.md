@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+**`vir ingest --source <tool> <file>` indexes a meeting note another tool wrote, in place, with no LLM call.**
+
+- Built for Muninn, whose default hand-over after every note is `vir ingest --source muninn {file}`. Until now vir had no such command, so every hand-over failed into Muninn's retry queue.
+- The note must have frontmatter with `source` equal to `--source`, `kind: meeting` and a `title`. `project` (kebab-cased) and `date` are read when present. Anything else is refused with one line and exit 1.
+- vir does not copy or re-summarize the note. It stores the path, hash, title, project and date in a new `meetings` table and embeds the title plus summary. The transcript callout is left out of the embedding.
+- The same bytes again are a no-op. A changed note drops its old vector in the same write and is re-embedded. With no embedding provider the row is stored without a vector, and the next `vir run` sweep (or `vir embed`) fills it.
+- `vir_query` serves meetings as `type: "meeting"`, ranked on cosine with everything else, and `vir query --json` gives them category `meeting` with the note's absolute path. They are not in the TF-IDF fallback, which only walks the vault.
+- Runs under the pipeline lock: while a `vir run` holds it, ingest exits 1 and Muninn retries later.
+
 ## 0.37.0 — 2026-11-17
 
 **`vir drift [path]` finds where a repo's CLAUDE.md and README no longer match its code, with no LLM calls.**
