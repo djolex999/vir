@@ -50,13 +50,14 @@ pages: 11
 body about self-attention`;
 
 describe("QUERY_TYPES", () => {
-  it("includes pdf and insight alongside session, article, topic, and all", () => {
+  it("includes pdf, insight and meeting alongside session, article, topic, and all", () => {
     expect([...QUERY_TYPES]).toEqual([
       "session",
       "article",
       "topic",
       "pdf",
       "insight",
+      "meeting",
       "all",
     ]);
   });

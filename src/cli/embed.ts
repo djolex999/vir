@@ -43,6 +43,7 @@ export async function embedCommand(
       ...db.getArticleEmbeddings(),
       ...db.getTopicEmbeddings(root, cfg.topicsDir),
       ...db.getPdfEmbeddings(),
+      ...db.getMeetingEmbeddings(),
     ];
     // Accepted rules are left out of this count: like the `vir run` sweep,
     // this command re-embeds an off-model rule without --force (below).
@@ -130,6 +131,10 @@ export async function embedCommand(
           }))
         : db.listPdfEmbeddingTargets();
 
+    const meetingTargets = opts.force
+      ? db.listMeetings().map((m) => ({ id: m.id, notePath: m.notePath, content: m.content }))
+      : db.listMeetingEmbeddingTargets();
+
     // Accepted connect-pass rules are served by search too, so a model switch
     // must carry them over like every other layer.
     const insightTargets = insightEmbedTargets(db, provider.modelName, opts.force === true);
@@ -139,6 +144,7 @@ export async function embedCommand(
       topicTargets.length +
       articleTargets.length +
       pdfTargets.length +
+      meetingTargets.length +
       insightTargets.length;
     if (total === 0) {
       ui.row(ui.success(ui.CHECK), ui.text("all notes already embedded"));
@@ -216,6 +222,19 @@ export async function embedCommand(
         continue;
       }
       db.storePdfEmbedding(p.path, vec, provenance);
+      embedded += 1;
+      sp.text = ui.dim(`embedding notes (${embedded}/${total})`);
+    }
+    for (const m of meetingTargets) {
+      const vec = await embedNoteWithProvider(
+        provider,
+        text.file(m.notePath) ?? m.content,
+      );
+      if (!vec) {
+        errors += 1;
+        continue;
+      }
+      db.storeMeetingEmbedding(m.id, vec, provenance);
       embedded += 1;
       sp.text = ui.dim(`embedding notes (${embedded}/${total})`);
     }

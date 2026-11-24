@@ -68,6 +68,7 @@ import { driftCommand } from "./cli/drift.js";
 import { summarizeCommand } from "./cli/summarize.js";
 import { noteStatusLookup } from "./search/noteStatus.js";
 import { auditCommand, transcriptCheckAfterPass } from "./cli/audit.js";
+import { ingestCommand } from "./cli/ingest.js";
 import { composeCommand } from "./cli/compose.js";
 import { dedupeCommand } from "./cli/dedupe.js";
 import { cmdInit } from "./cli/init.js";
@@ -886,6 +887,15 @@ program
   .option("--report <file>", "Also write the report to this file")
   .option("--tz <zone>", "IANA time zone for the report date (default: Europe/Belgrade)")
   .action(runAction(driftCommand));
+
+program
+  .command("ingest <file>")
+  .description(
+    "Add an already-summarized note from another app to the vault (no LLM call)",
+  )
+  .requiredOption("--source <name>", "Where the note comes from: muninn")
+  .option("--with-transcript", "Keep the transcript in the vault copy")
+  .action(runAction(ingestCommand));
 
 program
   .command("compose <topic>")

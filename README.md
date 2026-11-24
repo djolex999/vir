@@ -216,6 +216,13 @@ worse results, not better."_ Fair. Vir addresses it in layers:
   reach CLAUDE.md only through `vir sync-claude`, which asks about each rule
   separately and never adds one under `--force`. Rejected rules stay rejected
   even after the source notes are rewritten. Needs an embedding provider.
+- **Meeting notes from Muninn** via `vir ingest --source muninn <file>`.
+  Muninn (a macOS meeting-notes app) hands each finished note over; vir copies
+  its summary sections into `meetings/`, keyed by the note's `id`, so a rerun
+  or a renamed file updates the same note. No LLM call: the note is already
+  summarized. The transcript stays out unless `--with-transcript`. The note is
+  embedded with your local provider (free with Ollama) and found by
+  `vir query` and `vir_query` (`type: "meeting"`).
 - **Topic synthesis** via `vir compose "<topic>"`. Embedding-searches the
   vault for related notes and synthesizes them into a single topic page under
   `topics/`, with each source wikilinked so it backlinks in Obsidian's graph.
@@ -478,6 +485,7 @@ with your distro, init system, and Node version.
 | `vir query "<question>"`    | cheap | Semantic search your vault                |
 | `vir queries`               | free  | Retrieval report: method split, degraded rate, dead-weight notes |
 | `vir compose "<topic>"`     | $$    | Synthesize a topic page from related notes |
+| `vir ingest --source muninn <file>` | free | Add a Muninn meeting note to `meetings/`, no LLM call (`--with-transcript`) |
 | `vir connect --dry-run`     | free  | Find lessons you keep re-learning; show candidates + cost |
 | `vir connect`               | $     | Propose those lessons as cited rules (≤10 LLM calls) |
 | `vir dream <project>`       | $     | Rebuild a project's reference page: quoted, labelled, size-capped (`--all`, `--dry-run`, `--force`) |
@@ -735,6 +743,7 @@ vault/vir/
   tools/         # per-tool knowledge and usage notes
   articles/      # web articles distilled from your clips folder
   pdfs/          # distilled PDFs and papers
+  meetings/      # notes handed over by vir ingest (Muninn)
   topics/        # synthesized topic pages (vir compose)
   projects/      # cross-session project summaries
   summaries/     # weekly/monthly period summaries (derived, never indexed)

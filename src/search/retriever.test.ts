@@ -184,6 +184,7 @@ describe("search — topic embeddings are first-class in the pool", () => {
       getArticleEmbeddings: () => [],
       getTopicEmbeddings: () => [topicRow],
       getPdfEmbeddings: () => [],
+      getMeetingEmbeddings: () => [],
       getInsightEmbeddings: () => [],
     } as unknown as StateDb;
     const cfg = {
@@ -225,6 +226,7 @@ describe("search — topic embeddings are first-class in the pool", () => {
       getArticleEmbeddings: () => [],
       getTopicEmbeddings: () => [],
       getPdfEmbeddings: () => [pdfRow],
+      getMeetingEmbeddings: () => [],
       getInsightEmbeddings: () => [],
     } as unknown as StateDb;
     const cfg = {
@@ -297,6 +299,7 @@ describe("searchWithOutcome — embed failure degrades to TF-IDF, loudly", () =>
       getArticleEmbeddings: () => [],
       getTopicEmbeddings: () => [],
       getPdfEmbeddings: () => [],
+      getMeetingEmbeddings: () => [],
       getInsightEmbeddings: () => [],
     } as unknown as StateDb;
     const cfg = {
@@ -348,6 +351,7 @@ describe("searchWithOutcome — candidates + provider provenance for the query l
       getArticleEmbeddings: () => [],
       getTopicEmbeddings: () => [],
       getPdfEmbeddings: () => [],
+      getMeetingEmbeddings: () => [],
       getInsightEmbeddings: () => [],
     } as unknown as StateDb;
     const cfg = {
@@ -529,6 +533,7 @@ describe("connect-pass insights in retrieval", () => {
       getArticleEmbeddings: () => [],
       getTopicEmbeddings: () => [],
       getPdfEmbeddings: () => [],
+      getMeetingEmbeddings: () => [],
       getInsightEmbeddings: () => [row],
     } as unknown as StateDb;
     const cfg = { vaultPath: vault, outputDir: "vir", topicsDir: "topics", retrievalDiversity: 0.3 } as unknown as Config;
@@ -617,6 +622,7 @@ describe("verified boost is windowed to the top 2×K by raw relevance", () => {
       getArticleEmbeddings: () => [],
       getTopicEmbeddings: () => [],
       getPdfEmbeddings: () => [],
+      getMeetingEmbeddings: () => [],
       getInsightEmbeddings: () => [],
     } as unknown as StateDb;
     const cfg = { vaultPath: vault, outputDir: "vir", topicsDir: "topics", retrievalDiversity: 0 } as unknown as Config;

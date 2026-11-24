@@ -419,6 +419,56 @@ export class VaultWriter {
     }
   }
 
+  // Write a note handed over by `vir ingest` into meetings/<slug>.md. The
+  // content is built by the caller (ingest/muninn.ts); no LLM is involved.
+  // `isNew` adds the index/log rows once, so re-ingesting never duplicates them.
+  writeMeeting(
+    relPath: string,
+    content: string,
+    entry: { isNew: boolean; title: string; kind: string; project: string | null; date: string | null },
+  ): string {
+    const fullPath = join(this.root, relPath);
+    mkdirSync(dirname(fullPath), { recursive: true });
+    writeFileSync(fullPath, content);
+    if (entry.isNew) {
+      this.appendIndex({
+        date: (entry.date ?? new Date().toISOString()).slice(0, 10),
+        topic: entry.title,
+        category: entry.kind,
+        project: entry.project ?? "meeting",
+        relPath,
+      });
+      this.appendLog({
+        ts: new Date().toISOString().slice(0, 16).replace("T", " "),
+        category: entry.kind,
+        topic: entry.title,
+        project: entry.project ?? "meeting",
+      });
+    }
+    return fullPath;
+  }
+
+  // Embed an ingested note now, after its row is recorded (so the store always
+  // finds the row). Best-effort like every write-time embed: a miss leaves the
+  // vector NULL and the end-of-run sweep or `vir embed` fills it later.
+  async embedMeeting(
+    id: string,
+    content: string,
+  ): Promise<"embedded" | "no-provider" | "failed"> {
+    if (!this.db) return "failed";
+    try {
+      const provider = await this.provider();
+      if (!provider) return "no-provider";
+      const vec = await embedNoteWithProvider(provider, content);
+      if (!vec) return "failed";
+      return this.db.storeMeetingEmbedding(id, vec, provider.provenance())
+        ? "embedded"
+        : "failed";
+    } catch {
+      return "failed";
+    }
+  }
+
   // Write a synthesized topic page into topics/<slug>.md. Parallel to write()/
   // writeArticle() but uses the topic frontmatter and a deterministic Sources
   // section built from the real source slugs (so every wikilink resolves and

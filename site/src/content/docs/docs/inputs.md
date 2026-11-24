@@ -40,6 +40,10 @@ vir run --pdfs-only
 # optionally unset pdfsDir again
 ```
 
+## Meeting notes (Muninn)
+
+Muninn, a macOS meeting-notes app, runs `vir ingest --source muninn <file>` after each note (meetings, ideas, moments). The note is already summarized, so vir makes no LLM call: it checks the frontmatter (`muninn: 1`), copies the summary sections into `meetings/<id>.md` with `type: meeting`, `kind`, `people`, `source_path` and a link back to the original, and embeds it with your local provider. The note's `id` is the key, so running it again or renaming the file updates the same note. The transcript callout is left out unless you pass `--with-transcript`.
+
 ## Where things land
 
 ```
@@ -47,6 +51,7 @@ vault/vir/
   patterns/  gotchas/  decisions/  tools/   # sessions (Claude Code and Codex)
   articles/                                 # web clips
   pdfs/                                     # papers
+  meetings/                                 # vir ingest (Muninn)
   topics/                                   # vir compose syntheses
   projects/                                 # per-project summaries
   summaries/                                # weekly/monthly, never indexed
