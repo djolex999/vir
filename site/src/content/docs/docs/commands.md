@@ -51,6 +51,7 @@ description: Every vir subcommand with what it costs.
 | `vir query "<question>"` | cheap | Search + synthesize. `--json`, `--limit` |
 | `vir queries` | free | Retrieval report: method split, dead-weight notes. `--json`, `--top` |
 | `vir compose "<topic>"` | $$ | Topic page from related notes. `--dry-run`, `--limit`, `--model` |
+| `vir ingest --source muninn <file>` | free | Add a Muninn note to `meetings/`, no LLM call. `--with-transcript` |
 | `vir summarize <project>` / `--all` | cheap | Per-project synthesis |
 | `vir summarize --week [N]` / `--month [N]` | cheap | Period digest |
 | `vir embed` | free | Embed notes with the detected provider. `--force` re-embeds all |

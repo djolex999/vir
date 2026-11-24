@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.38.0 — 2026-11-24
+
+**`vir ingest --source muninn <file>` adds a meeting note from Muninn to the vault, with no LLM call.**
+
+- **`vir ingest --source muninn <file>`** is the command Muninn (a macOS meeting-notes app) runs after each note. Until now it failed with "unknown command", so Muninn queued its notes.
+  - It reads the file and refuses anything that is not a readable `.md` file with `muninn: 1` frontmatter and a safe `id`.
+  - The note is already summarized, so vir copies it instead of distilling it: `meetings/<id>.md` with `type: meeting`, `kind`, `people`, `source_path` and a `Source:` link back to the original file.
+  - The note's `id` is the key. Running it again, or after the file was renamed, updates the same note and row; the index gets one line.
+  - The `> [!note]- Transkript` callout is left out (summary sections only) unless you pass `--with-transcript`.
+  - The note is embedded with the active provider (local, so free with Ollama) and stored in a new `meetings` table. `vir query`, `vir_query` (`type: "meeting"`) and the TF-IDF fallback find it. An edited note gets a new vector; if embedding fails, the next `vir run` or `vir embed` fills it.
+  - Success prints one line on stdout. Any failure, including another vir run holding the pipeline lock, prints one line on stderr and exits 1, so Muninn can show it and retry.
+  - `--source` accepts only `muninn` for now.
+- **Query results carry a new `meeting` category** (`vir query --json`, `vir_query`). The Obsidian plugin shows unknown categories with a plain badge until it learns this one.
+
 ## 0.37.0 — 2026-11-17
 
 **`vir drift [path]` finds where a repo's CLAUDE.md and README no longer match its code, with no LLM calls.**

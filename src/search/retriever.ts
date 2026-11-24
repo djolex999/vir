@@ -213,14 +213,15 @@ async function searchByEmbedding(
   }
 
   const root = vaultRoot(cfg);
-  // Sessions, articles, topics, and PDFs are embedded into the same vector
-  // space; concat all four so semantic search covers every layer. No layer gets
+  // Sessions, articles, topics, PDFs and ingested meetings are embedded into
+  // the same vector space; concat them all so semantic search covers every layer. No layer gets
   // a ranking boost — they compete on cosine like everything else.
   const allRows = [
     ...db.getEmbeddings(root),
     ...db.getArticleEmbeddings(),
     ...db.getTopicEmbeddings(root, cfg.topicsDir),
     ...db.getPdfEmbeddings(),
+    ...db.getMeetingEmbeddings(),
     // Accepted connect-pass rules only — the DB query is the serving gate.
     ...db.getInsightEmbeddings(root),
   ];

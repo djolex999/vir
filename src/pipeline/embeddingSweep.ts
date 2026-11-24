@@ -124,6 +124,7 @@ export async function sweepEmbeddings(
   const topicTargets = db.listTopicEmbeddingTargets();
   const articleTargets = db.listArticleEmbeddingTargets();
   const pdfTargets = db.listPdfEmbeddingTargets();
+  const meetingTargets = db.listMeetingEmbeddingTargets();
   // `undefined` = caller didn't resolve one (legacy call shape) → auto-detect.
   // `null` = caller resolved to none. Either way, no provider → no-op sweep.
   const active =
@@ -139,7 +140,8 @@ export async function sweepEmbeddings(
         targets.length +
         topicTargets.length +
         articleTargets.length +
-        pdfTargets.length,
+        pdfTargets.length +
+        meetingTargets.length,
     };
   }
   const provenance = active.provenance();
@@ -200,6 +202,19 @@ export async function sweepEmbeddings(
       continue;
     }
     db.storePdfEmbedding(p.path, vec, provenance);
+    embedded += 1;
+  }
+  // Ingested meetings (`vir ingest`) heal the same way, keyed by note id.
+  // Shipped with the getMeetingEmbeddings read path so an ingest while the
+  // provider was down is not a permanent blind spot.
+  for (const m of meetingTargets) {
+    const source = text?.file(m.notePath) ?? m.content;
+    const vec = await embedNoteWithProvider(active, source, log);
+    if (!vec) {
+      errors += 1;
+      continue;
+    }
+    db.storeMeetingEmbedding(m.id, vec, provenance);
     embedded += 1;
   }
   return { ran: true, embedded, errors, pending: errors };

@@ -53,6 +53,7 @@ export const QUERY_TYPES = [
   "topic",
   "pdf",
   "insight",
+  "meeting",
   "all",
 ] as const;
 
@@ -116,7 +117,7 @@ export function hitMeta(hit: SearchHit): {
   topic: string;
   category: string;
   project: string;
-  type: "session" | "article" | "topic" | "pdf" | "insight";
+  type: "session" | "article" | "topic" | "pdf" | "insight" | "meeting";
   url?: string;
 } {
   const fm = parseFrontmatter(hit.content);
@@ -150,6 +151,15 @@ export function hitMeta(hit: SearchHit): {
       category: "insight",
       project: fm.scope?.startsWith("project:") ? fm.scope.slice("project:".length) : "",
       type: "insight",
+    };
+  }
+  // Ingested Muninn notes: `kind` (meeting/idea/moment) is the category.
+  if (fm.type === "meeting") {
+    return {
+      topic: fm.title ?? base,
+      category: fm.kind ?? "meeting",
+      project: fm.project ?? "",
+      type: "meeting",
     };
   }
   if (fm.type === "topic") {
@@ -249,7 +259,7 @@ export const VIR_QUERY_DESCRIPTION =
   "Search the knowledge vault for patterns, gotchas, decisions, and " +
   "tool insights from past coding-agent sessions (Claude Code, Codex), concepts, techniques, " +
   "references, and opinions distilled from web articles, and notes " +
-  "distilled from PDFs/papers. " +
+  "distilled from PDFs/papers, and meeting notes ingested from Muninn. " +
   "Use this before working on a task to consult prior learnings. " +
   "Human-verified notes (approved via `vir review`) are ranked above " +
   "unverified ones. " +
@@ -336,7 +346,8 @@ export async function runMcpServer(cfg: Config): Promise<void> {
           .describe(
             "Restrict to 'session' notes (coding-agent sessions), 'article' notes " +
               "(web articles), 'topic' pages (synthesized via `vir compose`), " +
-              "'pdf' notes (distilled papers/PDFs), or 'all' (default).",
+              "'pdf' notes (distilled papers/PDFs), 'meeting' notes (ingested " +
+              "from Muninn), or 'all' (default).",
           ),
         category: z
           .enum(CATEGORIES)

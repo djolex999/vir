@@ -854,6 +854,7 @@ async function checkEmbeddingProvider(
         ...db.getArticleEmbeddings(),
         ...db.getTopicEmbeddings(root, cfg.topicsDir),
         ...db.getPdfEmbeddings(),
+        ...db.getMeetingEmbeddings(),
       ];
       mismatched = rows.filter(
         (r) => r.embeddingModel !== provider.modelName,

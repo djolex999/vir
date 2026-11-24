@@ -225,6 +225,27 @@ export interface ArticleRow {
   content: string;
 }
 
+export interface MeetingRow {
+  id: string;
+  source: string;
+  sourcePath: string;
+  kind: string | null;
+  title: string;
+  date: string | null;
+  project: string | null;
+  notePath: string;
+  content: string;
+  ingestedAt: string;
+  updatedAt: string;
+  hasEmbedding: boolean;
+}
+
+export interface MeetingEmbeddingTargetRow {
+  id: string;
+  notePath: string;
+  content: string;
+}
+
 export interface PdfRow {
   path: string;
   notePath: string | null;
@@ -449,6 +470,22 @@ export class StateDb {
         embedding TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_pdfs_hash ON pdfs(hash);
+      CREATE TABLE IF NOT EXISTS meetings (
+        id TEXT PRIMARY KEY,
+        source TEXT NOT NULL,
+        source_path TEXT NOT NULL,
+        kind TEXT,
+        title TEXT NOT NULL,
+        date TEXT,
+        project TEXT,
+        note_path TEXT NOT NULL,
+        content TEXT NOT NULL,
+        ingested_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        embedding TEXT,
+        embedding_model TEXT,
+        embedding_dim INTEGER
+      );
       CREATE TABLE IF NOT EXISTS insights (
         id TEXT PRIMARY KEY,
         slug TEXT NOT NULL UNIQUE,
@@ -1742,6 +1779,206 @@ export class StateDb {
         topic: r.title ?? "",
         category: r.category ?? "",
         project: "",
+        filePath: r.note_path,
+        embedding: vec,
+        embeddingModel: r.embedding_model ?? LEGACY_EMBEDDING_PROVENANCE.model,
+        embeddingDim: r.embedding_dim ?? vec.length,
+      });
+    }
+    return out;
+  }
+
+  // ── meetings ──────────────────────────────────────────────────────────────
+  // Notes handed over by `vir ingest` (Muninn). Their own table, keyed by the
+  // source's own note id, so a rerun or a renamed source file updates one row
+  // and one vault note. Read methods guard a missing table for the read-only
+  // MCP path, which skips migrations.
+
+  private hasMeetingsTable(): boolean {
+    try {
+      return (
+        this.db
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='meetings'",
+          )
+          .get() !== undefined
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  // Upsert by id. A content change NULLs the embedding in the same statement,
+  // so a stale vector can never outlive the text it was built from (the sweep
+  // only fills NULLs). Unchanged content keeps the vector.
+  recordMeeting(opts: {
+    id: string;
+    source: string;
+    sourcePath: string;
+    kind: string | null;
+    title: string;
+    date: string | null;
+    project: string | null;
+    notePath: string;
+    content: string;
+  }): { created: boolean; contentChanged: boolean } {
+    const now = new Date().toISOString();
+    return this.db.transaction(() => {
+      const prev = this.db
+        .prepare("SELECT content FROM meetings WHERE id = ?")
+        .get(opts.id) as { content: string } | undefined;
+      this.db
+        .prepare(
+          `INSERT INTO meetings (
+             id, source, source_path, kind, title, date, project,
+             note_path, content, ingested_at, updated_at
+           )
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET
+             embedding = CASE WHEN meetings.content = excluded.content
+                              THEN meetings.embedding ELSE NULL END,
+             embedding_model = CASE WHEN meetings.content = excluded.content
+                              THEN meetings.embedding_model ELSE NULL END,
+             embedding_dim = CASE WHEN meetings.content = excluded.content
+                              THEN meetings.embedding_dim ELSE NULL END,
+             source = excluded.source,
+             source_path = excluded.source_path,
+             kind = excluded.kind,
+             title = excluded.title,
+             date = excluded.date,
+             project = excluded.project,
+             note_path = excluded.note_path,
+             content = excluded.content,
+             updated_at = excluded.updated_at`,
+        )
+        .run(
+          opts.id,
+          opts.source,
+          opts.sourcePath,
+          opts.kind,
+          opts.title,
+          opts.date,
+          opts.project,
+          opts.notePath,
+          opts.content,
+          now,
+          now,
+        );
+      return {
+        created: prev === undefined,
+        contentChanged: prev === undefined || prev.content !== opts.content,
+      };
+    })();
+  }
+
+  getMeeting(id: string): MeetingRow | null {
+    if (!this.hasMeetingsTable()) return null;
+    return this.listMeetingsWhere("WHERE id = ?", [id])[0] ?? null;
+  }
+
+  listMeetings(): MeetingRow[] {
+    if (!this.hasMeetingsTable()) return [];
+    return this.listMeetingsWhere("", []);
+  }
+
+  private listMeetingsWhere(where: string, params: string[]): MeetingRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, source, source_path, kind, title, date, project, note_path,
+                content, ingested_at, updated_at, embedding IS NOT NULL AS has_emb
+         FROM meetings ${where}`,
+      )
+      .all(...params) as Array<{
+      id: string;
+      source: string;
+      source_path: string;
+      kind: string | null;
+      title: string;
+      date: string | null;
+      project: string | null;
+      note_path: string;
+      content: string;
+      ingested_at: string;
+      updated_at: string;
+      has_emb: number;
+    }>;
+    return rows.map((r) => ({
+      id: r.id,
+      source: r.source,
+      sourcePath: r.source_path,
+      kind: r.kind,
+      title: r.title,
+      date: r.date,
+      project: r.project,
+      notePath: r.note_path,
+      content: r.content,
+      ingestedAt: r.ingested_at,
+      updatedAt: r.updated_at,
+      hasEmbedding: r.has_emb === 1,
+    }));
+  }
+
+  // Exact complement of getMeetingEmbeddings(): the rows the sweep and
+  // `vir embed` back-fill.
+  listMeetingEmbeddingTargets(): MeetingEmbeddingTargetRow[] {
+    if (!this.hasMeetingsTable()) return [];
+    return this.db
+      .prepare(
+        `SELECT id, note_path AS notePath, content FROM meetings
+         WHERE embedding IS NULL AND content != ''`,
+      )
+      .all() as MeetingEmbeddingTargetRow[];
+  }
+
+  storeMeetingEmbedding(
+    id: string,
+    embedding: number[],
+    provenance: EmbeddingProvenance,
+  ): boolean {
+    if (!this.hasMeetingsTable()) return false;
+    return (
+      this.db
+        .prepare(
+          "UPDATE meetings SET embedding = ?, embedding_model = ?, embedding_dim = ? WHERE id = ?",
+        )
+        .run(JSON.stringify(embedding), provenance.model, provenance.dim, id)
+        .changes > 0
+    );
+  }
+
+  // Shaped like session EmbeddingRow so the retriever concats it with the
+  // other layers. category is the fixed "meeting" bucket.
+  getMeetingEmbeddings(): EmbeddingRow[] {
+    if (!this.hasMeetingsTable()) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT note_path, embedding, title, project, embedding_model, embedding_dim
+         FROM meetings WHERE embedding IS NOT NULL`,
+      )
+      .all() as Array<{
+      note_path: string;
+      embedding: string;
+      title: string;
+      project: string | null;
+      embedding_model: string | null;
+      embedding_dim: number | null;
+    }>;
+    const out: EmbeddingRow[] = [];
+    for (const r of rows) {
+      let vec: number[];
+      try {
+        const parsed = JSON.parse(r.embedding) as unknown;
+        if (!Array.isArray(parsed)) continue;
+        vec = parsed.map((x) => Number(x));
+        if (vec.some((n) => !Number.isFinite(n))) continue;
+      } catch {
+        continue;
+      }
+      out.push({
+        sessionId: deriveSessionId(r.note_path),
+        topic: r.title,
+        category: "meeting",
+        project: r.project ?? "",
         filePath: r.note_path,
         embedding: vec,
         embeddingModel: r.embedding_model ?? LEGACY_EMBEDDING_PROVENANCE.model,
